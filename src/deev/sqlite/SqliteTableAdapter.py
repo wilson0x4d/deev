@@ -8,10 +8,13 @@ from uuid import UUID
 
 from ..common.DbContext import DbContext
 from ..common.DbCursor import DbCursor
+from ..common.DbError import DbError
 from ..common.DbParams import DbParams
 from ..common.DbTypeMapper import DbTypeMapper
 from ..entities import EntitySpec, get_entity_spec
 from ..translation import hydrate, to_pyobject, splat
+from .SqliteProxyConnection import SqliteProxyConnection
+from .SqliteTransactionContext import SqliteTransactionContext
 from .SqliteTypeMapper import SqliteTypeMapper
 
 TEntity = TypeVar('TEntity')
@@ -25,19 +28,15 @@ class SqliteTableAdapter(Generic[TEntity]):
     __initialized: bool
     __sqltype_mapper: DbTypeMapper
     __entity_spec: EntitySpec
-    __sql_arg_expect: str
-    __sql_arg_subst: str
     __transaction_state: int
 
     def __init__(
         self,
         context: DbContext
     ) -> None:
-        self.__context = context
+        self.__context = context if isinstance(context, (SqliteProxyConnection, SqliteTransactionContext)) else SqliteProxyConnection(context)  # type: ignore[arg-type]
         self.__initialized = False
         self.__transaction_state = 0
-        self.__sql_arg_expect = '%?'
-        self.__sql_arg_subst = '?'
 
     def __init_entity_spec(self) -> None:
         if not self.__initialized:
@@ -56,7 +55,6 @@ class SqliteTableAdapter(Generic[TEntity]):
         if params is None:
             cursor.execute(sql)
         else:
-            sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
             cursor.execute(sql, params)
 
     def __get_pyobject(self, key: str, value: Any) -> Any:
@@ -137,7 +135,7 @@ class SqliteTableAdapter(Generic[TEntity]):
             if self.__entity_spec.primary_key[0] in data.keys():
                 data.pop(self.__entity_spec.primary_key[0])
         column_names = ', '.join([f'[{k}]' for k in data.keys()])
-        parms = ', '.join([self.__sql_arg_subst] * len(data.keys()))
+        parms = ', '.join(['%?'] * len(data.keys()))
         cursor = self.__context.cursor()
         sql = f'INSERT INTO {self.__entity_spec.table_name} ({column_names}) VALUES ({parms})'
         params = tuple([
@@ -149,7 +147,7 @@ class SqliteTableAdapter(Generic[TEntity]):
             if v is not None:
                 pk_values[self.__entity_spec.primary_key[0]] = self.__get_pyobject('id', v)
             else:
-                raise Exception('Unsupported NULL encountered in primary key.')
+                raise DbError('Unsupported NULL encountered in primary key.')
         return pk_values
 
     def read(self, **kwargs: Any) -> TEntity | None:
@@ -162,13 +160,15 @@ class SqliteTableAdapter(Generic[TEntity]):
             for k, v in kwargs.items()
             if k in self.__entity_spec.primary_key
         }
-        where = ' AND '.join([f'{k} = {self.__sql_arg_subst}' for k in pk_values.keys()])
+        where = ' AND '.join([f'{k} = %?' for k in pk_values.keys()])
         keys = pk_values.values()
         cursor = self.__context.cursor()
         sql = f'SELECT {self.__column_names} FROM {self.__entity_spec.table_name} WHERE {where}'
         cursor.execute(sql, tuple(keys))
         data = cursor.fetchone()
         if data:
+            if cursor.description is None:
+                raise DbError('Provider did not provide a description.')
             result = {}
             for kvp in zip(cursor.description, data):
                 value = self.__get_pyobject(kvp[0][0], kvp[1])
@@ -186,10 +186,10 @@ class SqliteTableAdapter(Generic[TEntity]):
             for k, v in entity_data.items()
             if k in self.__entity_spec.primary_key
         }
-        where = ' AND '.join([f'{k} = {self.__sql_arg_subst}' for k in primary_key.keys()])
+        where = ' AND '.join([f'{k} = %?' for k in primary_key.keys()])
         keys = primary_key.values()
         _set = ', '.join([
-            f'{key} = {self.__sql_arg_subst}'
+            f'{key} = %?'
             for key in entity_data.keys()
             if key not in self.__entity_spec.primary_key
         ])
@@ -204,7 +204,7 @@ class SqliteTableAdapter(Generic[TEntity]):
             for k, v in kwargs.items()
             if k in self.__entity_spec.primary_key
         }
-        where = ' AND '.join([f'{k} = {self.__sql_arg_subst}' for k in primary_key.keys()])
+        where = ' AND '.join([f'{k} = %?' for k in primary_key.keys()])
         keys = primary_key.values()
         sql = f'DELETE FROM {self.__entity_spec.table_name} WHERE {where}'
         cursor = self.__context.cursor()
@@ -217,7 +217,7 @@ class SqliteTableAdapter(Generic[TEntity]):
             for k, v in kwargs.items()
             if k in self.__entity_spec.primary_key
         }
-        where = ' AND '.join([f'{k} = {self.__sql_arg_subst}' for k in primary_key.keys()])
+        where = ' AND '.join([f'{k} = %?' for k in primary_key.keys()])
         keys = primary_key.values()
         cursor = self.__context.cursor()
         cursor.execute(
@@ -238,14 +238,14 @@ class SqliteTableAdapter(Generic[TEntity]):
                 if k in self.__entity_spec.primary_key
             }
             cols = ', '.join([f'[{k}]' for k in entity_data.keys()])
-            update = ', '.join([f'[{k}]={self.__sql_arg_subst}' for k in entity_data.keys() if k not in primary_key.keys()])
+            update = ', '.join([f'[{k}]=%?' for k in entity_data.keys() if k not in primary_key.keys()])
             parms = tuple([
                 v.hex if type(v) is UUID else v
                 for k, v in entity_data.items()
                 if k not in primary_key
             ])
-            where = ' AND '.join([f'{k} = {self.__sql_arg_subst}' for k in primary_key.keys()])
-            values = ', '.join([self.__sql_arg_subst] * (len(parms) + len(primary_key)))
+            where = ' AND '.join([f'{k} = %?' for k in primary_key.keys()])
+            values = ', '.join(['%?'] * (len(parms) + len(primary_key)))
             cursor = self.__context.cursor()
             if len(where) > 0:
                 cursor.execute(f'UPDATE {self.__entity_spec.table_name} SET {update} WHERE {where}', parms + tuple(primary_key.values()))
@@ -271,13 +271,14 @@ class SqliteTableAdapter(Generic[TEntity]):
         orderby = f' ORDER BY {orderby}' if orderby is not None and len(orderby) > 0 else ''
         limit_str = f' LIMIT {limit}' if limit is not None and limit > 0 else ''
         sql = f'SELECT {self.__column_names} FROM {self.__entity_spec.table_name}{where}{orderby}{limit_str}'
-        sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
         cursor = self.__context.cursor()
         if cursor.description is None:
             Exception('cursor missing required descriptor')
         cursor.execute(sql, tuple(params))
         row = cursor.fetchone()
         while row is not None:
+            if cursor.description is None:
+                raise DbError('Provider did not provide a description.')
             result = {}
             for kvp in zip(cursor.description, row):
                 value = self.__get_pyobject(kvp[0][0], kvp[1])

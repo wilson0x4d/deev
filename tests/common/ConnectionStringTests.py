@@ -16,7 +16,12 @@ def constructs_deterministic_strings(
     provider: str,
     expected: str
 ) -> None:
-    connectionstring = ConnectionString(server, database, user, password, provider)
+    connectionstring = ConnectionString()
+    connectionstring.server = server
+    connectionstring.database = database
+    connectionstring.user = user
+    connectionstring.password = password
+    connectionstring.provider = provider
     assert str(connectionstring) == expected, f'{connectionstring} != {expected}'
 
 @fact

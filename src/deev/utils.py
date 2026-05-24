@@ -21,8 +21,9 @@ def connect(connectionstring: ConnectionString | str) -> DbConnection:
         connectionstring = ConnectionString(connectionstring)
     match connectionstring.provider:
         case 'mysql.connector' | 'mysql':
+            from deev.mysql.MysqlProxyConnection import MysqlProxyConnection
             import mysql.connector
-            return cast(DbConnection, mysql.connector.connect(
+            return MysqlProxyConnection(mysql.connector.connect(
                 host=connectionstring.server,
                 user=connectionstring.user,
                 password=connectionstring.password,
@@ -30,11 +31,12 @@ def connect(connectionstring: ConnectionString | str) -> DbConnection:
                 use_pure=True
             ))
         case 'sqlite3' | 'sqlite':
+            from deev.sqlite.SqliteProxyConnection import SqliteProxyConnection
             import sqlite3
             if connectionstring.database is None:
                 raise ValueError('Missing `database` value in Connection String.')
             db_path = connectionstring.database if connectionstring.server is None else os.path.join(connectionstring.server, connectionstring.database)
-            return cast(DbConnection, sqlite3.connect(db_path))
+            return SqliteProxyConnection(sqlite3.connect(db_path))
         case _:
             raise ValueError(f'Unsupported provider: {connectionstring.provider}')
 
@@ -54,8 +56,7 @@ def create_database(connectionstring: ConnectionString | str) -> None:
             # make sure the target database exists, or create it if it doesn't exit yet
             import mysql.connector
             parts = connectionstring.server.split(':')
-            hostName, portNumber = (parts[0], int(parts[1])) if len(
-                parts) == 2 else (parts[0], 3306)
+            hostName, portNumber = (parts[0], int(parts[1])) if len(parts) == 2 else (parts[0], 3306)
             connection = mysql.connector.connect(
                 host=hostName,
                 port=portNumber,

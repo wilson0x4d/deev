@@ -14,6 +14,7 @@ from ..common.DbCursor import DbCursor
 from ..common.DbError import DbError
 from ..common.DbParams import DbParams
 from ..common.DbTransactionContext import DbTransactionContext
+from .SqliteProxyConnection import SqliteProxyConnection
 
 
 class SqliteTransactionContext(DbTransactionContext):
@@ -27,7 +28,7 @@ class SqliteTransactionContext(DbTransactionContext):
     __transaction_state: int
 
     def __init__(self, context: DbContext):
-        self.__context = context
+        self.__context = context if isinstance(context, (SqliteProxyConnection, SqliteTransactionContext)) else SqliteProxyConnection(context)  # type: ignore[arg-type]
         self.__sql_arg_expect = '%?'
         self.__sql_arg_subst = '?'
         self.__transaction_id = uuid4()

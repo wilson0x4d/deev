@@ -20,7 +20,7 @@ class DbCursor(Protocol):
     """DB-API 2.0 Cursor proto."""
 
     @property
-    def description(self) -> Sequence[tuple[Any, ...]]:
+    def description(self) -> Optional[Sequence[tuple[Any, ...]]]:
         ...
     
     @property
@@ -43,9 +43,6 @@ class DbCursor(Protocol):
         ...
 
     def close(self) -> None:
-        ...
-
-    def __iter__(self) -> Iterable[tuple[Any, ...]]:
         ...
 
     @classmethod

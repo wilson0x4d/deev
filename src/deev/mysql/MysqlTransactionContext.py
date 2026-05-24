@@ -14,6 +14,7 @@ from ..common.DbCursor import DbCursor
 from ..common.DbError import DbError
 from ..common.DbParams import DbParams
 from ..common.DbTransactionContext import DbTransactionContext
+from .MysqlProxyConnection import MysqlProxyConnection
 
 
 class MysqlTransactionContext(DbTransactionContext):
@@ -22,14 +23,10 @@ class MysqlTransactionContext(DbTransactionContext):
     __transaction_id: UUID
     __context: DbContext
     __cursor: DbCursor
-    __sql_arg_expect: str
-    __sql_arg_subst: str
     __transaction_state: int
 
     def __init__(self, context: DbContext):
-        self.__context = context
-        self.__sql_arg_expect = '%?'
-        self.__sql_arg_subst = '%s'
+        self.__context = context if isinstance(context, (MysqlProxyConnection, MysqlTransactionContext)) else MysqlProxyConnection(context)  # type: ignore[arg-type]
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
 
@@ -103,7 +100,7 @@ class MysqlTransactionContext(DbTransactionContext):
 
     def execute(self, sql: str, params: Optional[DbParams] = None) -> DbCursor:
         """
-        An `execute` method that more closely conforms to PEP 249.
+        An `execute` method that more closely conforms to PEP 249 (to facilitate drop-in use cases.)
 
         :param sql: A string containing the SQL statement to execute.
         :param params: A tuple containing the params to substitute into the SQL statement.
@@ -111,7 +108,6 @@ class MysqlTransactionContext(DbTransactionContext):
         """
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
         self.__cursor.execute(
             sql,
             tuple(params) if params is not None else tuple())
@@ -120,7 +116,6 @@ class MysqlTransactionContext(DbTransactionContext):
     def execute_nonquery(self, sql: str, params: Optional[DbParams] = None) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
         self.__cursor.execute(
             sql,
             tuple(params) if params is not None else tuple())
@@ -131,7 +126,6 @@ class MysqlTransactionContext(DbTransactionContext):
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
         params = tuple(params) if params is not None else tuple()
-        sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
         self.__cursor.execute(sql, params)
         self.__update_transaction_state(sql)
         row = self.__cursor.fetchone()
@@ -142,7 +136,6 @@ class MysqlTransactionContext(DbTransactionContext):
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
-        sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
         self.__cursor.execute(
             sql,
             tuple(params) if params is not None else tuple()

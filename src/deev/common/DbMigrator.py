@@ -18,9 +18,9 @@ from .DbTableAdapter import DbTableAdapter
 
 class DbMigrator:
     """
-    Performs database changes for a set of migration scripts.
+    Performs database changes for a set of "migration scripts."
 
-    Migration scripts can be scanned from a path, or an explicit set of script paths may be provided.
+    Migration scripts are scanned from a filesystem directory.
     """
 
     __connectionstring: ConnectionString
