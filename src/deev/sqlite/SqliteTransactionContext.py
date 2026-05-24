@@ -87,7 +87,7 @@ class SqliteTransactionContext(DbTransactionContext):
             SqliteTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
             self.__cursor.execute('BEGIN TRANSACTION')
         else:
-            self.__cursor.execute(f'SAVEPOINT TID_{self.__transaction_id.hex};')        
+            self.__cursor.execute(f'SAVEPOINT TID_{self.__transaction_id.hex};')
         return self
 
     def close(self) -> None:

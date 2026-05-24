@@ -81,7 +81,7 @@ class MysqlTransactionContext(DbTransactionContext):
             MysqlTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
             self.__cursor.execute('START TRANSACTION')
         else:
-            self.__cursor.execute(f'SAVEPOINT TID_{self.__transaction_id.hex}')        
+            self.__cursor.execute(f'SAVEPOINT TID_{self.__transaction_id.hex}')
         return self
 
     def close(self) -> None:

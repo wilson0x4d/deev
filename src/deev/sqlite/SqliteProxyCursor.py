@@ -6,7 +6,6 @@ from __future__ import annotations
 from sqlite3 import Cursor
 from typing import (
     Any,
-    Iterable,
     Optional,
     Sequence
 )
@@ -33,7 +32,7 @@ class SqliteProxyCursor(DbCursor):
     @property
     def description(self) -> Optional[Sequence[tuple[Any, ...]]]:
         return self.__cursor.description
-    
+
     @property
     def lastrowid(self) -> Optional[int]:
         return self.__cursor.lastrowid

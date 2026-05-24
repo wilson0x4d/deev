@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from typing import (
     Any,
-    Iterable,
     Optional,
     Sequence,
     Protocol,
@@ -22,7 +21,7 @@ class DbCursor(Protocol):
     @property
     def description(self) -> Optional[Sequence[tuple[Any, ...]]]:
         ...
-    
+
     @property
     def rowcount(self) -> int:
         ...

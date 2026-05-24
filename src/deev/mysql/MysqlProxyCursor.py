@@ -6,7 +6,6 @@ from __future__ import annotations
 from mysql.connector.abstracts import MySQLCursorAbstract
 from typing import (
     Any,
-    Iterable,
     Optional,
     Sequence
 )
@@ -33,7 +32,7 @@ class MysqlProxyCursor(DbCursor):
     @property
     def description(self) -> Optional[Sequence[tuple[Any, ...]]]:
         return self.__cursor.description
-    
+
     @property
     def rowcount(self) -> int:
         return self.__cursor.rowcount

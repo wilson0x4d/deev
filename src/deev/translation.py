@@ -225,11 +225,7 @@ def to_sqlobject(value: Any, hint: type) -> Any:
             value = value.replace(tzinfo=timezone.utc)
         return value.isoformat()
     elif hint == timedelta:
-        return (
-            value.days * 86_400_000_000 +
-            value.seconds * 1_000_000 +
-            value.microseconds
-        )
+        return value.days * 86_400_000_000 + value.seconds * 1_000_000 + value.microseconds
     elif hint == UUID:
         return value.hex
     elif hint == bool:

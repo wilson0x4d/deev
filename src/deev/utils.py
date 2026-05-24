@@ -3,7 +3,7 @@
 
 import os
 from pathlib import Path
-from typing import Optional, cast
+from typing import Optional
 
 from .common.ConnectionString import ConnectionString
 from .common.DbConnection import DbConnection

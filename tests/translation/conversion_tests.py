@@ -9,7 +9,7 @@ from deev.translation import (  # type: ignore  # pylint: disable=import-error
     to_pyobject,
     to_sqlobject
 )
-from punit import collections, fact, inlinedata, theory
+from punit import collections, inlinedata, theory
 from types import NoneType
 from typing import Any, Mapping, Optional, Union, get_origin
 from uuid import UUID
@@ -70,6 +70,7 @@ def to_pyobject_bvt(value: Any, hint: type, expected: Any) -> None:
             assert isinstance(actual, hint), f'when type checking hint value "{value}" and hint "{hint}", expected "{hint}" got "{actual}".'
         else:
             assert isinstance(actual, org), f'when type checking org value "{value}" and hint "{hint}", expected "{org}" got "{actual}".'
+
 
 @theory
 @inlinedata(None, None, None)

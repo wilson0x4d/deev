@@ -12,7 +12,7 @@ from typing import (
     Mapping,
     Optional,
     Type,
-    TypeVar, 
+    TypeVar,
     Union,
     cast,
     dataclass_transform,
