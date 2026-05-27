@@ -27,17 +27,21 @@ class MysqlTableAdapter(Generic[TEntity]):
     __column_names: str  # NOTE: just an optimization so we don't have to concat over and over
     __context: DbContext
     __cursor: DbCursor
+    __entity_spec: EntitySpec
     __initialized: bool
     __sqltype_mapper: DbTypeMapper
-    __entity_spec: EntitySpec
+    __table_name: Optional[str]
     __transaction_state: int
 
     def __init__(
         self,
-        context: DbContext
+        context: DbContext,
+        *,
+        table_name: Optional[str] = None
     ) -> None:
         self.__context = context if isinstance(context, (MysqlProxyConnection, MysqlTransactionContext)) else MysqlProxyConnection(context)  # type: ignore[arg-type]
         self.__initialized = False
+        self.__table_name = table_name
         self.__transaction_state = 0
 
     def __init_entity_spec(self) -> None:
@@ -82,6 +86,7 @@ class MysqlTableAdapter(Generic[TEntity]):
         """Utility method for creating the target table."""
         self.__init_entity_spec()
         sql: str = ''
+        table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         if len(self.__entity_spec.primary_key) == 1:
             # handling a single-column PK, will apply an auto-increment if the SQLTYPE is BIGINT
             primary_key = self.__entity_spec.primary_key[0]
@@ -91,7 +96,7 @@ class MysqlTableAdapter(Generic[TEntity]):
                 for k in self.__entity_spec.attrs.keys()
                 if k != primary_key
             ])
-            sql = f'CREATE TABLE IF NOT EXISTS `{self.__entity_spec.table_name}` ({primary_key} {id_sqltype}{" AUTO_INCREMENT" if id_sqltype == "BIGINT" else ""}, {columns}, PRIMARY KEY ({primary_key}))'
+            sql = f'CREATE TABLE IF NOT EXISTS `{table_name}` ({primary_key} {id_sqltype}{" AUTO_INCREMENT" if id_sqltype == "BIGINT" else ""}, {columns}, PRIMARY KEY ({primary_key}))'
         else:
             # special handling of multi-column PK
             columns = ', '.join([
@@ -136,7 +141,8 @@ class MysqlTableAdapter(Generic[TEntity]):
         column_names = ', '.join([f'`{k}`' for k in data.keys()])
         parms = ', '.join(['%?'] * len(data.keys()))
         cursor = self.__context.cursor()
-        sql = f'INSERT INTO `{self.__entity_spec.table_name}` ({column_names}) VALUES ({parms})'
+        table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
+        sql = f'INSERT INTO `{table_name}` ({column_names}) VALUES ({parms})'
         params = tuple([
             cast(mysql.connector.types.MySQLConvertibleType, p.hex if type(p) is UUID else p)
             for p in data.values()])
@@ -163,7 +169,8 @@ class MysqlTableAdapter(Generic[TEntity]):
         where = ' AND '.join([f'{k} = %?' for k in pk_values.keys()])
         keys = pk_values.values()
         cursor = self.__context.cursor()
-        sql = f'SELECT {self.__column_names} FROM `{self.__entity_spec.table_name}` WHERE {where}'
+        table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
+        sql = f'SELECT {self.__column_names} FROM `{table_name}` WHERE {where}'
         cursor.execute(sql, tuple(keys))
         data = cursor.fetchone()
         if data:
@@ -195,7 +202,8 @@ class MysqlTableAdapter(Generic[TEntity]):
         ])
         parms = [k for k, v in entity_data.items() if k not in self.__entity_spec.primary_key]
         cursor = self.__context.cursor()
-        cursor.execute(f'UPDATE `{self.__entity_spec.table_name}` SET {_set} WHERE {where}', tuple(parms) + tuple(keys))
+        table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
+        cursor.execute(f'UPDATE `{table_name}` SET {_set} WHERE {where}', tuple(parms) + tuple(keys))
 
     def delete(self, **kwargs: Any) -> None:
         self.__init_entity_spec()
@@ -206,7 +214,8 @@ class MysqlTableAdapter(Generic[TEntity]):
         }
         where = ' AND '.join([f'{k} = %?' for k in primary_key.keys()])
         keys = primary_key.values()
-        sql = f'DELETE FROM `{self.__entity_spec.table_name}` WHERE {where}'
+        table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
+        sql = f'DELETE FROM `{table_name}` WHERE {where}'
         cursor = self.__context.cursor()
         cursor.execute(sql, tuple(keys))
 
@@ -220,8 +229,8 @@ class MysqlTableAdapter(Generic[TEntity]):
         where = ' AND '.join([f'{k} = %?' for k in primary_key.keys()])
         keys = primary_key.values()
         cursor = self.__context.cursor()
-        cursor.execute(
-            f'SELECT 1 FROM `{self.__entity_spec.table_name}` WHERE {where} LIMIT 1', tuple(keys))
+        table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
+        cursor.execute(f'SELECT 1 FROM `{table_name}` WHERE {where} LIMIT 1', tuple(keys))
         return cursor.fetchone() is not None
 
     def upsert(self, entity: TEntity) -> dict[str, Any]:
@@ -243,7 +252,8 @@ class MysqlTableAdapter(Generic[TEntity]):
             parms = [v.hex if type(v) is UUID else v for v in entity_data.values()]
             values = ', '.join(['%?'] * len(parms))
             cursor = self.__context.cursor()
-            sql = f'INSERT INTO `{self.__entity_spec.table_name}` ({cols}) VALUES ({values}) AS V ON DUPLICATE KEY UPDATE {update}'
+            table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
+            sql = f'INSERT INTO `{table_name}` ({cols}) VALUES ({values}) AS V ON DUPLICATE KEY UPDATE {update}'
             cursor.execute(sql, tuple(parms))
             return primary_key
 
@@ -267,7 +277,8 @@ class MysqlTableAdapter(Generic[TEntity]):
         orderby = f' ORDER BY {orderby}' if orderby is not None and len(
             orderby) > 0 else ''
         limit_str = f' LIMIT {limit}' if limit is not None and limit > 0 else ''
-        sql = f'SELECT {self.__column_names} FROM `{self.__entity_spec.table_name}`{where}{orderby}{limit_str}'
+        table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
+        sql = f'SELECT {self.__column_names} FROM `{table_name}`{where}{orderby}{limit_str}'
         cursor = self.__context.cursor()
         if cursor.description is None:
             Exception('cursor missing required descriptor')
