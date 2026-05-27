@@ -30,6 +30,11 @@ mysql = [
     "mysql-connector-python"
 ]
 
+[project.urls]
+Documentation = "https://deev.readthedocs.io/"
+Homepage = "https://github.com/wilson0x4d/deev"
+Repository = "https://github.com/wilson0x4d/deev.git"
+
 [project.scripts]
 db-migrate = "deev.db_migrate:main"
 
