@@ -31,8 +31,9 @@ class DbMigrator:
         self.__connectionstring = connectionstring
 
     def __get_or_create_migrations_table(self) -> DbTableAdapter:
-        from ..utils import get_table_adapter
-        table_adapter = get_table_adapter(_MigrationData, self.__connectionstring)
+        from ..utils import connect, get_table_adapter
+        connection = connect(self.__connectionstring)
+        table_adapter = get_table_adapter(_MigrationData, connection)
         table_adapter.create_table()
         return table_adapter
 

@@ -101,16 +101,16 @@ def undo_migrations(connectionstring: ConnectionString, migrations_path: Optiona
         raise ValueError('A value for `migrations_path` must be provided.')
 
 
-def get_table_adapter(entity_type: type, connectionstring: ConnectionString) -> DbTableAdapter:
-    match connectionstring.provider:
-        case 'mysql.connector' | 'mysql':
+def get_table_adapter(entity_type: type, connection: DbConnection) -> DbTableAdapter:
+    match type(connection).__name__:
+        case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection':
             import deev.mysql
-            return deev.mysql.MysqlTableAdapter[entity_type](connect(connectionstring))  # type: ignore[valid-type]
-        case 'sqlite3' | 'sqlite':
+            return deev.mysql.MysqlTableAdapter[entity_type](connection)  # type: ignore[valid-type]
+        case 'SqliteProxyConnection':
             import deev.sqlite
-            return deev.sqlite.SqliteTableAdapter[entity_type](connect(connectionstring))  # type: ignore[valid-type]
+            return deev.sqlite.SqliteTableAdapter[entity_type](connection)  # type: ignore[valid-type]
         case _:
-            raise DbError(f'Unsupported database provider: {connectionstring.provider}')
+            raise DbError(f'Unsupported connection object: {connection}')
 
 
 def get_transaction_context(connectionstring: ConnectionString) -> DbTransactionContext:
