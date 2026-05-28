@@ -107,33 +107,37 @@ def undo_migrations(connectionstring: ConnectionString, migrations_path: Optiona
         raise ValueError('A value for `migrations_path` must be provided.')
 
 
-def get_table_adapter(entity_type: type, connection_or_connectionstring: DbContext | ConnectionString, *, table_name: Optional[str] = None) -> DbTableAdapter:
-    connection = connect(connection_or_connectionstring) if isinstance(connection_or_connectionstring, (ConnectionString, str)) else connection_or_connectionstring
-    match type(connection).__name__:
-        case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection':
+def get_table_adapter(entity_type: type, dbcontext_or_connectionstring: DbContext | ConnectionString, *, table_name: Optional[str] = None) -> DbTableAdapter:
+    dbcontext = connect(dbcontext_or_connectionstring) if isinstance(dbcontext_or_connectionstring, (ConnectionString, str)) else dbcontext_or_connectionstring
+    match type(dbcontext).__name__:
+        case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MysqlTransactionContext':
             import deev.mysql
-            return deev.mysql.MysqlTableAdapter[entity_type](connection, table_name=table_name)  # type: ignore[valid-type]
-        case 'SqliteProxyConnection':
+            return deev.mysql.MysqlTableAdapter[entity_type](dbcontext, table_name=table_name)  # type: ignore[valid-type]
+        case 'SqliteProxyConnection' | 'SqliteTransactionContext':
             import deev.sqlite
-            return deev.sqlite.SqliteTableAdapter[entity_type](connection, table_name=table_name)  # type: ignore[valid-type]
+            return deev.sqlite.SqliteTableAdapter[entity_type](dbcontext, table_name=table_name)  # type: ignore[valid-type]
         case _:
-            raise DbError(f'Unsupported object: {connection}')
+            raise DbError(f'Unsupported object: {dbcontext}')
 
 
-def get_transaction_context(connection_or_connectionstring: DbContext | ConnectionString) -> DbTransactionContext:
-    connection = connect(connection_or_connectionstring) if isinstance(connection_or_connectionstring, (ConnectionString, str)) else connection_or_connectionstring
-    match type(connection).__name__:
-        case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection':
+def begin_transaction(dbcontext_or_connectionstring: DbContext | ConnectionString) -> DbTransactionContext:
+    dbcontext = connect(dbcontext_or_connectionstring) if isinstance(dbcontext_or_connectionstring, (ConnectionString, str)) else dbcontext_or_connectionstring
+    match type(dbcontext).__name__:
+        case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MysqlTransactionContext':
             import deev.mysql
-            return deev.mysql.MysqlTransactionContext(connection)
-        case 'SqliteProxyConnection':
+            return deev.mysql.MysqlTransactionContext(dbcontext)
+        case 'SqliteProxyConnection' | 'SqliteTransactionContext':
             import deev.sqlite
-            return deev.sqlite.SqliteTransactionContext(connection)
+            return deev.sqlite.SqliteTransactionContext(dbcontext)
         case _:
-            raise DbError(f'Unsupported object: {connection}')
+            raise DbError(f'Unsupported object: {dbcontext}')
+
+
+get_transaction_context = begin_transaction  # NOTE: deprecated, will remove with v2 release
 
 
 __all__ = [
+    'begin_transaction',
     'connect',
     'create_database',
     'get_table_adapter',

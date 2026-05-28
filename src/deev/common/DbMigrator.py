@@ -48,7 +48,7 @@ class DbMigrator:
         return module
 
     def apply(self, migrations_path: Path | str, stop_at: Optional[str] = None) -> None:
-        from ..utils import create_database, get_transaction_context
+        from ..utils import begin_transaction, create_database
         create_database(self.__connectionstring)
         if isinstance(migrations_path, str):
             migrations_path = Path(migrations_path)
@@ -73,7 +73,7 @@ class DbMigrator:
                 migration_module = self.__load_migration(migration_filepath)
                 migration_func = getattr(migration_module, 'apply', None)
                 if migration_func is not None:
-                    with get_transaction_context(self.__connectionstring) as db_transaction:
+                    with begin_transaction(self.__connectionstring) as db_transaction:
                         migration_func(db_transaction)
                     migrations_table.create(_MigrationData(migration=migration_name))  # type: ignore[call-arg]
                     migrations_table.commit()
@@ -89,7 +89,7 @@ class DbMigrator:
         self.__logger.info(f'Migrations applied {applied_migration_count}, skipped {skipped_migration_count}, available {len(available_migrations)}.')
 
     def undo(self, migrations_path: Path | str, stop_at: Optional[str] = None) -> None:
-        from ..utils import create_database, get_transaction_context
+        from ..utils import begin_transaction, create_database
         create_database(self.__connectionstring)
         if isinstance(migrations_path, str):
             migrations_path = Path(migrations_path)
@@ -114,7 +114,7 @@ class DbMigrator:
                 migration_module = self.__load_migration(migration_filepath)
                 migration_func = getattr(migration_module, 'undo', None)
                 if migration_func is not None:
-                    with get_transaction_context(self.__connectionstring) as db_transaction:
+                    with begin_transaction(self.__connectionstring) as db_transaction:
                         migration_func(db_transaction)
                     migrations_table.delete(id=applied_migrations.get(migration_name, 0))
                     migrations_table.commit()
