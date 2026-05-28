@@ -108,8 +108,12 @@ class MysqlTableAdapter(Generic[TEntity]):
                 f'`{k}` {self.__sqltype_mapper.get_sqltype(k)}'
                 for k in self.__entity_spec.attrs.keys()
             ])
-            primary_key = ','.join(self.__entity_spec.primary_key)
-            sql = f'CREATE TABLE IF NOT EXISTS `{self.__entity_spec.table_name}` ({columns}, PRIMARY KEY ({primary_key}))'
+            primary_key = (
+                f", PRIMARY KEY ({','.join(self.__entity_spec.primary_key)})"
+                if len(self.__entity_spec.primary_key) > 0
+                else ''
+            )
+            sql = f'CREATE TABLE IF NOT EXISTS `{self.__entity_spec.table_name}` ({columns}{primary_key})'
         self.__execute(sql)
 
     def commit(self) -> None:
