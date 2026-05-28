@@ -270,7 +270,7 @@ class SqliteTableAdapter(Generic[TEntity]):
             table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
             if len(where) > 0:
                 cursor.execute(f'UPDATE [{table_name}] SET {update} WHERE {where}', parms + tuple(primary_key.values()))
-            cursor.execute(f'INSERT OR IGNORE INTO [{table_name}] ({cols}) VALUES ({values})', parms + tuple(primary_key.values()))
+            cursor.execute(f'INSERT OR IGNORE INTO [{table_name}] ({cols}) VALUES ({values})', tuple(entity_data.values()))
             return primary_key
 
     def query(
