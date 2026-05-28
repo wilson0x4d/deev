@@ -24,8 +24,11 @@ def connect(connectionstring: ConnectionString | str) -> DbConnection:
         case 'mysql.connector' | 'mysql':
             from deev.mysql.MysqlProxyConnection import MysqlProxyConnection
             import mysql.connector
+            parts = connectionstring.server.split(':')
+            host_name, port_number = (parts[0], int(parts[1])) if len(parts) == 2 else (parts[0], 3306)
             return MysqlProxyConnection(mysql.connector.connect(
-                host=connectionstring.server,
+                host=host_name,
+                port=port_number,
                 user=connectionstring.user,
                 password=connectionstring.password,
                 database=connectionstring.database,
@@ -57,10 +60,10 @@ def create_database(connectionstring: ConnectionString | str) -> None:
             # make sure the target database exists, or create it if it doesn't exit yet
             import mysql.connector
             parts = connectionstring.server.split(':')
-            hostName, portNumber = (parts[0], int(parts[1])) if len(parts) == 2 else (parts[0], 3306)
+            host_name, port_number = (parts[0], int(parts[1])) if len(parts) == 2 else (parts[0], 3306)
             connection = mysql.connector.connect(
-                host=hostName,
-                port=portNumber,
+                host=host_name,
+                port=port_number,
                 user=connectionstring.user,
                 password=connectionstring.password,
                 use_pure=True
