@@ -24,6 +24,8 @@ def connect(connectionstring: ConnectionString | str) -> DbConnection:
         case 'mysql.connector' | 'mysql':
             from deev.mysql.MysqlProxyConnection import MysqlProxyConnection
             import mysql.connector
+            if connectionstring.server is None:
+                raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
             parts = connectionstring.server.split(':')
             host_name, port_number = (parts[0], int(parts[1])) if len(parts) == 2 else (parts[0], 3306)
             return MysqlProxyConnection(mysql.connector.connect(
