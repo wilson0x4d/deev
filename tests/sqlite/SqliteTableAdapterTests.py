@@ -44,8 +44,7 @@ def basic_verification() -> None:
             #
             # ..create a table adapter _and_ create a backing table for `BasicEntity`
             #
-            adapter = SqliteTableAdapter[BasicEntity](connection)
-            adapter.create_table()
+            adapter = SqliteTableAdapter[BasicEntity](connection, create_table=True)
             #
             # ..create a BasicEntity instance in the database
             #

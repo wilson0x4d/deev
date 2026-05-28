@@ -42,8 +42,7 @@ def basic_verification() -> None:
             #
             # ..create a table adapter _and_ create a backing table for `BasicEntity`
             #
-            adapter = MysqlTableAdapter[BasicEntity](connection)
-            adapter.create_table()
+            adapter = MysqlTableAdapter[BasicEntity](connection, create_table=True)
             #
             # ..create a BasicEntity instance in the database
             #

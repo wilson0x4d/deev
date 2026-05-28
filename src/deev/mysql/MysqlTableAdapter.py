@@ -26,6 +26,7 @@ class MysqlTableAdapter(Generic[TEntity]):
 
     __column_names: str  # NOTE: just an optimization so we don't have to concat over and over
     __context: DbContext
+    __create_table: bool
     __cursor: DbCursor
     __entity_spec: EntitySpec
     __initialized: bool
@@ -37,20 +38,24 @@ class MysqlTableAdapter(Generic[TEntity]):
         self,
         context: DbContext,
         *,
+        create_table: Optional[bool] = False,
         table_name: Optional[str] = None
     ) -> None:
         self.__context = context if isinstance(context, (MysqlProxyConnection, MysqlTransactionContext)) else MysqlProxyConnection(context)  # type: ignore[arg-type]
+        self.__create_table = create_table is True
         self.__initialized = False
         self.__table_name = table_name
         self.__transaction_state = 0
 
-    def __init_entity_spec(self) -> None:
+    def __deferred_init(self) -> None:
         if not self.__initialized:
             entity_type = self.__get_typearg(self)
             self.__entity_spec = get_entity_spec(entity_type)
             self.__column_names = ', '.join([f'`{k}`' for k in self.__entity_spec.fields.keys()])
             self.__sqltype_mapper = MysqlTypeMapper(self.__entity_spec)
             self.__initialized = True
+            if self.__create_table is True:
+                self.create_table()
 
     @property
     def primary_key(self) -> tuple[str, ...]:
@@ -84,7 +89,7 @@ class MysqlTableAdapter(Generic[TEntity]):
 
     def create_table(self) -> None:
         """Utility method for creating the target table."""
-        self.__init_entity_spec()
+        self.__deferred_init()
         sql: str = ''
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         if len(self.__entity_spec.primary_key) == 1:
@@ -106,7 +111,6 @@ class MysqlTableAdapter(Generic[TEntity]):
             primary_key = ','.join(self.__entity_spec.primary_key)
             sql = f'CREATE TABLE IF NOT EXISTS `{self.__entity_spec.table_name}` ({columns}, PRIMARY KEY ({primary_key}))'
         self.__execute(sql)
-        self.commit()
 
     def commit(self) -> None:
         self.__context.commit()
@@ -120,7 +124,7 @@ class MysqlTableAdapter(Generic[TEntity]):
 
         :returns: the primary key of the created entity.
         """
-        self.__init_entity_spec()
+        self.__deferred_init()
 
         data = (
             splat(entity, to_sql=True)
@@ -160,7 +164,7 @@ class MysqlTableAdapter(Generic[TEntity]):
         """
         Reads a record from the specified table with the key represented by `kwargs`.
         """
-        self.__init_entity_spec()
+        self.__deferred_init()
         pk_values = {
             k: (v.hex if type(v) is UUID else v)
             for k, v in kwargs.items()
@@ -186,7 +190,7 @@ class MysqlTableAdapter(Generic[TEntity]):
             return None
 
     def update(self, entity: TEntity) -> None:
-        self.__init_entity_spec()
+        self.__deferred_init()
         entity_data = splat(entity, to_sql=True)
         primary_key = {
             k: (v.hex if type(v) is UUID else v)
@@ -206,7 +210,7 @@ class MysqlTableAdapter(Generic[TEntity]):
         cursor.execute(f'UPDATE `{table_name}` SET {_set} WHERE {where}', tuple(parms) + tuple(keys))
 
     def delete(self, **kwargs: Any) -> None:
-        self.__init_entity_spec()
+        self.__deferred_init()
         primary_key = {
             k: (v.hex if type(v) is UUID else v)
             for k, v in kwargs.items()
@@ -220,7 +224,7 @@ class MysqlTableAdapter(Generic[TEntity]):
         cursor.execute(sql, tuple(keys))
 
     def exists(self, **kwargs: Any) -> bool:
-        self.__init_entity_spec()
+        self.__deferred_init()
         primary_key = {
             k: (v.hex if type(v) is UUID else v)
             for k, v in kwargs.items()
@@ -234,7 +238,7 @@ class MysqlTableAdapter(Generic[TEntity]):
         return cursor.fetchone() is not None
 
     def upsert(self, entity: TEntity) -> dict[str, Any]:
-        self.__init_entity_spec()
+        self.__deferred_init()
         entity_data = splat(entity, to_sql=True)
         if self.__entity_spec.has_autoincrement and entity_data.get(self.__entity_spec.primary_key[0], None) is None:
             # no id provided and table is auto-increment, use INSERT syntax for new records
@@ -264,7 +268,7 @@ class MysqlTableAdapter(Generic[TEntity]):
         orderby: Optional[str] = None,
         limit: Optional[int] = None
     ) -> Generator[TEntity, None, None]:
-        self.__init_entity_spec()
+        self.__deferred_init()
         if params is not None:
             params = [
                 p.hex if type(p) is UUID else p

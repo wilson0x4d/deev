@@ -97,7 +97,11 @@ def apply_migrations(connectionstring: ConnectionString, migrations_path: Option
         raise ValueError('A value for `migrations_path` must be provided.')
 
 
-def undo_migrations(connectionstring: ConnectionString, migrations_path: Optional[Path | str], stop_at: Optional[str] = None) -> None:
+def undo_migrations(
+    connectionstring: ConnectionString,
+    migrations_path: Optional[Path | str],
+    stop_at: Optional[str] = None
+) -> None:
     if migrations_path is None and connectionstring.database is not None:
         migrations_path = os.path.join('.', 'migrations', connectionstring.database.lower())
     if migrations_path is not None:
@@ -107,21 +111,38 @@ def undo_migrations(connectionstring: ConnectionString, migrations_path: Optiona
         raise ValueError('A value for `migrations_path` must be provided.')
 
 
-def get_table_adapter(entity_type: type, dbcontext_or_connectionstring: DbContext | ConnectionString, *, table_name: Optional[str] = None) -> DbTableAdapter:
-    dbcontext = connect(dbcontext_or_connectionstring) if isinstance(dbcontext_or_connectionstring, (ConnectionString, str)) else dbcontext_or_connectionstring
+def create_table_adapter(
+    entity_type: type,
+    dbcontext_or_connectionstring: DbContext | ConnectionString,
+    *,
+    create_table: Optional[bool] = False,
+    table_name: Optional[str] = None
+) -> DbTableAdapter:
+    dbcontext = (
+        connect(dbcontext_or_connectionstring)
+        if isinstance(dbcontext_or_connectionstring, (ConnectionString, str))
+        else dbcontext_or_connectionstring
+    )
     match type(dbcontext).__name__:
         case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MysqlTransactionContext':
             import deev.mysql
-            return deev.mysql.MysqlTableAdapter[entity_type](dbcontext, table_name=table_name)  # type: ignore[valid-type]
+            return deev.mysql.MysqlTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table)  # type: ignore[valid-type]
         case 'SqliteProxyConnection' | 'SqliteTransactionContext':
             import deev.sqlite
-            return deev.sqlite.SqliteTableAdapter[entity_type](dbcontext, table_name=table_name)  # type: ignore[valid-type]
+            return deev.sqlite.SqliteTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table)  # type: ignore[valid-type]
         case _:
             raise DbError(f'Unsupported object: {dbcontext}')
 
 
+get_table_adapter = create_table_adapter  # NOTE: deprecated, will remove with v2 release
+
+
 def begin_transaction(dbcontext_or_connectionstring: DbContext | ConnectionString) -> DbTransactionContext:
-    dbcontext = connect(dbcontext_or_connectionstring) if isinstance(dbcontext_or_connectionstring, (ConnectionString, str)) else dbcontext_or_connectionstring
+    dbcontext = (
+        connect(dbcontext_or_connectionstring)
+        if isinstance(dbcontext_or_connectionstring, (ConnectionString, str))
+        else dbcontext_or_connectionstring
+    )
     match type(dbcontext).__name__:
         case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MysqlTransactionContext':
             import deev.mysql
@@ -140,6 +161,7 @@ __all__ = [
     'begin_transaction',
     'connect',
     'create_database',
+    'create_table_adapter',
     'get_table_adapter',
     'get_transaction_context',
     'apply_migrations',
