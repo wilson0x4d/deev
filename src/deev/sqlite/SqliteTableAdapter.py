@@ -98,7 +98,7 @@ class SqliteTableAdapter(Generic[TEntity]):
                 for k in self.__entity_spec.attrs.keys()
                 if k != primary_key
             ])
-            sql = f'CREATE TABLE IF NOT EXISTS {table_name} ({primary_key} {id_sqltype} PRIMARY KEY{" AUTOINCREMENT" if id_sqltype == "INTEGER" else ""}, {columns})'
+            sql = f'CREATE TABLE IF NOT EXISTS [{table_name}] ({primary_key} {id_sqltype} PRIMARY KEY{" AUTOINCREMENT" if id_sqltype == "INTEGER" else ""}, {columns})'
         else:
             # special handling of multi-column PK
             columns = ', '.join([
@@ -110,7 +110,7 @@ class SqliteTableAdapter(Generic[TEntity]):
                 if len(self.__entity_spec.primary_key) > 0
                 else ''
             )
-            sql = f'CREATE TABLE IF NOT EXISTS {table_name} ({columns}{primary_key})'
+            sql = f'CREATE TABLE IF NOT EXISTS [{table_name}] ({columns}{primary_key})'
         self.__execute(sql)
 
     def commit(self) -> None:
@@ -147,7 +147,7 @@ class SqliteTableAdapter(Generic[TEntity]):
         parms = ', '.join(['%?'] * len(data.keys()))
         cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
-        sql = f'INSERT INTO {table_name} ({column_names}) VALUES ({parms})'
+        sql = f'INSERT INTO [{table_name}] ({column_names}) VALUES ({parms})'
         params = tuple([
             p.hex if type(p) is UUID else p
             for p in data.values()])
@@ -170,11 +170,11 @@ class SqliteTableAdapter(Generic[TEntity]):
             for k, v in kwargs.items()
             if k in self.__entity_spec.primary_key
         }
-        where = ' AND '.join([f'{k} = %?' for k in pk_values.keys()])
+        where = ' AND '.join([f'[{k}] = %?' for k in pk_values.keys()])
         keys = pk_values.values()
         cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
-        sql = f'SELECT {self.__column_names} FROM {table_name} WHERE {where}'
+        sql = f'SELECT {self.__column_names} FROM [{table_name}] WHERE {where}'
         cursor.execute(sql, tuple(keys))
         data = cursor.fetchone()
         if data:
@@ -197,7 +197,7 @@ class SqliteTableAdapter(Generic[TEntity]):
             for k, v in entity_data.items()
             if k in self.__entity_spec.primary_key
         }
-        where = ' AND '.join([f'{k} = %?' for k in primary_key.keys()])
+        where = ' AND '.join([f'[{k}] = %?' for k in primary_key.keys()])
         keys = primary_key.values()
         _set = ', '.join([
             f'{key} = %?'
@@ -207,7 +207,7 @@ class SqliteTableAdapter(Generic[TEntity]):
         parms = [k for k, v in entity_data.items() if k not in self.__entity_spec.primary_key]
         cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
-        cursor.execute(f'UPDATE {table_name} SET {_set} WHERE {where}', tuple(parms) + tuple(keys))
+        cursor.execute(f'UPDATE [{table_name}] SET {_set} WHERE {where}', tuple(parms) + tuple(keys))
 
     def delete(self, **kwargs: Any) -> None:
         self.__deferred_init()
@@ -216,10 +216,10 @@ class SqliteTableAdapter(Generic[TEntity]):
             for k, v in kwargs.items()
             if k in self.__entity_spec.primary_key
         }
-        where = ' AND '.join([f'{k} = %?' for k in primary_key.keys()])
+        where = ' AND '.join([f'[{k}] = %?' for k in primary_key.keys()])
         keys = primary_key.values()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
-        sql = f'DELETE FROM {table_name} WHERE {where}'
+        sql = f'DELETE FROM [{table_name}] WHERE {where}'
         cursor = self.__context.cursor()
         cursor.execute(sql, tuple(keys))
 
@@ -230,11 +230,11 @@ class SqliteTableAdapter(Generic[TEntity]):
             for k, v in kwargs.items()
             if k in self.__entity_spec.primary_key
         }
-        where = ' AND '.join([f'{k} = %?' for k in primary_key.keys()])
+        where = ' AND '.join([f'[{k}] = %?' for k in primary_key.keys()])
         keys = primary_key.values()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         cursor = self.__context.cursor()
-        cursor.execute(f'SELECT 1 FROM {table_name} WHERE {where} LIMIT 1', tuple(keys))
+        cursor.execute(f'SELECT 1 FROM [{table_name}] WHERE {where} LIMIT 1', tuple(keys))
         return cursor.fetchone() is not None
 
     def upsert(self, entity: TEntity) -> dict[str, Any]:
@@ -250,20 +250,27 @@ class SqliteTableAdapter(Generic[TEntity]):
                 for k, v in entity_data.items()
                 if k in self.__entity_spec.primary_key
             }
-            cols = ', '.join([f'[{k}]' for k in entity_data.keys()])
-            update = ', '.join([f'[{k}]=%?' for k in entity_data.keys() if k not in primary_key.keys()])
+            cols = ', '.join([
+                f'[{k}]'
+                for k in entity_data.keys()
+            ])
+            update = ', '.join([
+                f'[{k}]=%?'
+                for k in entity_data.keys()
+                if k not in primary_key
+            ])
             parms = tuple([
                 v.hex if type(v) is UUID else v
                 for k, v in entity_data.items()
                 if k not in primary_key
             ])
-            where = ' AND '.join([f'{k} = %?' for k in primary_key.keys()])
+            where = ' AND '.join([f'[{k}] = %?' for k in primary_key.keys()])
             values = ', '.join(['%?'] * (len(parms) + len(primary_key)))
             cursor = self.__context.cursor()
             table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
             if len(where) > 0:
-                cursor.execute(f'UPDATE {table_name} SET {update} WHERE {where}', parms + tuple(primary_key.values()))
-            cursor.execute(f'INSERT OR IGNORE INTO {table_name} ({cols}) VALUES ({values})', parms + tuple(primary_key.values()))
+                cursor.execute(f'UPDATE [{table_name}] SET {update} WHERE {where}', parms + tuple(primary_key.values()))
+            cursor.execute(f'INSERT OR IGNORE INTO [{table_name}] ({cols}) VALUES ({values})', parms + tuple(primary_key.values()))
             return primary_key
 
     def query(
@@ -285,7 +292,7 @@ class SqliteTableAdapter(Generic[TEntity]):
         orderby = f' ORDER BY {orderby}' if orderby is not None and len(orderby) > 0 else ''
         limit_str = f' LIMIT {limit}' if limit is not None and limit > 0 else ''
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
-        sql = f'SELECT {self.__column_names} FROM {table_name}{where}{orderby}{limit_str}'
+        sql = f'SELECT {self.__column_names} FROM [{table_name}]{where}{orderby}{limit_str}'
         cursor = self.__context.cursor()
         if cursor.description is None:
             Exception('cursor missing required descriptor')

@@ -174,7 +174,7 @@ class MysqlTableAdapter(Generic[TEntity]):
             for k, v in kwargs.items()
             if k in self.__entity_spec.primary_key
         }
-        where = ' AND '.join([f'{k} = %?' for k in pk_values.keys()])
+        where = ' AND '.join([f'`{k}` = %?' for k in pk_values.keys()])
         keys = pk_values.values()
         cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
@@ -201,10 +201,10 @@ class MysqlTableAdapter(Generic[TEntity]):
             for k, v in entity_data.items()
             if k in self.__entity_spec.primary_key
         }
-        where = ' AND '.join([f'{k} = %?' for k in primary_key.keys()])
+        where = ' AND '.join([f'`{k}` = %?' for k in primary_key.keys()])
         keys = primary_key.values()
         _set = ', '.join([
-            f'{key} = %?'
+            f'`{key}` = %?'
             for key in entity_data.keys()
             if key not in self.__entity_spec.primary_key
         ])
@@ -220,7 +220,7 @@ class MysqlTableAdapter(Generic[TEntity]):
             for k, v in kwargs.items()
             if k in self.__entity_spec.primary_key
         }
-        where = ' AND '.join([f'{k} = %?' for k in primary_key.keys()])
+        where = ' AND '.join([f'`{k}` = %?' for k in primary_key.keys()])
         keys = primary_key.values()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'DELETE FROM `{table_name}` WHERE {where}'
@@ -234,7 +234,7 @@ class MysqlTableAdapter(Generic[TEntity]):
             for k, v in kwargs.items()
             if k in self.__entity_spec.primary_key
         }
-        where = ' AND '.join([f'{k} = %?' for k in primary_key.keys()])
+        where = ' AND '.join([f'`{k}` = %?' for k in primary_key.keys()])
         keys = primary_key.values()
         cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
@@ -254,10 +254,19 @@ class MysqlTableAdapter(Generic[TEntity]):
                 for k, v in entity_data.items()
                 if k in self.__entity_spec.primary_key
             }
-            cols = ', '.join([f'`{k}`' for k in entity_data.keys()])
-            update = ', '.join(
-                [f'`{k}`=V.`{k}`' for k in entity_data.keys() if k not in primary_key.keys()])
-            parms = [v.hex if type(v) is UUID else v for v in entity_data.values()]
+            cols = ', '.join([
+                f'`{k}`'
+                for k in entity_data.keys()
+            ])
+            update = ', '.join([
+                f'`{k}`=V.`{k}`'
+                for k in entity_data.keys()
+                if k not in primary_key
+            ])
+            parms = [
+                v.hex if type(v) is UUID else v
+                for k, v in entity_data.items()
+            ]
             values = ', '.join(['%?'] * len(parms))
             cursor = self.__context.cursor()
             table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
