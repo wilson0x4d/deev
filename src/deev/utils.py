@@ -7,6 +7,7 @@ from typing import Optional
 
 from .common.ConnectionString import ConnectionString
 from .common.DbConnection import DbConnection
+from .common.DbContext import DbContext
 from .common.DbError import DbError
 from .common.DbMigrator import DbMigrator
 from .common.DbTableAdapter import DbTableAdapter
@@ -101,7 +102,7 @@ def undo_migrations(connectionstring: ConnectionString, migrations_path: Optiona
         raise ValueError('A value for `migrations_path` must be provided.')
 
 
-def get_table_adapter(entity_type: type, connection_or_connectionstring: DbConnection | ConnectionString, *, table_name: Optional[str] = None) -> DbTableAdapter:
+def get_table_adapter(entity_type: type, connection_or_connectionstring: DbContext | ConnectionString, *, table_name: Optional[str] = None) -> DbTableAdapter:
     connection = connect(connection_or_connectionstring) if isinstance(connection_or_connectionstring, (ConnectionString, str)) else connection_or_connectionstring
     match type(connection).__name__:
         case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection':
@@ -114,7 +115,7 @@ def get_table_adapter(entity_type: type, connection_or_connectionstring: DbConne
             raise DbError(f'Unsupported object: {connection}')
 
 
-def get_transaction_context(connection_or_connectionstring: DbConnection | ConnectionString) -> DbTransactionContext:
+def get_transaction_context(connection_or_connectionstring: DbContext | ConnectionString) -> DbTransactionContext:
     connection = connect(connection_or_connectionstring) if isinstance(connection_or_connectionstring, (ConnectionString, str)) else connection_or_connectionstring
     match type(connection).__name__:
         case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection':
