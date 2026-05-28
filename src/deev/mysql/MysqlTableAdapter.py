@@ -113,7 +113,7 @@ class MysqlTableAdapter(Generic[TEntity]):
                 if len(self.__entity_spec.primary_key) > 0
                 else ''
             )
-            sql = f'CREATE TABLE IF NOT EXISTS `{self.__entity_spec.table_name}` ({columns}{primary_key})'
+            sql = f'CREATE TABLE IF NOT EXISTS `{table_name}` ({columns}{primary_key})'
         self.__execute(sql)
 
     def commit(self) -> None:
