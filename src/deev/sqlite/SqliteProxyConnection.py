@@ -37,7 +37,7 @@ class SqliteProxyConnection(DbConnection):
         self.__connection.close()
 
     def __enter__(self) -> Self:
-        return SqliteProxyConnection(self.__connection.__enter__())
+        return self
 
     def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> Literal[False]:
         return self.__connection.__exit__(exc_type, exc, tb)

@@ -38,7 +38,7 @@ class MysqlProxyConnection(DbConnection):
         self.__connection.close()
 
     def __enter__(self) -> Self:
-        return MysqlProxyConnection(self.__connection.__enter__())
+        return self
 
     def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> Literal[False]:
         self.__connection.__exit__(exc_type, exc, tb)  # type: ignore[arg-type]

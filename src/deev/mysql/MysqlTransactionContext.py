@@ -38,7 +38,8 @@ class MysqlTransactionContext(DbTransactionContext):
             pass
 
     def __enter__(self) -> Self:
-        return self.begin_transaction()
+        self.begin_transaction()
+        return self
 
     def __exit__(
         self,
