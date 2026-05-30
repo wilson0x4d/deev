@@ -19,7 +19,7 @@ class DbCursor(Protocol):
     """DB-API 2.0 Cursor proto."""
 
     @property
-    def description(self) -> Optional[Sequence[tuple[Any, ...]]]:
+    def description(self) -> Optional[Sequence[tuple[Any, Any, int, int, int, int, bool]]]:
         ...
 
     @property
@@ -45,16 +45,18 @@ class DbCursor(Protocol):
         ...
 
     @classmethod
-    def __subclasshook__(cls, subclass: type) -> bool | None:   # type: ignore[override]
-        # if db api providers can't be bothered to follow the
-        # spec anyone else can't be bothered to enforce it.
+    def __subclasshook__(cls, subclass: type) -> bool | None:  # type: ignore[override]
+        """
+        Return ``True`` if *subclass* implements all public attributes
+        and methods defined on the ``DbCursor`` protocol.
+        """
         required = {
             name
-            for name in dir(cls)
+            for name in dir(DbCursor)
             if not name.startswith('_')
         }
         for name in required:
-            if name not in subclass.__dict__:
+            if not hasattr(subclass, name):
                 return False  # pragma: no cover
         return True
 

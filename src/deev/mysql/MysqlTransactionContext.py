@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from types import TracebackType
-from typing import Any, Generator, Literal, Optional, cast
+from typing import Any, Generator, Literal, Optional, Self, cast
 from uuid import UUID, uuid4
 
 from ..common.DbConnection import DbConnection
@@ -37,7 +37,7 @@ class MysqlTransactionContext(DbTransactionContext):
         except Exception:
             pass
 
-    def __enter__(self) -> DbTransactionContext:
+    def __enter__(self) -> Self:
         return self.begin_transaction()
 
     def __exit__(

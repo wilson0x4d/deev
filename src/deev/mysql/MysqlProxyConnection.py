@@ -6,7 +6,7 @@ from __future__ import annotations
 from mysql.connector.abstracts import MySQLConnectionAbstract
 from mysql.connector.pooling import PooledMySQLConnection
 from types import TracebackType
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Self
 
 from ..common.DbConnection import DbConnection
 from ..common.DbCursor import DbCursor
@@ -37,7 +37,7 @@ class MysqlProxyConnection(DbConnection):
     def close(self) -> None:
         self.__connection.close()
 
-    def __enter__(self) -> DbConnection:
+    def __enter__(self) -> Self:
         return MysqlProxyConnection(self.__connection.__enter__())
 
     def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> Literal[False]:

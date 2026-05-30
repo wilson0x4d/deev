@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from types import TracebackType
-from typing import Any, Literal, Optional, Protocol, runtime_checkable
+from typing import Any, Literal, Optional, Protocol, Self, runtime_checkable
 
 from .DbCursor import DbCursor
 
@@ -25,23 +25,25 @@ class DbConnection(Protocol):
     def close(self) -> None:
         ...
 
-    def __enter__(self) -> DbConnection:
+    def __enter__(self) -> Self:
         ...
 
     def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> Literal[False]:
         ...
 
     @classmethod
-    def __subclasshook__(cls, subclass: type) -> bool | None:   # type: ignore[override]
-        # if db api providers can't be bothered to follow the
-        # spec anyone else can't be bothered to enforce it.
+    def __subclasshook__(cls, subclass: type) -> bool | None:  # type: ignore[override]
+        """
+        Return ``True`` if *subclass* implements all public attributes
+        and methods defined on the ``DbConnection`` protocol.
+        """
         required = {
             name
-            for name in dir(cls)
+            for name in dir(DbConnection)
             if not name.startswith('_')
         }
         for name in required:
-            if name not in subclass.__dict__:
+            if not hasattr(subclass, name):
                 return False  # pragma: no cover
         return True
 
