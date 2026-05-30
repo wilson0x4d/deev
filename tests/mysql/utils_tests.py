@@ -2,14 +2,10 @@
 # SPDX-License-Identifier: MIT
 
 import appsettings2
-from datetime import datetime, timedelta, timezone
-from deev import entity, field
 from deev.common import ConnectionString
 from deev.utils import connect, create_database
-from deev.mysql.MysqlTableAdapter import MysqlTableAdapter
-from uuid import UUID, uuid4
+from uuid import uuid4
 from punit import fact, trait
-from typing import Any
 
 
 @fact

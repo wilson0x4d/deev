@@ -11,6 +11,7 @@ from punit import fact, inlinedata, theory, trait
 from typing import Any, Callable, Mapping
 from uuid import UUID
 
+
 @entity
 class TypeMapperTestEntity:
     num_int: int

@@ -91,4 +91,3 @@ def empty_rollback_should_not_throw() -> None:
         with SqliteTransactionContext(connection) as transaction:
             transaction.execute_nonquery('SELECT 1')
             transaction.rollback()
-

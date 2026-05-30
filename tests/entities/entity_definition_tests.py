@@ -2,11 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 from __future__ import annotations
-from datetime import date, datetime, time, timedelta, timezone
-from decimal import Decimal
 from deev import DbError, entity, field
 from deev.entities import EntityFieldSpec, EntitySpec, define_entity_spec, get_entity_spec
-from deev.translation import splat, hydrate
 from deev.validation import ValidationError, validate
 from punit import fact
 from typing import Any, Optional
@@ -194,8 +191,7 @@ def when_invalid_union_then_raises() -> None:
         @entity
         class WithUnsupportedUnion:
             a: Optional[int | str]  # NOTE: cannot express multiple types
-    except DbError as dberr:
-        s = str(dberr)
+    except DbError:
         pass
     else:
         raise AssertionError('expected error for unsupported union')
@@ -226,13 +222,13 @@ def can_define_adhoc_entity() -> None:
     assert isinstance(adhoc_instance, AdhocEntityClass)
 
 
-
 @fact
 def entity_can_supply_init() -> None:
     @entity
     class EntityWithInit:
         foo: str
         bar: bool
+
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             self.bar = True
             assert kwargs.get('foo', None) == 'bar', 'kwargs not passed through.'

@@ -8,7 +8,6 @@ from punit import fact, inlinedata, theory
 from typing import Any, Optional
 
 
-
 @fact
 def validation_skips_unspecified_attrs() -> None:
     @entity
@@ -106,12 +105,14 @@ def explicit_nullable_does_not_raise_when_null() -> None:
 def validator_callback_bvt() -> None:
     def invalid_when_null(v: Any) -> ValidationError | None:
         if v is None:
-            return ValidationError('invalid_when_null','invalid_when_null')
+            return ValidationError('invalid_when_null', 'invalid_when_null')
         return None
+
     def invalid_when_non_null(v: Any) -> ValidationError | None:
         if v is not None:
-            return ValidationError('invalid_when_non_null','invalid_when_non_null')
+            return ValidationError('invalid_when_non_null', 'invalid_when_non_null')
         return None
+
     @entity
     class VCBVT:
         a: Optional[str] = field(default=None, nullable=True, validator=invalid_when_null)
@@ -126,12 +127,14 @@ def validator_callback_bvt() -> None:
 def validator_callback_can_raise() -> None:
     def invalid_when_null(v: Any) -> ValidationError | None:
         if v is None:
-            raise ValidationError('invalid_when_null','invalid_when_null')
+            raise ValidationError('invalid_when_null', 'invalid_when_null')
         return None
+
     def invalid_when_non_null(v: Any) -> ValidationError | None:
         if v is not None:
-            raise ValidationError('invalid_when_non_null','invalid_when_non_null')
+            raise ValidationError('invalid_when_non_null', 'invalid_when_non_null')
         return None
+
     @entity
     class VCBVT:
         a: Optional[str] = field(default=None, nullable=True, validator=invalid_when_null)
@@ -140,5 +143,3 @@ def validator_callback_can_raise() -> None:
     assert len(validate(VCBVT(a="123", b="bob"))) == 1  # type: ignore[arg-type]
     assert len(validate(VCBVT(a=None, b="bob"))) == 2  # type: ignore[arg-type]
     assert len(validate(VCBVT())) == 1  # type: ignore[arg-type]
-
-

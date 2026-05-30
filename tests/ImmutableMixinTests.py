@@ -18,7 +18,7 @@ def when_frozen_then_setattr_raises() -> None:
     except AttributeError:
         pass
     else:
-        raise AssertionError(f'should not be able to setattr a frozen object.')
+        raise AssertionError('should not be able to setattr a frozen object.')
 
 
 @fact
@@ -38,4 +38,4 @@ def when_frozen_then_delattr_raises() -> None:
     except AttributeError:
         pass
     else:
-        raise AssertionError(f'should not be able to delattr a frozen object.')
+        raise AssertionError('should not be able to delattr a frozen object.')

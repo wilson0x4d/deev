@@ -24,6 +24,7 @@ def constructs_deterministic_strings(
     connectionstring.provider = provider
     assert str(connectionstring) == expected, f'{connectionstring} != {expected}'
 
+
 @fact
 def supports_assignments() -> None:
     connectionstring = ConnectionString()
@@ -33,6 +34,7 @@ def supports_assignments() -> None:
     connectionstring.password = 'blah'
     connectionstring.provider = 'bleh'
     assert str(connectionstring) == 'Server=foo;Database=bar;UID=baz;PWD=blah;Provider=bleh'
+
 
 @theory
 @inlinedata('Server=127.0.0.1;Database=test;UID=test_usr;PWD=test_pwd;Provider=mysql.connector', '127.0.0.1', 'test', 'test_usr', 'test_pwd', 'mysql.connector')

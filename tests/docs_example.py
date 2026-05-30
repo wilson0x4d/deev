@@ -58,7 +58,7 @@ def docs_example_bvt() -> None:
         results = table.query(
             where='column1 = %?',
             orderby='column1 DESC',
-            limit=2,   
+            limit=2,
             params=(2,)
         )
         count = 0
