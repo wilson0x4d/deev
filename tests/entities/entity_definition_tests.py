@@ -275,3 +275,11 @@ def implied_nullable_with_default() -> None:
 def implied_nullable_with_non_nullable_spec() -> None:
     obj = MyEntity()  # type: ignore[call-arg]
     assert hasattr(obj, 'implied_nullable_with_non_nullable_spec') is False
+
+
+@fact
+def pluralization_bvt() -> None:
+    from deev.entities import pluralize
+    assert pluralize('Widgets') == 'Widgets', 'not respecting already plural.'
+    assert pluralize('Tree') == 'Trees', 'not applying default pluralization.'
+    assert pluralize('Anatoly') == 'Anatolies', 'not applying consonantal pluralization.'

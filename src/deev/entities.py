@@ -29,6 +29,23 @@ T = TypeVar('T')
 __NOTSET__ = object()
 
 
+def pluralize(name: str) -> str:
+    """
+    Derive an plural form of *name* using simple rules (English).
+
+    If the name already appears plural (ends with 's'), it is returned unchanged.
+    """
+    if not name:
+        return name
+    if name.endswith('s'):
+        return name
+    if name.endswith(('x', 'z', 'ch', 'sh')):
+        return name + 'es'
+    if name.endswith('y') and len(name) > 1 and name[-2].lower() not in 'aeiou':
+        return name[:-1] + 'ies'
+    return name + 's'
+
+
 @final
 class EntityFieldSpec(_ImmutableMixin):
     """Entity Field Specification"""
@@ -92,7 +109,7 @@ class EntitySpec(_ImmutableMixin):
         self.table_name = table_name
 
 
-def define_entity_spec(entity_type: type, table_name: Optional[str] = None) -> EntitySpec:
+def define_entity_spec(entity_type: type, *, table_name: Optional[str] = None, no_pluralization: bool = False) -> EntitySpec:
     entity_spec = getattr(entity_type, '__deev_entity__', None)
     if entity_spec is None:
         has_autoincrement = False
@@ -110,7 +127,7 @@ def define_entity_spec(entity_type: type, table_name: Optional[str] = None) -> E
             attr_value = getattr(entity_type, attr_name, __NOTSET__)
             field_spec: EntityFieldSpec
             if isinstance(attr_value, EntityFieldSpec):
-                field_spec = cast(EntityFieldSpec, attr_value)
+                field_spec = attr_value
                 if field_spec.nullable is None and is_nullable_implied:
                     field_spec.nullable = True
             else:
@@ -131,7 +148,15 @@ def define_entity_spec(entity_type: type, table_name: Optional[str] = None) -> E
             fields=MappingProxyType(fields),
             has_autoincrement=has_autoincrement,
             primary_key=tuple(primary_key),
-            table_name=table_name if table_name is not None else entity_type.__name__
+            table_name=(
+                table_name
+                if table_name is not None
+                else (
+                    pluralize(entity_type.__name__)
+                    if no_pluralization is False
+                    else entity_type.__name__
+                )
+            )
         )
         setattr(entity_type, '__deev_entity__', entity_spec.__freeze__())
     return entity_spec
@@ -141,7 +166,7 @@ def get_entity_spec(entity_type: type) -> EntitySpec:
     """Get the entity spec for *entity_type*."""
     entity_spec = getattr(entity_type, '__deev_entity__', None)
     if entity_spec is None:
-        return define_entity_spec(entity_type, entity_type.__name__)
+        return define_entity_spec(entity_type)
     else:
         return entity_spec
 
@@ -179,7 +204,7 @@ def field(
     return field_spec
 
 
-def __can_kwarg(func: Callable, kwargs: Mapping[str, Any]) -> bool:
+def __can_kwarg(func: Callable[..., Any], kwargs: Mapping[str, Any]) -> bool:
     try:
         sig = inspect.signature(func)
     except (TypeError, ValueError):  # pragma: no cover
@@ -188,7 +213,7 @@ def __can_kwarg(func: Callable, kwargs: Mapping[str, Any]) -> bool:
 
 
 @dataclass_transform(eq_default=False, order_default=False, field_specifiers=(field,))
-def entity(cls: Optional[Type[T]] = None, /, table_name: Optional[str] = None) -> Any:
+def entity(cls: Optional[Type[T]] = None, *, table_name: Optional[str] = None, no_pluralization: bool = False) -> Type[T]:
     """
     Transform a "simple" class definition into an "Entity" class.
 
@@ -230,13 +255,13 @@ def entity(cls: Optional[Type[T]] = None, /, table_name: Optional[str] = None) -
     if cls is None:
         # parameterized, so proxy through a lambda that will collect the class reference
         def __entity(_cls: Type[T]) -> Type[T]:
-            return entity(_cls, table_name)
-        return __entity
+            return entity(_cls, table_name=table_name, no_pluralization=no_pluralization)  # type: ignore[bad-return]
+        return __entity  # type: ignore[return-value]
     else:
-        L_init = None if not hasattr(cls, '__init__') else cast(Callable, cls.__init__)
-        entity_spec = define_entity_spec(cls, table_name)
+        L_init = None if not hasattr(cls, '__init__') else cast(Callable[..., Any], cls.__init__)
+        entity_spec = define_entity_spec(cls, table_name=table_name, no_pluralization=no_pluralization)
 
-        def hide_fieldspec(self, name) -> Any:
+        def hide_fieldspec(self: Any, name: str) -> Any:
             v = object.__getattribute__(self, name)
             if self is not None:
                 if isinstance(v, EntityFieldSpec):
@@ -271,7 +296,7 @@ def entity(cls: Optional[Type[T]] = None, /, table_name: Optional[str] = None) -
                     setattr(self, k, v)
 
         setattr(cls, '__init__', init)
-        return cast(Type[T], cls)
+        return cls
 
 
 __all__ = [
@@ -280,5 +305,6 @@ __all__ = [
     'define_entity_spec',
     'get_entity_spec',
     'entity',
-    'field'
+    'field',
+    'pluralize'
 ]
