@@ -15,6 +15,7 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "appsettings2 (>=2.0.1)",
     "hanaro (>=1.0.0)"
 ]
 

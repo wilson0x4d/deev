@@ -3,7 +3,7 @@
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from .common.ConnectionString import ConnectionString
 from .common.DbConnection import DbConnection
@@ -117,7 +117,7 @@ def create_table_adapter(
     *,
     create_table: Optional[bool] = False,
     table_name: Optional[str] = None
-) -> DbTableAdapter:
+) -> DbTableAdapter[Any]:
     dbcontext = (
         connect(dbcontext_or_connectionstring)
         if isinstance(dbcontext_or_connectionstring, (ConnectionString, str))

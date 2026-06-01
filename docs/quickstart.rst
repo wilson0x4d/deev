@@ -118,10 +118,10 @@ The ``db-migrate`` tool can be used to apply a migration script or undo a previo
       --verbose   Enable verbose logging.
 
     $ db-migrate apply -h
-    usage: db-migrate apply [-h] [--stop-at name] path connectionstring
+    usage: db-migrate apply [-h] connectionstring [path] [--stop-at name]
     positional arguments:
-      path              Directory containing migration scripts.
       connectionstring  Database connection string.
+      path              Directory containing migration scripts (optional). If omitted, a path is calculated from the connectionstring argument, ie. `./migrations/databnase_name/`.
     options:
       -h, --help        show this help message and exit
       --stop-at name    Stop processing at the named migration.

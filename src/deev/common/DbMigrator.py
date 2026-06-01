@@ -8,7 +8,7 @@ import logging
 import os
 from pathlib import Path
 from types import ModuleType
-from typing import Optional
+from typing import Any, Optional
 
 from .._MigrationData import _MigrationData
 from .ConnectionString import ConnectionString
@@ -18,7 +18,7 @@ from .DbTableAdapter import DbTableAdapter
 
 class DbMigrator:
     """
-    Performs database changes for a set of "migration scripts."
+    Performs database changes from a set of "migration scripts."
 
     Migration scripts are scanned from a filesystem directory.
     """
@@ -30,7 +30,7 @@ class DbMigrator:
         self.__logger = logging.getLogger(__name__)
         self.__connectionstring = connectionstring
 
-    def __get_or_create_migrations_table(self) -> DbTableAdapter:
+    def __get_or_create_migrations_table(self) -> DbTableAdapter[Any]:
         from ..utils import connect, create_table_adapter
         connection = connect(self.__connectionstring)
         table_adapter = create_table_adapter(_MigrationData, connection)
@@ -53,11 +53,11 @@ class DbMigrator:
         if isinstance(migrations_path, str):
             migrations_path = Path(migrations_path)
         if not os.path.exists(migrations_path):
-            self.__logger.warn(f'Migrations path does not exist: {migrations_path}')
+            self.__logger.warning(f'Migrations path does not exist: {migrations_path}')
             return
         available_migrations = sorted(glob.glob(os.path.join(migrations_path, '*.py')))
         if len(available_migrations) == 0:
-            self.__logger.warn(f'Migrations path does not contain migrations: {migrations_path}')
+            self.__logger.warning(f'Migrations path does not contain migrations: {migrations_path}')
             return
         migrations_table = self.__get_or_create_migrations_table()
         applied_migrations = dict[str, int]({
@@ -94,11 +94,11 @@ class DbMigrator:
         if isinstance(migrations_path, str):
             migrations_path = Path(migrations_path)
         if not os.path.exists(migrations_path):
-            self.__logger.warn(f'Migrations path does not exist: {migrations_path}')
+            self.__logger.warning(f'Migrations path does not exist: {migrations_path}')
             return
         available_migrations = sorted(glob.glob(os.path.join(migrations_path, '*.py')), reverse=True)
         if len(available_migrations) == 0:
-            self.__logger.warn(f'Migrations path does not contain migrations: {migrations_path}')
+            self.__logger.warning(f'Migrations path does not contain migrations: {migrations_path}')
             return
         migrations_table = self.__get_or_create_migrations_table()
         applied_migrations = dict[str, int]({

@@ -13,7 +13,4 @@ class DbError(Exception):
         super().__init__(reason)
 
     def __repr__(self) -> str:
-        return (f'{self.__class__.__name__}(reason={self.reason!r})')
-
-    def __str__(self) -> str:
-        return self.__repr__()
+        return (f'{self.__class__.__name__}(reason="{self.reason!r}")')

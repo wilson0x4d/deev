@@ -110,24 +110,22 @@ usage: db-migrate [-h] [--verbose] <COMMAND> ...
 Utility for applying, undoing, or generating migrations.
 
 positional arguments:
-  <COMMAND>   Action to perform.
+<COMMAND>   Action to perform.
     apply     Apply migrations.
     undo      Undo migrations.
 
 options:
-  -h, --help  show this help message and exit
-  --verbose   Enable verbose logging.
+-h, --help  show this help message and exit
+--verbose   Enable verbose logging.
 
 $ db-migrate apply -h
-usage: db-migrate apply [-h] [--stop-at name] path connectionstring
-
+usage: db-migrate apply [-h] connectionstring [path] [--stop-at name]
 positional arguments:
-  path              Directory containing migration scripts.
-  connectionstring  Database connection string.
-
+    connectionstring  Database connection string.
+    path              Directory containing migration scripts (optional). If omitted, a path is calculated from the connectionstring argument, ie. `./migrations/databnase_name/`.
 options:
-  -h, --help        show this help message and exit
-  --stop-at name    Stop processing at the named migration.
+    -h, --help        show this help message and exit
+    --stop-at name    Stop processing at the named migration.
 ```
 
 A migration script is a Python file which defines two functions `apply(...)` and `undo(...)`, each receiving a `DbTransactionContext` you can use to modify the database transactionally.  As an example let's assume we modified `SimpleEntity` with an additional attribute `column3` of type `datetime`:
