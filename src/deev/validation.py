@@ -15,8 +15,7 @@ class ValidationError(Exception):
         super().__init__(f'Validation error on {field_name}: {reason}')
 
     def __repr__(self) -> str:
-        return (f'{self.__class__.__name__}'
-                f'(field_name={self.field_name!r}, reason={self.reason!r})')
+        return (f'{self.__class__.__name__}(field_name={self.field_name!r}, reason={self.reason!r})')
 
     def __str__(self) -> str:
         return f'Validation error on {self.field_name}: {self.reason}'

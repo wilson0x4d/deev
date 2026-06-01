@@ -134,9 +134,6 @@ def create_table_adapter(
             raise DbError(f'Unsupported object: {dbcontext}')
 
 
-get_table_adapter = create_table_adapter  # NOTE: deprecated, will remove with v2 release
-
-
 def begin_transaction(dbcontext_or_connectionstring: DbContext | ConnectionString) -> DbTransactionContext:
     dbcontext = (
         connect(dbcontext_or_connectionstring)
@@ -154,16 +151,11 @@ def begin_transaction(dbcontext_or_connectionstring: DbContext | ConnectionStrin
             raise DbError(f'Unsupported object: {dbcontext}')
 
 
-get_transaction_context = begin_transaction  # NOTE: deprecated, will remove with v2 release
-
-
 __all__ = [
     'begin_transaction',
     'connect',
     'create_database',
     'create_table_adapter',
-    'get_table_adapter',
-    'get_transaction_context',
     'apply_migrations',
     'undo_migrations'
 ]
