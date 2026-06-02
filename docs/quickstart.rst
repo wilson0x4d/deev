@@ -21,6 +21,25 @@ Two popular use cases are shown: using Python objects for CRUD operations, and u
 Entity CRUD
 -----------
 
+First, let's define a "SimpleEntity" class we will use as a database entity:
+
+.. code-block:: python
+
+    from datetime import datetime, timezone
+    from deev import entity, field
+    from typing import Optional    
+
+    # ./SimpleEntity.py
+    @entity
+    class SimpleEntity:
+        column1: int
+        column2: Optional[list[str]] = field(default=None)
+        column3: Optional[datetime] = field(default=lambda: datetime.now(timezone.utc))
+        id: int = field(autoincrement=True, default=None, primary_key=True)
+
+
+Next, the CRUD-based code:
+
 .. code-block:: python
 
     # imports
@@ -108,50 +127,70 @@ The ``db-migrate`` tool can be used to apply a migration script or undo a previo
 
     $ db-migrate -h
     usage: db-migrate [-h] [--verbose] <COMMAND> ...
+
     Utility for applying, undoing, or generating migrations.
+
     positional arguments:
-      <COMMAND>   Action to perform.
+    <COMMAND>   Action to perform.
         apply     Apply migrations.
         undo      Undo migrations.
+
     options:
-      -h, --help  show this help message and exit
-      --verbose   Enable verbose logging.
+    -h, --help  show this help message and exit
+    --verbose   Enable verbose logging.
 
     $ db-migrate apply -h
-    usage: db-migrate apply [-h] connectionstring [path] [--stop-at name]
+    usage: db-migrate apply [-h] [--stop-at name] connectionstring [path]
+
     positional arguments:
-      connectionstring  Database connection string.
-      path              Directory containing migration scripts (optional). If omitted, a path is calculated from the connectionstring argument, ie. `./migrations/databnase_name/`.
+    connectionstring  Database connection string.
+    path              Directory containing migration scripts (optional). If omitted, a path is calculated from the connectionstring argument, ie.
+                        `./migrations/databnase_name/`.
+
     options:
-      -h, --help        show this help message and exit
-      --stop-at name    Stop processing at the named migration.
+    -h, --help        show this help message and exit
+    --stop-at name    Stop processing at the named migration.
 
 A migration script is a Python file which defines two functions ``apply(...)`` and ``undo(...)``, each receiving a ``DbTransactionContext`` you can use to modify the database transactionally.  As an example, let's assume we modified ``SimpleEntity`` with an additional attribute ``column3`` of type ``datetime``:
 
-.. code-block:: python
-
-    @entity
-    class SimpleEntity:
-        id: int = field(autoincrement=True, primary_key=True)
-        column1: int
-        column2: list[str]
-        column3: Optional[datetime] = field(nullable=True)
-
-Since we already have a table for this entity, we want to alter the schema to support the new attribute:
+For completeness, we show two scripts, one that handles initial schema creation, and another which seeds some data.
 
 .. code-block:: python
 
-    # 000_test01.py
+    # ./migrations/test_db/000_initial_schema.py
     from deev.common import DbTransactionContext
+    from deev.utils import create_table_adapter
+    from .SimpleEntity import SimpleEntity
 
     def apply(transaction: DbTransactionContext) -> None:
-        # alter the existing entity table
-        transaction.execute_nonquery('ALTER TABLE SimpleEntity ADD COLUMN column3 DATETIME')
+        table_adapter = create_table_adapter(SimpleEntity, transaction)
+        table_adapter.create_table()
         transaction.commit()
 
     def undo(transaction: DbTransactionContext) -> None:
-        # undo the alteration applied by ``apply(...)`` above
-        transaction.execute_nonquery('ALTER TABLE SimpleEntity DROP COLUMN column3')
+        transaction.execute_nonquery('DROP TABLE `SimpleEntities`;')
+        transaction.commit()
+
+
+.. code-block:: python
+
+    # ./migrations/test_db/001_initial_seed.py
+    from deev.common import DbTransactionContext
+    from deev.utils import create_table_adapter
+    from .SimpleEntity import SimpleEntity
+
+    def apply(transaction: DbTransactionContext) -> None:
+        table_adapter = create_table_adapter(SimpleEntity, transaction)
+        table_adapter.create(SimpleEntity(
+            column1 = 345
+        ))
+        table_adapter.create(SimpleEntity(
+            column1 = 456
+        ))
+        transaction.commit()
+
+    def undo(transaction: DbTransactionContext) -> None:
+        transaction.execute_nonquery('DELETE FROM `SimpleEntities` WHERE `column1` IN (345, 456)')
         transaction.commit()
 
 Apply the change to the existing database:
@@ -159,28 +198,28 @@ Apply the change to the existing database:
 .. code-block:: bash
 
     # apply schema change
-    db-migrate apply ./test_data/migrations \
-        'Server=./test_data/;Database=sqlite3/test.db;Provider=sqlite3'
+    db-migrate apply 'Server=./test_data/;Database=sqlite3/test.db;Provider=sqlite3' ./migrations/test_db/
 
 The tool reports:
 
 .. code-block:: text
 
-    ..apply migration "000_test01"
-    Migrations applied 1, skipped 0, available 1.
+    ..apply migration "000_initial_schema"
+    ..apply migration "001_initial_seed"
+    Migrations applied 2, skipped 0, available 2.
 
 Undo the change after it has been applied:
 
 .. code-block:: bash
 
     # undo schema change
-    db-migrate undo ./test_data/migrations \
-        'Server=./test_data/;Database=sqlite3/test.db;Provider=sqlite3'
+    db-migrate undo 'Server=./test_data/;Database=sqlite3/test.db;Provider=sqlite3' ./migration/test_db/
 
 The tool reports:
 
 .. code-block:: text
 
-    ..apply migration "000_test01"
-    Migrations undone 1, skipped 0, available 1.
+    ..undo migration "001_initial_seed"
+    ..undo migration "000_initial_schema"
+    Migrations undone 2, skipped 0, available 2.
 
