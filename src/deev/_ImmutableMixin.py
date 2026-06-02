@@ -11,7 +11,6 @@ class _ImmutableMixin:
     def __setattr__(self, name: str, value: Any) -> None:
         if getattr(self, '__frozen__', False):
             raise AttributeError(f'Cannot modify frozen instance: {name}')
-        # Call ``super()`` so the next class in the MRO (e.g. BaseModel) can run
         super().__setattr__(name, value)
 
     def __delattr__(self, name: str) -> None:

@@ -213,44 +213,9 @@ def __can_kwarg(func: Callable[..., Any], kwargs: Mapping[str, Any]) -> bool:
 
 
 @dataclass_transform(eq_default=False, order_default=False, field_specifiers=(field,))
-def entity(cls: Optional[Type[T]] = None, *, table_name: Optional[str] = None, no_pluralization: bool = False) -> Type[T]:
+def entity(cls: Optional[Type[T]] = None, *, table_name: Optional[str] = None, no_pluralization: bool = False) -> type:
     """
     Transform a "simple" class definition into an "Entity" class.
-
-    Entity classes..
-
-    - ..have initializers defined which allow instances to be initialized using initializer syntax.
-    - ..allow `field(...)` specifications such as default values and validators.
-
-
-    Example
-    -------
-
-    .. code :: python
-
-        @entity
-        class MyEntity:
-            id: UUID = field(
-                default=lambda: uuid4(),
-                primary_key=True
-            )
-            title: Optional[str] = field(
-                validator=lambda x: x is None or (len(x) > 0 and len(x) <= 30)
-            )
-            description: str = field(
-                unique=True,
-                sqltype='VARCHAR(20)',
-                nullable=False
-            )
-            sku: str = field(
-                default='12345',
-                index='ix_myentity_sku',
-                sqltype='CHAR(5)',
-                str_min=5,
-                str_max=5,
-            )
-
-
     """
     if cls is None:
         # parameterized, so proxy through a lambda that will collect the class reference
