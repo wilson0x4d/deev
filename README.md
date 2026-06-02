@@ -150,9 +150,9 @@ options:
 
 ```
 
-A migration script is a Python file which defines two functions `apply(...)` and `undo(...)`, each receiving a `DbTransactionContext` you can use to modify the database transactionally.  As an example let's assume we modified `SimpleEntity` with an additional attribute `column3` of type `datetime`:
+A migration script is a Python file which defines two functions `apply(...)` and `undo(...)`, each receiving a `DbTransactionContext` you can use to modify the database transactionally.
 
-Since we already have a table for this entity, we want to modify the schema to support the new attribute:
+As an example, we will create two migration scripts "000_initial_schema.py" and "001_initial_seed.py", we name them so their sort order ensures the schema script runs before the seed script. (A practice used on internal projects is to use a datecode, issue number, or similar linearly progressing value.)
 
 ```python
     # ./migrations/test_db/000_initial_schema.py

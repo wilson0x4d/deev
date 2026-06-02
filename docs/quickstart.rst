@@ -151,9 +151,9 @@ The ``db-migrate`` tool can be used to apply a migration script or undo a previo
     -h, --help        show this help message and exit
     --stop-at name    Stop processing at the named migration.
 
-A migration script is a Python file which defines two functions ``apply(...)`` and ``undo(...)``, each receiving a ``DbTransactionContext`` you can use to modify the database transactionally.  As an example, let's assume we modified ``SimpleEntity`` with an additional attribute ``column3`` of type ``datetime``:
+A migration script is a Python file which defines two functions ``apply(...)`` and ``undo(...)``, each receiving a ``DbTransactionContext`` you can use to modify the database transactionally.
 
-For completeness, we show two scripts, one that handles initial schema creation, and another which seeds some data.
+As an example, we will create two migration scripts "000_initial_schema.py" and "001_initial_seed.py", we name them so their sort order ensures the schema script runs before the seed script. (A practice used on internal projects is to use a datecode, issue number, or similar linearly progressing value.)
 
 .. code-block:: python
 
