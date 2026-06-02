@@ -124,11 +124,9 @@ def main() -> None:
     connectionstring: ConnectionString
     if '=' not in args.connectionstring:
         # load via appsettings2
-        configuration = appsettings2.get_configuration()
         candidate_config_keys = list[str]([
-            args.connectionstring,
-            f'connections__{args.connectionstring}',
-            f'connectionStrings__{args.connectionstring}'
+            f'connectionStrings__{args.connectionstring}',
+            f'connections__{args.connectionstring}'
         ])
         for candidate_config_key in candidate_config_keys:
             candidate_connection_str = configuration.get(candidate_config_key, None)
