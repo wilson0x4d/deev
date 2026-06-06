@@ -20,7 +20,7 @@ class MysqlProxyCursor(DbCursor):
     """
     Normalized cursor interface for MySQL Connector.
 
-    Ensures normalization features are preserved whenever a cursor is acquired within ``deev``.
+    Ensures features are preserved whenever a cursor is acquired via ``deev``.
     """
     __cursor: MySQLCursorAbstract
     __logger: logging.Logger

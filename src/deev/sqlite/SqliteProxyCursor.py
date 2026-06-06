@@ -20,7 +20,7 @@ class SqliteProxyCursor(DbCursor):
     """
     Normalized cursor interface for sqlite3.
 
-    Ensures normalization features are preserved whenever a cursor is acquired within ``deev``.
+    Ensures features are preserved whenever a cursor is acquired via ``deev``.
     """
     __cursor: Cursor
     __logger: logging.Logger

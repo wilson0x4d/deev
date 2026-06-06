@@ -17,7 +17,7 @@ class MysqlProxyConnection(DbConnection):
     """
     Normalized connection interface for MySQL Connector.
 
-    Ensures normalization features are preserved wherever a connection or cursor is acquired within ``deev``.
+    Ensures features are preserved wherever a connection or cursor is acquired via ``deev``.
     """
 
     __connection: MySQLConnectionAbstract | PooledMySQLConnection

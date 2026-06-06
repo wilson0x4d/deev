@@ -16,7 +16,7 @@ class SqliteProxyConnection(DbConnection):
     """
     Normalized connection interface for sqlite3.
 
-    Ensures normalization features are preserved wherever a connection or cursor is acquired within ``deev``.
+    Ensures features are preserved wherever a connection or cursor is acquired via ``deev``.
     """
 
     __connection: Connection
