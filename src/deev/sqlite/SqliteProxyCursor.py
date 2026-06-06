@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import hanaro
+import logging
 from sqlite3 import Cursor
 from typing import (
     Any,
@@ -21,11 +23,13 @@ class SqliteProxyCursor(DbCursor):
     Ensures normalization features are preserved whenever a cursor is acquired within ``deev``.
     """
     __cursor: Cursor
+    __logger: logging.Logger
     __sql_arg_expect: str
     __sql_arg_subst: str
 
     def __init__(self, provider_cursor: Cursor) -> None:
         self.__cursor = provider_cursor
+        self.__logger = hanaro.get_logger()
         self.__sql_arg_expect = '%?'
         self.__sql_arg_subst = '?'
 
@@ -44,6 +48,7 @@ class SqliteProxyCursor(DbCursor):
     def execute(self, operation: str, params: Optional[DbParams] = None) -> None:
         if params is not None:
             operation = operation.replace(self.__sql_arg_expect, self.__sql_arg_subst)
+        self.__logger.debug(f'execute({operation!r}, {params!r})')
         if params is None:
             self.__cursor.execute(operation)
         else:
@@ -51,6 +56,7 @@ class SqliteProxyCursor(DbCursor):
 
     def executemany(self, operation: str, seq_params: Sequence[DbParams]) -> None:
         operation = operation.replace(self.__sql_arg_expect, self.__sql_arg_subst)
+        self.__logger.debug(f'execute({operation!r}, {seq_params!r})')
         self.__cursor.executemany(operation, seq_params)
 
     def fetchone(self) -> tuple[Any, ...] | None:
