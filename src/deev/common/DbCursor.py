@@ -19,7 +19,7 @@ class DbCursor(Protocol):
     """DB-API 2.0 Cursor proto."""
 
     @property
-    def description(self) -> Optional[Sequence[tuple[Any, Any, int, int, int, int, bool]]]:
+    def description(self) -> Optional[Sequence[tuple[Any, Any, Optional[int], Optional[int], Optional[int], Optional[int], bool]]]:
         ...
 
     @property

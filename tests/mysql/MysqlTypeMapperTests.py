@@ -32,7 +32,7 @@ class TypeMapperTestEntity:
     min_max_str: str = field(min=5, max=5)
     min_str: str = field(min=5)
     max_str: str = field(max=50)
-    with_sqltype: int = field(sqltype='VARCHAR(42)')
+    with_dbtype: int = field(dbtype='VARCHAR(42)')
 
 
 @fact
@@ -41,7 +41,7 @@ def when_unmapped_then_raises() -> None:
     entity_spec = get_entity_spec(TypeMapperTestEntity)
     mapper = MysqlTypeMapper(entity_spec)
     try:
-        mapper.get_sqltype('unmappable')
+        mapper.get_provider_type('unmappable')
     except DbError:
         pass
     else:
@@ -54,7 +54,7 @@ def when_non_existent_then_raises() -> None:
     entity_spec = get_entity_spec(TypeMapperTestEntity)
     mapper = MysqlTypeMapper(entity_spec)
     try:
-        mapper.get_sqltype('non_existent')
+        mapper.get_provider_type('non_existent')
     except DbError:
         pass
     else:
@@ -79,10 +79,10 @@ def when_non_existent_then_raises() -> None:
 @inlinedata('complex_map', 'MEDIUMTEXT')
 @inlinedata('bit', 'BIT')
 @inlinedata('uid', 'CHAR(32)')
-@inlinedata('with_sqltype', 'VARCHAR(42)')
+@inlinedata('with_dbtype', 'VARCHAR(42)')
 @trait('mysql')
-def expected_mapping(field_name: str, sqltype: str) -> None:
+def expected_mapping(field_name: str, dbtype: str) -> None:
     entity_spec = get_entity_spec(TypeMapperTestEntity)
     mapper = MysqlTypeMapper(entity_spec)
-    actual = mapper.get_sqltype(field_name)
-    assert actual == sqltype, f'expected "{sqltype}" for "{field_name}", got "{actual}"'
+    actual = mapper.get_provider_type(field_name)
+    assert actual == dbtype, f'expected "{dbtype}" for "{field_name}", got "{actual}"'

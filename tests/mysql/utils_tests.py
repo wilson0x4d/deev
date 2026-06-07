@@ -12,7 +12,7 @@ from punit import fact, trait
 @trait('integration')
 def cannot_connect_when_nonexistent_database() -> None:
     appsettings = appsettings2.get_configuration()
-    cxnstring = ConnectionString(appsettings.connectionStrings.mysql_test)
+    cxnstring = ConnectionString(appsettings.connections.mysql_test)
     cxnstring.database = uuid4().hex
     try:
         with connect(cxnstring) as connection:
@@ -27,7 +27,7 @@ def cannot_connect_when_nonexistent_database() -> None:
 @trait('integration')
 def can_create_database() -> None:
     appsettings = appsettings2.get_configuration()
-    cxnstring = ConnectionString(appsettings.connectionStrings.mysql_test)
+    cxnstring = ConnectionString(appsettings.connections.mysql_test)
     cxnstring.database = uuid4().hex
     create_database(cxnstring)
     with connect(cxnstring) as connection:

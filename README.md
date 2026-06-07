@@ -15,6 +15,7 @@ This README is only a high-level introduction to **deev**. For more detailed doc
 * PEP 249 compatible abstractions; no need to refactor code just to switch DBMS.
 * Syntax normalization; parameterize SQL using `%?` instead of provider-specific syntaxes.
 * Raw SQL Access; execute raw SQL as-needed, including provider/DBMS-specific functions (primarily intended for advanced `db-migrate` cases.)
+* MongoDB support, with limited SQL translation support for PEP 249 interfaces.
 
 
 ## Installation

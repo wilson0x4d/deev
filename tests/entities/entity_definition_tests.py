@@ -17,7 +17,7 @@ class MyEntity:
     description: Optional[str] = field(
         default=None,
         unique=True,
-        sqltype='VARCHAR(20)',
+        dbtype='VARCHAR(20)',
         nullable=False
     )
     id: UUID = field(
@@ -33,7 +33,7 @@ class MyEntity:
     sku: str = field(
         default='12345',
         index='ix_myentity_sku',
-        sqltype='CHAR(5)',
+        dbtype='CHAR(5)',
         min=5,
         max=5,
     )

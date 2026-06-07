@@ -16,7 +16,7 @@ def basic_verification() -> None:
     guid = uuid4().hex
     val = uuid4().hex
     appsettings = appsettings2.get_configuration()
-    cxnstring = ConnectionString(appsettings.connectionStrings.mysql_test)
+    cxnstring = ConnectionString(appsettings.connections.mysql_test)
     cxnstring.database = f'deev_test_{uuid4().hex}'
     create_database(cxnstring)
     try:

@@ -27,9 +27,10 @@ class SqliteTableAdapter(Generic[TEntity]):
     __create_table: bool
     __cursor: DbCursor
     __initialized: bool
-    __sqltype_mapper: DbTypeMapper
+    __dbtype_mapper: DbTypeMapper
     __entity_spec: EntitySpec
     __transaction_state: int
+    __table_name: Optional[str]
 
     def __init__(
         self,
@@ -49,7 +50,7 @@ class SqliteTableAdapter(Generic[TEntity]):
             entity_type = self.__get_typearg(self)
             self.__entity_spec = get_entity_spec(entity_type)
             self.__column_names = ', '.join([f'[{k}]' for k in self.__entity_spec.fields.keys()])
-            self.__sqltype_mapper = SqliteTypeMapper(self.__entity_spec)
+            self.__dbtype_mapper = SqliteTypeMapper(self.__entity_spec)
             self.__initialized = True
             if self.__create_table is True:
                 self.create_table()
@@ -92,17 +93,17 @@ class SqliteTableAdapter(Generic[TEntity]):
         if len(self.__entity_spec.primary_key) == 1:
             # handling a single-column PK
             primary_key = self.__entity_spec.primary_key[0]
-            id_sqltype = self.__sqltype_mapper.get_sqltype(primary_key)
+            id_dbtype = self.__dbtype_mapper.get_provider_type(primary_key)
             columns = ', '.join([
-                f'[{k}] {self.__sqltype_mapper.get_sqltype(k)}'
+                f'[{k}] {self.__dbtype_mapper.get_provider_type(k)}'
                 for k in self.__entity_spec.attrs.keys()
                 if k != primary_key
             ])
-            sql = f'CREATE TABLE IF NOT EXISTS [{table_name}] ({primary_key} {id_sqltype} PRIMARY KEY{" AUTOINCREMENT" if id_sqltype == "INTEGER" else ""}, {columns})'
+            sql = f'CREATE TABLE IF NOT EXISTS [{table_name}] ({primary_key} {id_dbtype} PRIMARY KEY{" AUTOINCREMENT" if id_dbtype == "INTEGER" else ""}, {columns})'
         else:
             # special handling of multi-column PK
             columns = ', '.join([
-                f'[{k}] {self.__sqltype_mapper.get_sqltype(k)}'
+                f'[{k}] {self.__dbtype_mapper.get_provider_type(k)}'
                 for k in self.__entity_spec.attrs.keys()
             ])
             primary_key = (

@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+from deev.mongodb import MongoProxyCursor
 from contextvars import ContextVar
+import pymongo
 from types import TracebackType
 from typing import Any, Generator, Literal, Optional, Self, cast
 from uuid import UUID, uuid4
@@ -14,21 +16,20 @@ from ..common.DbCursor import DbCursor
 from ..common.DbError import DbError
 from ..common.DbParams import DbParams
 from ..common.DbTransactionContext import DbTransactionContext
-from .MysqlProxyConnection import MysqlProxyConnection
 
 
-class MysqlTransactionContext(DbTransactionContext):
-
-    __ambient_transaction_id: ContextVar = ContextVar('ambient_transacton_id', default=None)
-    __transaction_id: UUID
+class MongoTransactionContext(DbTransactionContext):
+    __ambient_transaction_id: ContextVar[Optional[UUID]] = ContextVar[Optional[UUID]]('ambient_transaction_id', default=None)
     __context: DbContext
     __cursor: DbCursor
+    __transaction_id: UUID
     __transaction_state: int
 
     def __init__(self, context: DbContext):
-        self.__context = context if isinstance(context, (MysqlProxyConnection, MysqlTransactionContext)) else MysqlProxyConnection(context)  # type: ignore[arg-type]
+        self.__context = context
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
+        self.__database_name = context.mongo_database_name  # type: ignore[missing-attribute, union-attr]
 
     def __del__(self):
         try:
@@ -47,42 +48,54 @@ class MysqlTransactionContext(DbTransactionContext):
         exc_value: Optional[BaseException] = None,
         traceback: Optional[TracebackType] = None
     ) -> Literal[False]:
-        if exc_type is not None and self.__transaction_state == 2:
+        if exc_type is not None:
             self.rollback()
-        elif self.__transaction_state == 2:
-            self.rollback()
+            return False
+        if self.__transaction_state == 3:
             raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
+        if self.__transaction_state <= 1:
+            self.commit()
         return False
 
     def __update_transaction_state(self, sql: str) -> None:
         sql = sql.lstrip().upper()
-        prefix = sql.strip()[:4]
-        if prefix in ['CREA', 'DELE', 'DROP', 'INSE', 'UPDA']:
+        if sql.startswith(('CREATE ', 'DELETE ', 'DROP ', 'INSERT ', 'UPDATE ')):
             self.__transaction_state = 2
-        elif prefix in ['COMM', 'ROLL']:
+        elif sql.startswith(('COMMIT', 'ROLLBACK', 'SAVEPOINT')):
             self.__transaction_state = 3
-            if MysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
-                MysqlTransactionContext.__ambient_transaction_id.set(None)
+            if MongoTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
+                MongoTransactionContext.__ambient_transaction_id.set(None)
         elif self.__transaction_state == 0:
             self.__transaction_state = 1
 
     @property
     def connection(self) -> DbConnection:
         if isinstance(self.__context, DbTransactionContext):
-            return cast(DbTransactionContext, self.__context).connection
+            return self.__context.connection
         else:
-            return cast(DbConnection, self.__context)
+            return self.__context
+
+    @property
+    def mongo_session(self) -> pymongo.client_session.ClientSession:
+        # NOTE: keep this as-is unless you see a problem, then we should discuss first.
+        return cast(MongoProxyCursor, self.__cursor).mongo_session  # type: ignore[attr-defined, valid-type]
+
+    @property
+    def mongo_database_name(self) -> str:
+        # NOTE: this is a non-conformant property that we require for internal functionality, and it must be retained.
+        return self.__database_name
 
     def begin_transaction(self) -> DbTransactionContext:
         if self.__transaction_state != 0:
             raise DbError(f'A transaction was already started in this context, cannot begin a new transaction. ({self.__transaction_state})')
         self.__transaction_state = 1
         self.__cursor = self.__context.cursor()
-        if MysqlTransactionContext.__ambient_transaction_id.get(None) is None:
-            MysqlTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
-            self.__cursor.execute('START TRANSACTION')
+        if MongoTransactionContext.__ambient_transaction_id.get(None) is None:
+            MongoTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
+            cast(MongoProxyCursor, self.__cursor).mongo_session.start_transaction()  # type: ignore[attr-defined, valid-type]
         else:
-            self.__cursor.execute(f'SAVEPOINT TID_{self.__transaction_id.hex}')
+            # NOTE: we NOP with the expectation that a parent scope will commit/rollback everything, making this a bookkeeping call
+            pass
         return self
 
     def close(self) -> None:
@@ -90,19 +103,19 @@ class MysqlTransactionContext(DbTransactionContext):
         pass
 
     def commit(self) -> None:
-        if MysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
-            self.__cursor.execute('COMMIT')
+        if MongoTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
+            self.mongo_session.commit_transaction()
         else:
-            self.__cursor.execute(f'RELEASE SAVEPOINT TID_{self.__transaction_id.hex}')
+            # NOTE: we NOP with the expectation that a parent scope will commit/rollback everything, making this a bookkeeping call
+            pass
         self.__update_transaction_state('COMMIT')
 
     def cursor(self) -> DbCursor:
-        return self.__context.cursor()
+        return self.__cursor
 
     def execute(self, sql: str, params: Optional[DbParams] = None) -> DbCursor:
         """
         An `execute` method that more closely conforms to PEP 249 (to facilitate drop-in use cases.)
-
         :param sql: A string containing the SQL statement to execute.
         :param params: A tuple containing the params to substitute into the SQL statement.
         :return: The cursor object the caller can use to retrieve results.
@@ -112,7 +125,7 @@ class MysqlTransactionContext(DbTransactionContext):
         self.__cursor.execute(
             sql,
             tuple(params) if params is not None else tuple())
-        return cast(DbCursor, self.__cursor)
+        return self.__cursor
 
     def execute_nonquery(self, sql: str, params: Optional[DbParams] = None) -> None:
         if self.__transaction_state == 3:
@@ -148,15 +161,21 @@ class MysqlTransactionContext(DbTransactionContext):
     def execute_script(self, sql: str) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        self.__update_transaction_state("INSERT")
-        self.__cursor.execute(sql)
+        self.__update_transaction_state("INSERT")  # NOTE: keep this line as-is, it will help us with bookkeeping transaction state later
+        # TODO: instead of mapping down to a SQL-compliant layer, treat `sql` as javascript to be executed in mongodb directly using self.mongo_session
+        self.mongo_session.database.command(sql)  # type: ignore[arg-type, attr-defined]
 
     def rollback(self) -> None:
-        if MysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
-            self.__cursor.execute('ROLLBACK')
+        self.__update_transaction_state('ROLLBACK')  # NOTE: keep this line as-is, it will help us with bookkeeping transaction state later
+        if MongoTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
+            try:
+                self.mongo_session.abort_transaction()
+            except Exception:
+                # abort may raise if no transaction is active; ignore to allow graceful cleanup
+                pass
         else:
-            self.__cursor.execute(f'ROLLBACK TO SAVEPOINT TID_{self.__transaction_id.hex}')
-        self.__update_transaction_state('ROLLBACK')
+            # NOTE: we NOP with the expectation that a parent scope will commit/rollback everything, making this a bookkeeping call
+            pass
 
 
-__all__ = ['MysqlTransactionContext']
+__all__ = ['MongoTransactionContext']

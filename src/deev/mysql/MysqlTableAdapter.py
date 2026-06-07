@@ -30,7 +30,7 @@ class MysqlTableAdapter(Generic[TEntity]):
     __cursor: DbCursor
     __entity_spec: EntitySpec
     __initialized: bool
-    __sqltype_mapper: DbTypeMapper
+    __dbtype_mapper: DbTypeMapper
     __table_name: Optional[str]
     __transaction_state: int
 
@@ -52,7 +52,7 @@ class MysqlTableAdapter(Generic[TEntity]):
             entity_type = self.__get_typearg(self)
             self.__entity_spec = get_entity_spec(entity_type)
             self.__column_names = ', '.join([f'`{k}`' for k in self.__entity_spec.fields.keys()])
-            self.__sqltype_mapper = MysqlTypeMapper(self.__entity_spec)
+            self.__dbtype_mapper = MysqlTypeMapper(self.__entity_spec)
             self.__initialized = True
             if self.__create_table is True:
                 self.create_table()
@@ -93,19 +93,19 @@ class MysqlTableAdapter(Generic[TEntity]):
         sql: str = ''
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         if len(self.__entity_spec.primary_key) == 1:
-            # handling a single-column PK, will apply an auto-increment if the SQLTYPE is BIGINT
+            # handling a single-column PK, will apply an auto-increment if the dbtype is BIGINT
             primary_key = self.__entity_spec.primary_key[0]
-            id_sqltype = self.__sqltype_mapper.get_sqltype(primary_key)
+            id_dbtype = self.__dbtype_mapper.get_provider_type(primary_key)
             columns = ', '.join([
-                f'`{k}` {self.__sqltype_mapper.get_sqltype(k)}'
+                f'`{k}` {self.__dbtype_mapper.get_provider_type(k)}'
                 for k in self.__entity_spec.attrs.keys()
                 if k != primary_key
             ])
-            sql = f'CREATE TABLE IF NOT EXISTS `{table_name}` ({primary_key} {id_sqltype}{" AUTO_INCREMENT" if id_sqltype == "BIGINT" else ""}, {columns}, PRIMARY KEY ({primary_key}))'
+            sql = f'CREATE TABLE IF NOT EXISTS `{table_name}` ({primary_key} {id_dbtype}{" AUTO_INCREMENT" if id_dbtype == "BIGINT" else ""}, {columns}, PRIMARY KEY ({primary_key}))'
         else:
             # special handling of multi-column PK
             columns = ', '.join([
-                f'`{k}` {self.__sqltype_mapper.get_sqltype(k)}'
+                f'`{k}` {self.__dbtype_mapper.get_provider_type(k)}'
                 for k in self.__entity_spec.attrs.keys()
             ])
             primary_key = (

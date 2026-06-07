@@ -15,7 +15,7 @@ from uuid import uuid4
 @trait('sqlite3')
 def cannot_connect_when_nonexistent_database() -> None:
     appsettings = appsettings2.get_configuration()
-    cxnstring = ConnectionString(appsettings.connectionStrings.sqlite_test)
+    cxnstring = ConnectionString(appsettings.connections.sqlite_test)
     cxnstring.database = f'deev_test_{uuid4().hex}.db'
     try:
         with connect(cxnstring) as connection:
@@ -31,7 +31,7 @@ def cannot_connect_when_nonexistent_database() -> None:
 @trait('sqlite3')
 def can_create_database() -> None:
     appsettings = appsettings2.get_configuration()
-    cxnstring = ConnectionString(appsettings.connectionStrings.sqlite_test)
+    cxnstring = ConnectionString(appsettings.connections.sqlite_test)
     cxnstring.database = f'deev_test_{uuid4().hex}.db'
     create_database(cxnstring)
     database_path = os.path.dirname(cxnstring.database if cxnstring.server is None else os.path.join(cxnstring.server, cxnstring.database))

@@ -7,7 +7,7 @@ from typing import Protocol, runtime_checkable
 @runtime_checkable
 class DbTypeMapper(Protocol):
 
-    def get_sqltype(self, field_name: str) -> str:
+    def get_provider_type(self, field_name: str) -> str:
         """
         Get the SQL type (string) needed to represent an entity field in the underlying table.
 

@@ -21,6 +21,16 @@ def connect(connectionstring: ConnectionString | str) -> DbConnection:
     if isinstance(connectionstring, str):
         connectionstring = ConnectionString(connectionstring)
     match connectionstring.provider:
+        case 'mongodb':
+            from deev.mongodb.MongoProxyConnection import MongoProxyConnection
+            import pymongo
+            if connectionstring.database is None:
+                raise DbError(f'ConnectionString is missing `database` component: {connectionstring}')
+            mongo_uri = f'mongodb://{connectionstring.user}:{connectionstring.password}@{connectionstring.server}'
+            return MongoProxyConnection(
+                pymongo.MongoClient(mongo_uri),
+                database_name=connectionstring.database
+            )
         case 'mysql.connector' | 'mysql':
             from deev.mysql.MysqlProxyConnection import MysqlProxyConnection
             import mysql.connector
@@ -56,6 +66,19 @@ def create_database(connectionstring: ConnectionString | str) -> None:
     if connectionstring.database is None:
         raise DbError(f'ConnectionString is missing `database` component: {connectionstring}')
     match connectionstring.provider:
+        case 'mongodb':
+            import pymongo
+            mongo_uri = f'mongodb://{connectionstring.user}:{connectionstring.password}@{connectionstring.server}/'
+            mongo_client = pymongo.MongoClient(mongo_uri)  # type: ignore[var-annotated]
+            try:
+                mongo_db = mongo_client[connectionstring.database]
+                mongo_col_names = mongo_db.list_collection_names()
+                if '_migrationdata' not in mongo_col_names:
+                    mongo_col = mongo_db['_migrationdata']
+                    mongo_col.insert_one({'id': 0, 'migration': '0'})
+                    mongo_col.delete_one({'id': 0, 'migration': '0'})
+            finally:
+                mongo_client.close()
         case 'mysql.connector' | 'mysql':
             if connectionstring.server is None:
                 raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
@@ -70,11 +93,13 @@ def create_database(connectionstring: ConnectionString | str) -> None:
                 password=connectionstring.password,
                 use_pure=True
             )
-            cursor = connection.cursor()
-            cursor.execute(f'CREATE DATABASE IF NOT EXISTS {connectionstring.database};')
-            cursor.close()
-            connection.commit()
-            connection.close()
+            try:
+                cursor = connection.cursor()
+                cursor.execute(f'CREATE DATABASE IF NOT EXISTS `{connectionstring.database}`;')
+                cursor.close()
+                connection.commit()
+            finally:
+                connection.close()
         case 'sqlite3' | 'sqlite':
             # the only thing we do is ensure the target directory exists and make a connection attempt to validate
             if connectionstring.database is None:
@@ -130,6 +155,9 @@ def create_table_adapter(
         case 'SqliteProxyConnection' | 'SqliteTransactionContext':
             import deev.sqlite
             return deev.sqlite.SqliteTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table)  # type: ignore[valid-type]
+        case 'MongoProxyConnection' | 'MongoTransactionContext':
+            import deev.mongodb
+            return deev.mongodb.MongoTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table)  # type: ignore[valid-type]
         case _:
             raise DbError(f'Unsupported object: {dbcontext}')
 
@@ -141,6 +169,9 @@ def begin_transaction(dbcontext_or_connectionstring: DbContext | ConnectionStrin
         else dbcontext_or_connectionstring
     )
     match type(dbcontext).__name__:
+        case 'MongoProxyConnection' | 'MongoTransactionContext':
+            import deev.mongodb
+            return deev.mongodb.MongoTransactionContext(dbcontext)
         case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MysqlTransactionContext':
             import deev.mysql
             return deev.mysql.MysqlTransactionContext(dbcontext)

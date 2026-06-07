@@ -37,7 +37,7 @@ class SqliteTypeMapper(DbTypeMapper):
             timedelta: 'INTEGER'
         }
 
-    def get_sqltype(self, field_name: str) -> str:
+    def get_provider_type(self, field_name: str) -> str:
         """
         Get the SQL type (string) needed to represent an entity field in the underlying table.
 
@@ -47,20 +47,20 @@ class SqliteTypeMapper(DbTypeMapper):
         # check field spec for an override
         field_spec = self.__entity_spec.fields.get(field_name, None)
         if field_spec is not None:
-            if field_spec.sqltype is not None:
-                return field_spec.sqltype
+            if field_spec.dbtype is not None:
+                return field_spec.dbtype
             # resolve from type hint
             field_type = self.__entity_spec.attrs.get(field_name, None)
             if field_type is not None:
                 field_type = deunionize(field_type)
-                mapped_sqltype = self.__pytype_map.get(field_type, None)
-                if mapped_sqltype is not None:
-                    return mapped_sqltype
+                mapped_dbtype = self.__pytype_map.get(field_type, None)
+                if mapped_dbtype is not None:
+                    return mapped_dbtype
                 org = get_origin(field_type)
                 if org is not None and org in (dict, Mapping, list, tuple, set):
-                    mapped_sqltype = self.__pytype_map.get(org, None)
-                    if mapped_sqltype is not None:
-                        return mapped_sqltype
+                    mapped_dbtype = self.__pytype_map.get(org, None)
+                    if mapped_dbtype is not None:
+                        return mapped_dbtype
         else:
             raise DbError(f'Non-existent field "{field_name}" for "{self.__entity_spec.table_name}".')
         raise DbError(f'Unsupported field "{field_name}" having type "{field_type}".')

@@ -58,7 +58,7 @@ class EntityFieldSpec(_ImmutableMixin):
     min: Optional[int | float | Decimal]  # minimum length >= value (validation)
     nullable: Optional[bool]  # the db should support NULL values for this field
     primary_key: Optional[bool]  # the field is part of a primary key definition
-    sqltype: Optional[str]  # sqltype override
+    dbtype: Optional[str]  # dbtype override
     unique: Optional[bool]  # the field should be unique in the table
     validator: Optional[Callable[[Any], ValidationError | None]]  # a custom validator function
 
@@ -74,11 +74,16 @@ class EntityFieldSpec(_ImmutableMixin):
         self.min = None
         self.nullable = None
         self.primary_key = None
-        self.sqltype = None
+        self.dbtype = None
         self.unique = None
         self.validator = None
         for k, v in kwargs.items():
             setattr(self, k, v)
+
+    @property
+    def sqltype(self) -> Optional[str]:  # pragma: nocover
+        # DEPRECATED: compatibility stub, remove in next major release
+        return self.dbtype
 
 
 @final
@@ -181,7 +186,7 @@ def field(
     min: Optional[int | float | Decimal] = None,  # string minimum length >= value (validation)
     nullable: Optional[bool] = None,  # the db should support NULL values for this field, default is NOT NULLABLE unless field hint is `Optional[...]` or `Union[...,None]`, etc.
     primary_key: Optional[bool] = None,  # the field is part of a primary key definition
-    sqltype: Optional[str] = None,  # sqltype override
+    dbtype: Optional[str] = None,  # dbtype override
     unique: Optional[bool] = None,  # the field should be unique in the table
     validator: Optional[Callable[[Any], ValidationError | None]] = None,  # a custom validator function
     init: bool = True
@@ -195,7 +200,7 @@ def field(
         min=min,
         nullable=nullable,
         primary_key=primary_key,
-        sqltype=sqltype,
+        dbtype=dbtype,
         unique=unique,
         validator=validator
     )

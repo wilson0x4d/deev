@@ -8,7 +8,7 @@ from .entities import (
     field
 )
 from .utils import connect
-from . import common, entities, mysql, translation, utils, validation
+from . import common, entities, mongodb, mysql, translation, utils, validation
 
 
 __version__ = '0.0.0'
@@ -23,6 +23,7 @@ __all__ = [
     'entities',
     'entity',
     'field',
+    'mongodb',
     'mysql',
     'translation',
     'utils',

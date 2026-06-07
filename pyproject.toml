@@ -27,6 +27,9 @@ dev = [
     "py-conventional-semver (>=1.0.5)",
     "twine"
 ]
+mongodb = [
+    "pymongo"
+]
 mysql = [
     "mysql-connector-python"
 ]

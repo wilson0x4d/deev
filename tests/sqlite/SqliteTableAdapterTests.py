@@ -22,7 +22,7 @@ def basic_verification() -> None:
     # mutate configuration to generate a unique database
     #
     appsettings = appsettings2.get_configuration()
-    cxnstring = ConnectionString(appsettings.connectionStrings.sqlite_test)
+    cxnstring = ConnectionString(appsettings.connections.sqlite_test)
     cxnstring.database = f'deev_test_{uuid4().hex}.db'
     create_database(cxnstring)
     try:
