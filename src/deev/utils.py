@@ -26,7 +26,7 @@ def connect(connectionstring: ConnectionString | str) -> DbConnection:
             import pymongo
             if connectionstring.database is None:
                 raise DbError(f'ConnectionString is missing `database` component: {connectionstring}')
-            mongo_uri = f'mongodb://{connectionstring.user}:{connectionstring.password}@{connectionstring.server}'
+            mongo_uri = f'mongodb://{connectionstring.user}:{connectionstring.password}@{connectionstring.server}/{connectionstring.database}'
             return MongoProxyConnection(
                 pymongo.MongoClient(mongo_uri),
                 database_name=connectionstring.database
