@@ -87,14 +87,14 @@ class MongoTableAdapter(Generic[TEntity]):
         """Return the table/collection name (from explicit override or entity spec)."""
         return self.__table_name if self.__table_name is not None else self.__entity_spec.table_name
 
-    def __get_database(self):
+    def __get_database(self) -> pymongo.database.Database[Any]:
         """Return the pymongo database from the cursor's session."""
         mongo_session = getattr(self.__context.cursor(), 'mongo_session', None)  # type: ignore[union-attr]
         if mongo_session is None:
             raise DbError('Cursor does not have a mongo_session attribute.')
         return mongo_session._client[self.__database_name]  # type: ignore[attr-defined]
 
-    def _get_collection(self) -> pymongo.collection.Collection:
+    def _get_collection(self) -> pymongo.collection.Collection[Any]:
         """Get the MongoDB collection for this adapter."""
         db = self.__get_database()
         return db[self.__get_collection_name()]
@@ -103,12 +103,31 @@ class MongoTableAdapter(Generic[TEntity]):
         """Utility method for creating the target table."""
         self.__deferred_init()
         collection_name = self.__get_collection_name()
-        session_cursor = getattr(self.__context.cursor(), 'mongo_session', None)  # type: ignore[union-attr]
-        if session_cursor is None:
-            raise DbError('Cursor does not have a mongo_session attribute.')
-        db = session_cursor.client[self.__database_name]
-        db[collection_name].insert_one({'_id': 'deev_initialised'})  # type: ignore[attr-defined]
-        db[collection_name].delete_one({'_id': 'deev_initialised'})
+        connection = cast(pymongo.MongoClient[Any], getattr(self.__context, 'mongo_connection', None))
+        db = connection.get_database(self.__database_name)
+        mongo_session = getattr(self.__context.cursor(), 'mongo_session', None)
+        if collection_name not in db.list_collection_names():
+            collection: pymongo.collection.Collection[Any]
+            if len(self.primary_key) > 0:
+                collection = db[collection_name]
+            else:
+                collection = db.create_collection(
+                    name=collection_name,
+                    session=mongo_session,
+                    check_exists=True
+                    # TODO: implement validation as much as is possible between entity spec and mongodb
+                    # validator=
+                    # validationLevel=
+                    # validationAction=
+                )
+            collection.create_index(
+                {
+                    k: 1
+                    for k in self.primary_key
+                },
+                session=mongo_session,
+                unique=True
+            )
 
     def commit(self) -> None:
         self.__context.commit()
