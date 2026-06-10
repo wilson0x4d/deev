@@ -14,12 +14,28 @@ from .common.DbTableAdapter import DbTableAdapter
 from .common.DbTransactionContext import DbTransactionContext
 
 
-def connect(connectionstring: ConnectionString | str) -> DbConnection:
+def connect(
+    connectionstring: ConnectionString | str,
+    *,
+    connect_timeout: int = 3,
+    command_timeout: int = 9,
+) -> DbConnection:
     """
     Create a PEP 249 Connection to a database, given *connectionstring*.
+
+    Args:
+        connectionstring: A DSN string or :class:`ConnectionString` object.
+        connect_timeout: Connection timeout in seconds (if the provider supports it).
+                            Only used when *connectionstring* does not specify
+                            ``Connection Timeout``.
+        command_timeout: Command/operation timeout in seconds (if the provider supports it).
+                         Only used when *connectionstring* does not specify
+                         ``Command Timeout``.
     """
     if isinstance(connectionstring, str):
         connectionstring = ConnectionString(connectionstring)
+    effective_connect_timeout = connectionstring.connect_timeout if connectionstring.connect_timeout is not None else connect_timeout
+    effective_command_timeout = connectionstring.command_timeout if connectionstring.command_timeout is not None else command_timeout
     match connectionstring.provider:
         case 'mongodb':
             from deev.mongodb.MongoProxyConnection import MongoProxyConnection
@@ -28,7 +44,11 @@ def connect(connectionstring: ConnectionString | str) -> DbConnection:
                 raise DbError(f'ConnectionString is missing `database` component: {connectionstring}')
             mongo_uri = f'mongodb://{connectionstring.user}:{connectionstring.password}@{connectionstring.server}/{connectionstring.database}'
             return MongoProxyConnection(
-                pymongo.MongoClient(mongo_uri),
+                pymongo.MongoClient(
+                    mongo_uri,
+                    serverSelectionTimeoutMS=effective_connect_timeout * 1000,
+                    socketTimeoutMS=effective_command_timeout * 1000,
+                ),
                 database_name=connectionstring.database
             )
         case 'mysql.connector' | 'mysql':
@@ -38,14 +58,23 @@ def connect(connectionstring: ConnectionString | str) -> DbConnection:
                 raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
             parts = connectionstring.server.split(':')
             host_name, port_number = (parts[0], int(parts[1])) if len(parts) == 2 else (parts[0], 3306)
-            return MysqlProxyConnection(mysql.connector.connect(
+            conn = mysql.connector.connect(
                 host=host_name,
                 port=port_number,
                 user=connectionstring.user,
                 password=connectionstring.password,
                 database=connectionstring.database,
-                use_pure=True
-            ))
+                use_pure=True,
+                connection_timeout=effective_connect_timeout,
+                read_timeout=effective_command_timeout,
+                write_timeout=effective_command_timeout
+            )
+            if effective_command_timeout is not None:
+                cur = conn.cursor()
+                cur.execute(f'SET SESSION wait_timeout={effective_command_timeout}')
+                cur.close()
+                conn.commit()
+            return MysqlProxyConnection(conn)
         case 'sqlite3' | 'sqlite':
             from deev.sqlite.SqliteProxyConnection import SqliteProxyConnection
             import sqlite3

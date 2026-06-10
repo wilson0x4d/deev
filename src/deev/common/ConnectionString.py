@@ -16,6 +16,8 @@ class ConnectionString:
     __user: Optional[str]
     __password: Optional[str]
     __provider: Optional[str]
+    __connect_timeout: Optional[int]
+    __command_timeout: Optional[int]
 
     def __init__(
         self,
@@ -26,6 +28,8 @@ class ConnectionString:
         self.__user = None
         self.__password = None
         self.__provider = None
+        self.__connect_timeout = None
+        self.__command_timeout = None
         if connection_str is not None:
             self.parse(connection_str)
 
@@ -41,6 +45,10 @@ class ConnectionString:
             parts.append(f'PWD={self.password}')
         if self.provider is not None:
             parts.append(f'Provider={self.provider}')
+        if self.connect_timeout is not None:
+            parts.append(f'Connection Timeout={self.connect_timeout}')
+        if self.command_timeout is not None:
+            parts.append(f'Command Timeout={self.command_timeout}')
         return ';'.join(parts)
 
     @property
@@ -83,6 +91,22 @@ class ConnectionString:
     def provider(self, value: Optional[str]):
         self.__provider = value
 
+    @property
+    def connect_timeout(self) -> Optional[int]:
+        return self.__connect_timeout
+
+    @connect_timeout.setter
+    def connect_timeout(self, value: Optional[int]):
+        self.__connect_timeout = value
+
+    @property
+    def command_timeout(self) -> Optional[int]:
+        return self.__command_timeout
+
+    @command_timeout.setter
+    def command_timeout(self, value: Optional[int]):
+        self.__command_timeout = value
+
     def parse(self, connectionstring: Optional[str]) -> ConnectionString:
         parts = (
             []
@@ -102,6 +126,10 @@ class ConnectionString:
                     self.password = value
                 case 'provider':
                     self.provider = value
+                case 'connection timeout':
+                    self.connect_timeout = int(value)
+                case 'command timeout':
+                    self.command_timeout = int(value)
         return self
 
 
