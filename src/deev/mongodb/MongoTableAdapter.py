@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: © 2023 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
+import bson
 import pymongo
 from typing import Any, Generator, Generic, Optional, TypeVar, cast, get_args, get_origin
 from uuid import UUID
@@ -17,6 +18,14 @@ from .MongoTypeMapper import MongoTypeMapper
 
 
 TEntity = TypeVar('TEntity')
+
+
+def _bson_safe(data: dict[str, Any]) -> dict[str, Any]:
+    """Convert UUID objects to hex strings for MongoDB BSON serialization."""
+    return {
+        k: (v.hex if type(v) is UUID else v)
+        for k, v in data.items()
+    }
 
 
 class MongoTableAdapter(Generic[TEntity]):
@@ -166,8 +175,7 @@ class MongoTableAdapter(Generic[TEntity]):
         result = collection.insert_one(data)
         if self.__entity_spec.has_autoincrement and self.__entity_spec.primary_key:
             pk_field = self.__entity_spec.primary_key[0]
-            inserted_id = result.inserted_id
-            primary_key[pk_field] = str(inserted_id)
+            collection.insert_one(_bson_safe(data))
         return primary_key
 
     def read(self, **kwargs: Any) -> TEntity | None:
