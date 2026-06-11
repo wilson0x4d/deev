@@ -1176,7 +1176,7 @@ def get_database_returns_session_client_database() -> None:
     # Use cursor._MongoProxyCursor__session (not the helper's 'session') to wire up
     mock_db = MagicMock()
     cursor._MongoProxyCursor__session._client = mock_db  # type: ignore[attr-defined]
-    db = cursor._MongoProxyCursor__get_database()  # type: ignore[valid-type]
+    db = getattr(cursor, '_MongoProxyCursor__get_database')()  # type: ignore[valid-type]
     # db is mock_db['test_db'] (not mock_db itself because __get_database does self._client[name])
     assert db is not None
 

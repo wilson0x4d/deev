@@ -14,7 +14,7 @@ if [ -z "$VIRTUAL_ENV" ]; then
 fi
 
 mypy src
-#MYPYPATH=src mypy --namespace-packages --explicit-package-bases tests
+MYPYPATH=src mypy --namespace-packages --explicit-package-bases tests
 PYTHONPATH=src coverage run -m punit --trait '!integration' --trait '!hardcoded' --trait '!longrunning' --trait '!manual' "$@"
 coverage report
 

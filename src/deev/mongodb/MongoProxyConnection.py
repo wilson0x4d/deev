@@ -31,15 +31,15 @@ class MongoProxyConnection(DbConnection):
     @property
     def mongo_database(self) -> pymongo.database.Database[Any]:
         # NOTE: this is a non-conformant property that we require for migration scripts (QOL), and must be retained.
-        return self.__connection[self.__database_name]
+        return self.__connection[self.mongo_database_name]
 
     @property
     def mongo_database_name(self) -> str:
         # NOTE: this is a non-conformant property that we require for internal functionality, and it must be retained.
-        return self.__database_name
+        return self.__database_name.split('?')[0]
 
     def cursor(self, *args: Any, **kwargs: Any) -> DbCursor:
-        return MongoProxyCursor(self.__connection.start_session(), self.__database_name)
+        return MongoProxyCursor(self.__connection.start_session(), self.mongo_database_name)
 
     def commit(self) -> None:
         # MongoDB transactions are session-based; for non-sessioned connections this is a no-op.

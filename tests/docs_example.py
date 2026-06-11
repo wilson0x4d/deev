@@ -4,7 +4,7 @@
 from datetime import datetime, timezone
 from deev import entity, field
 from punit import fact
-from typing import Optional
+from typing import Optional, cast
 
 
 @entity
@@ -41,31 +41,31 @@ def docs_example_bvt() -> None:
         table = SqliteTableAdapter[SimpleEntity](db)
         table.create_table()
         # CREATE
-        entity_key = table.create(SimpleEntity(
+        entity_key = table.create(SimpleEntity(  # type: ignore[call-arg]
             column1=1,
-            column2=[3, 2, 1]
+            column2=['3', '2', '1']
         ))
         # READ
-        entity = table.read(**entity_key)
-        assert entity.id is not None
-        assert entity.column1 == 1
-        assert entity.column2[0] == 3
-        assert entity.column2[1] == 2
-        assert entity.column2[2] == 1
+        e = table.read(**entity_key)
+        assert e is not None
+        assert e.id is not None
+        assert e.column1 == 1
+        assert e.column2[0] == '3'
+        assert e.column2[1] == '2'
+        assert e.column2[2] == '1'
         # UPDATE
-        entity.column2[1] = 4
-        table.update(entity)
+        e.column2[1] = '4'
+        table.update(e)
         # DELETE
         table.delete(**entity_key)
 
         # alternatives: upsert + query
-        entity_key = table.upsert(SimpleEntity(
+        entity_key = table.upsert(SimpleEntity(  # type: ignore[call-arg]
             column1=2,
-            column2=[5]
-        ))
-        entity_key = table.upsert(SimpleEntity(
+            column2=['5']))
+        entity_key = table.upsert(SimpleEntity(  # type: ignore[call-arg]
             column1=2,
-            column2=[6]
+            column2=['6']
         ))
         results = table.query(
             where='column1 = %?',
@@ -75,7 +75,7 @@ def docs_example_bvt() -> None:
         )
         count = 0
         for result in results:
-            assert result.column2[0] in (5, 6)
+            assert result.column2[0] in ('5', '6')
             count += 1
         assert count == 2
         # query kwargs are optional, for example this creates a generator for all table records:

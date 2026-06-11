@@ -28,6 +28,9 @@ class DbMigrator:
 
     def __init__(self, connectionstring: ConnectionString):
         self.__logger = logging.getLogger(__name__)
+        if connectionstring.provider in ('mongodb', 'pymongo'):
+            # NOTE: because mongodb can't authorize administrative commands from a database OTHER than `admin`
+            connectionstring.database = f'{connectionstring.database}?authSource=admin'
         self.__connectionstring = connectionstring
 
     def __get_or_create_migrations_table(self) -> DbTableAdapter[Any]:

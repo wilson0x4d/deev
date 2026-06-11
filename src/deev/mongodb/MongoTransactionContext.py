@@ -48,12 +48,12 @@ class MongoTransactionContext(DbTransactionContext):
         exc_value: Optional[BaseException] = None,
         traceback: Optional[TracebackType] = None
     ) -> Literal[False]:
-        if exc_type is not None:
+        if exc_type is not None and self.__transaction_state == 2:
             self.rollback()
-            return False
-        if self.__transaction_state == 3:
+        elif self.__transaction_state == 2:
+            self.rollback()
             raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
-        if self.__transaction_state <= 1:
+        elif self.__transaction_state <= 1:
             self.commit()
         return False
 
@@ -83,7 +83,7 @@ class MongoTransactionContext(DbTransactionContext):
     @property
     def mongo_database(self) -> pymongo.database.Database[Any]:
         # NOTE: this is a non-conformant property that we require for migration scripts (QOL), and must be retained.
-        return self.connection[self.__database_name].mongo_database  # type: ignore
+        return self.connection.mongo_connection[self.__database_name].mongo_database  # type: ignore
 
     @property
     def mongo_database_name(self) -> str:

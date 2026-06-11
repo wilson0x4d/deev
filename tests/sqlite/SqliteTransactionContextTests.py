@@ -44,7 +44,7 @@ def basic_verification() -> None:
             # confirm that we can update a record, rollback changes, and then read the original value back.
             with SqliteTransactionContext(connection) as transaction:
                 val3 = uuid4().hex
-                result = transaction.execute_nonquery('UPDATE test SET val = %? WHERE id = %?', (val3, guid))
+                transaction.execute_nonquery('UPDATE test SET val = %? WHERE id = %?', (val3, guid))
                 transaction.rollback()
             with SqliteTransactionContext(connection) as transaction:
                 result = transaction.execute_scalar('SELECT val FROM test WHERE id = %?', (guid,))

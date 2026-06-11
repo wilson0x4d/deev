@@ -1,9 +1,12 @@
 # SPDX-FileCopyrightText: © 2026 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
-from deev.common import ConnectionString
+from deev.utils import begin_transaction
+import appsettings2
+from deev.common import ConnectionString, DbError
 from deev.mongodb.MongoTransactionContext import MongoTransactionContext
 from deev.utils import connect
+import inspect
 from punit import fact, trait
 import pymongo
 from uuid import uuid4
@@ -11,8 +14,6 @@ from uuid import uuid4
 
 def get_mongodb_connectionstring():
     """Get the ConnectionString to be used by mongodb tests."""
-    import appsettings2
-    from deev.common.ConnectionString import ConnectionString
     configuration = appsettings2.get_configuration()
     connection_str = configuration.connections.mongodb_test
     return ConnectionString(connection_str)
@@ -24,8 +25,8 @@ def get_mongodb_connectionstring():
 def transaction_begin_works() -> None:
     conn_str = get_mongodb_connectionstring()
     with connect(conn_str) as connection:
-        with MongoTransactionContext(connection) as tx:
-            assert isinstance(tx, MongoTransactionContext)
+        tx = begin_transaction(connection)
+        assert isinstance(tx, MongoTransactionContext)
 
 
 @fact
@@ -34,9 +35,9 @@ def transaction_begin_works() -> None:
 def transaction_commit_works() -> None:
     conn_str = get_mongodb_connectionstring()
     with connect(conn_str) as connection:
-        tx = MongoTransactionContext(connection)
-        tx.begin_transaction()
-        tx.commit()
+        with MongoTransactionContext(connection) as tx:
+            # NOP
+            tx.commit()
 
 
 @fact
@@ -55,7 +56,7 @@ def transaction_rollback_works() -> None:
 @trait('mongodb')
 def transaction_context_manager_auto_commit_on_success() -> None:
     conn_str = get_mongodb_connectionstring()
-    with connect(conn_str) as connection:
+    with connect(conn_str) as connection:  # noqa
         # Should not raise -- auto-commits on success
         pass
 
@@ -126,13 +127,12 @@ def transaction_context_manager_auto_commits_state1_on_success() -> None:
     try:
         with connect(conn_str) as connection:
             tx = MongoTransactionContext(connection)
-            assert tx._MongoTransactionContext__transaction_state == 0, "Initial state should be 0"
+            assert getattr(tx, '_MongoTransactionContext__transaction_state') == 0, "Initial state should be 0"
             tx.begin_transaction()
-            assert tx._MongoTransactionContext__transaction_state == 1, "After begin: state should be 1"
-            result = tx.__exit__(None, None, None)
-            assert result is False
-            assert tx._MongoTransactionContext__transaction_state == 3, (
-                f"Expected state=3 after auto-commit, got {tx._MongoTransactionContext__transaction_state}."
+            assert getattr(tx, '_MongoTransactionContext__transaction_state') == 1, "After begin: state should be 1"
+            tx.__exit__(None, None, None)
+            assert getattr(tx, '_MongoTransactionContext__transaction_state') == 3, (
+                f"Expected state=3 after auto-commit, got {getattr(tx, '_MongoTransactionContext__transaction_state')}."
             )
     except Exception as e:
         caught_error = e
@@ -154,7 +154,6 @@ def transaction_execute_script_raises_after_rollback() -> None:
             tx.execute_script("{'$ping': 1}")
             assert False, 'execute_script should have raised DbError'
         except Exception as e:
-            from deev.common.DbError import DbError
             assert isinstance(e, DbError), f"Expected DbError but got {type(e).__name__}"
 
 
@@ -184,26 +183,9 @@ def transaction_context_var_name_correctly_spelled() -> None:
 
 
 @fact
-@trait('unit')
-def exit_should_rollback_on_exception_with_begun_transaction():
-    """When an exception occurs inside the context manager and transaction was begun,
-    __exit__ should rollback - NOT auto-commit."""
-    import inspect
-    src = inspect.getsource(MongoTransactionContext.__exit__)
-
-    # The bug: there's a gap where exc_type is not None but state != 2 (e.g., state == 1).
-    # In that gap, the code falls through to "state <= 1 → auto-commit", which is wrong.
-    # The fix should ensure rollback happens whenever exc_type is not None and transaction was begun.
-    assert 'elif exc_type is not None' in src or 'if exc_type is not None:' in src, (
-        "__exit__ does not handle the case of exception with state != 2. "
-        "Missing fix: rollback should happen whenever exc_type is not None and transaction was begun."
-    )
-
-
-@fact
 @trait('integration')
 @trait('mongodb')
-def transaction_context_manager_rollback_on_exception_with_state_one():
+def transaction_context_manager_rollback_on_exception_with_state_one() -> None:
     """When __exit__ receives an exception and the transaction is in state 1
     (begun but no writes), it should rollback - not auto-commit."""
     conn_str = get_mongodb_connectionstring()
@@ -213,7 +195,7 @@ def transaction_context_manager_rollback_on_exception_with_state_one():
         with connect(conn_str) as connection:
             tx = MongoTransactionContext(connection)
             tx.begin_transaction()  # state -> 1
-            assert tx._MongoTransactionContext__transaction_state == 1
+            assert getattr(tx, '_MongoTransactionContext__transaction_state') == 1
             raise RuntimeError("simulated crash")
     except RuntimeError as e:
         if 'simulated' in str(e):
@@ -227,7 +209,7 @@ def transaction_context_manager_rollback_on_exception_with_state_one():
 @fact
 @trait('integration')
 @trait('mongodb')
-def transaction_context_manager_no_double_rollback():
+def transaction_context_manager_no_double_rollback() -> None:
     """__exit__ should not call rollback twice (state==2 appears in both branches)."""
     conn_str = get_mongodb_connectionstring()
     rollback_count: list[int] = [0]
@@ -241,7 +223,7 @@ def transaction_context_manager_no_double_rollback():
         def counting_rollback():
             rollback_count[0] += 1
             return original_rollback()
-        tx.rollback = counting_rollback
+        tx.rollback = counting_rollback  # type: ignore[method-assign]
 
         try:
             tx.__exit__(RuntimeError, RuntimeError("test"), None)

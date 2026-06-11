@@ -233,7 +233,7 @@ def adapter_query_with_where_works() -> None:
         adapter.create(entity1)
         adapter.create(entity2)
 
-        results = list(adapter.query(where=f"value='unique-match-xyz'"))
+        results = list(adapter.query(where="value='unique-match-xyz'"))
         found_ids = {getattr(r, 'id', None) for r in results}
         assert match_id in found_ids
         assert no_match_id not in found_ids

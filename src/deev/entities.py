@@ -218,7 +218,7 @@ def __can_kwarg(func: Callable[..., Any], kwargs: Mapping[str, Any]) -> bool:
 
 
 @dataclass_transform(eq_default=False, order_default=False, field_specifiers=(field,))
-def entity(cls: Optional[Type[T]] = None, *, table_name: Optional[str] = None, no_pluralization: bool = False) -> type:
+def entity(cls: Optional[Type[T]] = None, *, table_name: Optional[str] = None, no_pluralization: bool = False) -> Any:
     """
     Transform a "simple" class definition into an "Entity" class.
     """

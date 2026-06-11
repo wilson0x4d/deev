@@ -70,21 +70,21 @@ Next, the CRUD-based code:
         entity_key = table.create(
             SimpleEntity(
                 column1=1,
-                column2=[3, 2, 1]
+                column2=['3', '2', '1']
             )
         )
 
         # READ
-        entity = table.read(**entity_key)
-        assert entity.id is not None
-        assert entity.column1 == 1
-        assert entity.column2[0] == 3
-        assert entity.column2[1] == 2
-        assert entity.column2[2] == 1
+        e = table.read(**entity_key)
+        assert e.id is not None
+        assert e.column1 == 1
+        assert e.column2[0] == '3'
+        assert e.column2[1] == '2'
+        assert e.column2[2] == '1'
 
         # UPDATE
-        entity.column2[1] = 4
-        table.update(entity)
+        e.column2[1] = 4
+        table.update(e)
 
         # DELETE
         table.delete(**entity_key)
@@ -93,13 +93,13 @@ Next, the CRUD-based code:
         entity_key = table.upsert(
             SimpleEntity(
                 column1=2,
-                column2=[5]
+                column2=['5']
             )
         )
         entity_key = table.upsert(
             SimpleEntity(
                 column1=2,
-                column2=[6]
+                column2=['6']
             )
         )
         results = table.query(
@@ -110,7 +110,7 @@ Next, the CRUD-based code:
         )
         count = 0
         for result in results:
-            assert result.column2[0] in (5, 6)
+            assert result.column2[0] in ('5', '6')
             count += 1
         assert count == 2
 
