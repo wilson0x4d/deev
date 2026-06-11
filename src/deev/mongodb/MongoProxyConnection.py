@@ -29,6 +29,11 @@ class MongoProxyConnection(DbConnection):
         return self.__connection
 
     @property
+    def mongo_database(self) -> pymongo.database.Database[Any]:
+        # NOTE: this is a non-conformant property that we require for migration scripts (QOL), and must be retained.
+        return self.__connection[self.__database_name]
+
+    @property
     def mongo_database_name(self) -> str:
         # NOTE: this is a non-conformant property that we require for internal functionality, and it must be retained.
         return self.__database_name

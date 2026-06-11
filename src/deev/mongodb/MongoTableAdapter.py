@@ -61,6 +61,15 @@ class MongoTableAdapter(Generic[TEntity]):
     def primary_key(self) -> tuple[str, ...]:
         return self.__entity_spec.primary_key
 
+    @property
+    def mongo_collection(self) -> pymongo.collection.Collection[Any]:
+        # NOTE: this is a non-conformant property that we require for migration scripts (QOL), and must be retained.
+        return self.__context.mongo_database[  # type: ignore
+            self.__table_name
+            if self.__table_name is not None
+            else self.__entity_spec.table_name
+        ]
+
     def __get_pyobject(self, key: str, value: Any) -> Any:
         return to_pyobject(
             value,

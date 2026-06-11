@@ -250,3 +250,14 @@ def transaction_context_manager_no_double_rollback():
 
     # After fix: state==2 + exc → one rollback (from line 58 only), never double
     assert rollback_count[0] <= 1, f"rollback called {rollback_count[0]} times - should be at most 1"
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def transaction_mongo_database_property_exists() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        tx = MongoTransactionContext(connection)
+        mongo_database = getattr(tx, 'mongo_database', None)
+        assert mongo_database is not None, 'mongo_database property should exist'
