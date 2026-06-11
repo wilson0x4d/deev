@@ -121,7 +121,7 @@ class MongoTableAdapter(Generic[TEntity]):
         """Utility method for creating the target table."""
         self.__deferred_init()
         collection_name = self.__get_collection_name()
-        connection = cast(pymongo.MongoClient[Any], getattr(self.__context, 'mongo_connection', None))
+        connection = cast(pymongo.MongoClient[Any], getattr(self.__context, 'mongo_client', None))
         db = connection.get_database(self.__database_name)
         mongo_session = getattr(self.__context.cursor(), 'mongo_session', None)
         if collection_name not in db.list_collection_names():
@@ -155,7 +155,7 @@ class MongoTableAdapter(Generic[TEntity]):
 
     def __get_autoincrement(self) -> int:
         return cast(dict[str, Any], (
-            cast(pymongo.MongoClient[Any], getattr(self.__context, 'mongo_connection', None))
+            cast(pymongo.MongoClient[Any], getattr(self.__context, 'mongo_client', None))
             .get_database(self.__database_name)["_deev"]  # type: ignore[missing-attribute]
             .find_one_and_update(
                 {'_id': self.__table_name if self.__table_name is not None else self.__entity_spec.table_name},

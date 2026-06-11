@@ -21,7 +21,7 @@ class MyEntity:
         nullable=False
     )
     id: UUID = field(
-        default=lambda: uuid4(),
+        default=uuid4,
         primary_key=True
     )
     title: Optional[str] = field(

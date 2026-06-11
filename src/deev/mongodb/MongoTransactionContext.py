@@ -77,19 +77,24 @@ class MongoTransactionContext(DbTransactionContext):
             return self.__context
 
     @property
-    def mongo_session(self) -> pymongo.client_session.ClientSession:
-        # NOTE: keep this as-is unless you see a problem, then we should discuss first.
-        return cast(MongoProxyCursor, self.__cursor).mongo_session  # type: ignore[attr-defined, valid-type]
+    def mongo_client(self) -> pymongo.MongoClient[Any]:
+        # NOTE: this is a non-conformant property that we require for internal functionality, and it must be retained.
+        return self.connection.mongo_client  # type: ignore
 
     @property
     def mongo_database(self) -> pymongo.database.Database[Any]:
         # NOTE: this is a non-conformant property that we require for migration scripts (QOL), and must be retained.
-        return self.connection.mongo_connection[self.__database_name].mongo_database  # type: ignore
+        return self.connection.mongo_client[self.__database_name].mongo_database  # type: ignore
 
     @property
     def mongo_database_name(self) -> str:
         # NOTE: this is a non-conformant property that we require for internal functionality, and it must be retained.
         return self.__database_name
+
+    @property
+    def mongo_session(self) -> pymongo.client_session.ClientSession:
+        # NOTE: keep this as-is unless you see a problem, then we should discuss first.
+        return cast(MongoProxyCursor, self.__cursor).mongo_session  # type: ignore[attr-defined, valid-type]
 
     def begin_transaction(self) -> DbTransactionContext:
         if self.__transaction_state != 0:

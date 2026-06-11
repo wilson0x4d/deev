@@ -47,11 +47,11 @@ def connection_context_manager_works() -> None:
 @fact
 @trait('integration')
 @trait('mongodb')
-def connection_mongo_connection_property_exists() -> None:
+def connection_mongo_client_property_exists() -> None:
     conn_str = get_mongodb_connectionstring()
     with connect(conn_str) as connection:
-        mongo_conn = getattr(connection, 'mongo_connection', None)
-        assert mongo_conn is not None, 'mongo_connection property should exist'
+        mongo_conn = getattr(connection, 'mongo_client', None)
+        assert mongo_conn is not None, 'mongo_client property should exist'
 
 
 @fact
@@ -61,4 +61,4 @@ def connection_mongo_database_property_exists() -> None:
     conn_str = get_mongodb_connectionstring()
     with connect(conn_str) as connection:
         mongo_database = getattr(connection, 'mongo_database', None)
-        assert mongo_database is not None, 'mongo_connection property should exist'
+        assert mongo_database is not None, 'mongo_client property should exist'
