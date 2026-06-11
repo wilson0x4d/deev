@@ -153,6 +153,18 @@ class MongoTableAdapter(Generic[TEntity]):
     def rollback(self) -> None:
         self.__context.rollback()
 
+    def __get_autoincrement(self) -> int:
+        return cast(dict[str, Any], (
+            cast(pymongo.MongoClient[Any], getattr(self.__context, 'mongo_connection', None))
+            .get_database(self.__database_name)["_deev"]  # type: ignore[missing-attribute]
+            .find_one_and_update(
+                {'_id': self.__table_name if self.__table_name is not None else self.__entity_spec.table_name},
+                {'$inc': {'autoincrement': 1}},
+                upsert=True,
+                return_document=pymongo.ReturnDocument.AFTER
+            )
+        ))['autoincrement']
+
     def create(self, entity: Optional[TEntity] = None, **kwargs: Any) -> dict[str, Any]:
         """
         Creates a new record in the specified table with the provided attributes/values.
@@ -172,9 +184,22 @@ class MongoTableAdapter(Generic[TEntity]):
             if k in self.__entity_spec.primary_key
         }
         collection = self._get_collection()
-        result = collection.insert_one(data)
-        if self.__entity_spec.has_autoincrement and self.__entity_spec.primary_key:
+        if self.__entity_spec.has_autoincrement:
+            # special handling for auto-increment columns
+            if self.__entity_spec.primary_key[0] in data.keys():
+                data.pop(self.__entity_spec.primary_key[0])
+            # also requires an expensive operation
             pk_field = self.__entity_spec.primary_key[0]
+            increment = self.__get_autoincrement()
+            collection.insert_one(
+                _bson_safe(data) | {
+                    pk_field: increment
+                }
+            )
+            primary_key = {
+                pk_field: increment
+            }
+        else:
             collection.insert_one(_bson_safe(data))
         return primary_key
 
@@ -207,7 +232,7 @@ class MongoTableAdapter(Generic[TEntity]):
         }
         collection = self._get_collection()
         update_fields = {k: v for k, v in entity_data.items() if k not in self.__entity_spec.primary_key}
-        collection.update_one(primary_key, {'$set': update_fields})  # type: ignore[union-attr]
+        collection.update_one(primary_key, {'$set': _bson_safe(update_fields)})  # type: ignore[union-attr]
 
     def delete(self, **kwargs: Any) -> None:
         self.__deferred_init()
@@ -230,14 +255,34 @@ class MongoTableAdapter(Generic[TEntity]):
 
     def upsert(self, entity: TEntity) -> dict[str, Any]:
         self.__deferred_init()
-        entity_data = splat(entity, to_sql=False)  # type: ignore[arg-type]
+        data = splat(entity, to_sql=False)  # type: ignore[arg-type]
         primary_key = {
             k: (v.hex if type(v) is UUID else v)
-            for k, v in entity_data.items()
+            for k, v in data.items()
             if k in self.__entity_spec.primary_key
         }
         collection = self._get_collection()
-        collection.replace_one(primary_key, entity_data, upsert=True)  # type: ignore[union-attr]
+        if self.__entity_spec.has_autoincrement:
+            # special handling for auto-increment columns (while implemented, you absolutely should not be using this)
+            if self.__entity_spec.primary_key[0] in data.keys():
+                data.pop(self.__entity_spec.primary_key[0])
+            # also requires an expensive operation
+            pk_field = self.__entity_spec.primary_key[0]
+            increment = self.__get_autoincrement()
+            collection.insert_one(
+                _bson_safe(data) | {
+                    pk_field: increment
+                }
+            )
+            primary_key = {
+                pk_field: increment
+            }
+        else:
+            doc_data = _bson_safe(data)
+            primary_key_set = {
+                k: v for k, v in data.items() if k in self.__entity_spec.primary_key
+            }
+            collection.replace_one(primary_key_set, doc_data, upsert=True)  # type: ignore[union-attr]
         return primary_key
 
     def query(

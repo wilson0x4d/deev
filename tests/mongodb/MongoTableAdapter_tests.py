@@ -4,9 +4,9 @@
 from deev.entities import entity, field
 from deev.mongodb.MongoTableAdapter import MongoTableAdapter
 from deev.utils import connect
-from punit import fact, trait
+from punit import fact, setup, teardown, trait
 from typing import Optional
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 
 def get_mongodb_connectionstring():
@@ -256,3 +256,128 @@ def transaction_mongo_database_property_exists() -> None:
 
         mongo_collection = getattr(adapter, 'mongo_collection', None)
         assert mongo_collection is not None, 'mongo_collection property should exist'
+
+
+@setup
+def _drop_autoinc_collection() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        db = getattr(connection, 'mongo_database', None)
+        if db is not None and 'AutoIncTestEntities' in db.list_collection_names():
+            db['AutoIncTestEntities'].drop()
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def adapter_create_with_autoincrement_returns_valid_id() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class AutoIncTestEntity:
+            oid: UUID
+            id: int = field(autoincrement=True, primary_key=True, default=0)
+
+        adapter = MongoTableAdapter[AutoIncTestEntity](connection, create_table=True)
+
+        pk1 = adapter.create(oid=uuid4())
+        assert pk1 is not None
+        assert isinstance(pk1.get('id'), int), 'autoincrement id should be an int'
+        first_id = pk1['id']
+        assert first_id >= 1, 'first autoincrement value should be >= 1'
+
+        # Verify a second create also gets a valid id (monotonicity checked separately)
+        oid2 = uuid4()
+        adapter2 = MongoTableAdapter[AutoIncTestEntity](connection, create_table=False)
+        pk2 = adapter2.create(oid=oid2)
+        assert pk2 is not None
+        assert isinstance(pk2.get('id'), int)
+        # Confirm the value is actually persisted by reading it back
+        result = adapter.read(id=pk2['id'])
+        assert result is not None
+        assert result.oid == oid2, 'persisted oid should match inserted oid'
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def adapter_upsert_with_autoincrement_returns_valid_id() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class AutoIncTestEntity:
+            oid: UUID
+            id: int = field(autoincrement=True, primary_key=True, default=0)
+
+        oid1 = uuid4()
+        adapter = MongoTableAdapter[AutoIncTestEntity](connection, create_table=False)
+
+        entity1 = AutoIncTestEntity(oid=oid1)
+        pk1 = adapter.upsert(entity1)
+        assert pk1 is not None
+        assert isinstance(pk1.get('id'), int), 'autoincrement id should be an int'
+        first_id = pk1['id']
+        assert first_id >= 1, 'first autoincrement value should be >= 1'
+
+        # Verify a second upsert also gets a valid id and persists correctly
+        oid2 = uuid4()
+        adapter2 = MongoTableAdapter[AutoIncTestEntity](connection, create_table=False)
+        entity2 = AutoIncTestEntity(oid=oid2)
+        pk2 = adapter2.upsert(entity2)
+        assert pk2 is not None
+        assert isinstance(pk2.get('id'), int)
+        # Confirm the value is actually persisted by reading it back
+        result = adapter.read(id=pk2['id'])
+        assert result is not None
+        assert result.oid == oid2, 'persisted oid should match upserted oid'
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def create_autoincrement_returns_monotonically_increasing_ids() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class AutoIncTestEntity:
+            oid: UUID
+            id: int = field(autoincrement=True, primary_key=True, default=0)
+
+        adapter = MongoTableAdapter[AutoIncTestEntity](connection, create_table=True)
+
+        ids = []
+        for _ in range(3):
+            pk = adapter.create(oid=uuid4())
+            assert pk is not None
+            assert isinstance(pk.get('id'), int)
+            ids.append(pk['id'])
+
+        # Each subsequent id must be strictly greater than the previous
+        assert ids[0] < ids[1], f'ids should be increasing but got {ids}'
+        assert ids[1] < ids[2], f'ids should be increasing but got {ids}'
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def upsert_autoincrement_returns_monotonically_increasing_ids() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class AutoIncTestEntity:
+            oid: UUID
+            id: int = field(autoincrement=True, primary_key=True, default=0)
+
+        adapter = MongoTableAdapter[AutoIncTestEntity](connection, create_table=False)
+
+        ids = []
+        for _ in range(3):
+            entity1 = AutoIncTestEntity(oid=uuid4())
+            pk = adapter.upsert(entity1)
+            assert pk is not None
+            assert isinstance(pk.get('id'), int)
+            ids.append(pk['id'])
+
+        # Each subsequent id must be strictly greater than the previous
+        assert ids[0] < ids[1], f'ids should be increasing but got {ids}'
+        assert ids[1] < ids[2], f'ids should be increasing but got {ids}'

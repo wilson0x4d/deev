@@ -19,6 +19,7 @@ from ..common.DbTransactionContext import DbTransactionContext
 
 
 class MongoTransactionContext(DbTransactionContext):
+
     __ambient_transaction_id: ContextVar[Optional[UUID]] = ContextVar[Optional[UUID]]('ambient_transaction_id', default=None)
     __context: DbContext
     __cursor: DbCursor

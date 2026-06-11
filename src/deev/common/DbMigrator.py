@@ -10,7 +10,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Optional
 
-from .._MigrationData import _MigrationData
+from .._MigrationData import _MigrationData, _MigrationData2
 from .ConnectionString import ConnectionString
 from .DbError import DbError
 from .DbTableAdapter import DbTableAdapter
@@ -25,18 +25,23 @@ class DbMigrator:
 
     __connectionstring: ConnectionString
     __logger: logging.Logger
+    __migrationdata_t: type
 
     def __init__(self, connectionstring: ConnectionString):
-        self.__logger = logging.getLogger(__name__)
-        if connectionstring.provider in ('mongodb', 'pymongo'):
-            # NOTE: because mongodb can't authorize administrative commands from a database OTHER than `admin`
-            connectionstring.database = f'{connectionstring.database}?authSource=admin'
         self.__connectionstring = connectionstring
+        self.__logger = logging.getLogger(__name__)
+        match connectionstring.provider:
+            case 'mongodb' | 'pymongo':
+                self.__migrationdata_t = _MigrationData2
+                # NOTE: because mongodb can't authorize administrative commands from a database OTHER than `admin`
+                connectionstring.database = f'{connectionstring.database}?authSource=admin'
+            case _:
+                self.__migrationdata_t = _MigrationData
 
     def __get_or_create_migrations_table(self) -> DbTableAdapter[Any]:
         from ..utils import connect, create_table_adapter
         connection = connect(self.__connectionstring)
-        table_adapter = create_table_adapter(_MigrationData, connection)
+        table_adapter = create_table_adapter(self.__migrationdata_t, connection)
         table_adapter.create_table()
         return table_adapter
 
@@ -78,7 +83,7 @@ class DbMigrator:
                 if migration_func is not None:
                     with begin_transaction(self.__connectionstring) as db_transaction:
                         migration_func(db_transaction)
-                    migrations_table.create(_MigrationData(migration=migration_name))  # type: ignore[call-arg]
+                    migrations_table.create(self.__migrationdata_t(migration=migration_name))  # type: ignore[call-arg]
                     migrations_table.commit()
                     applied_migration_count += 1
                 else:
