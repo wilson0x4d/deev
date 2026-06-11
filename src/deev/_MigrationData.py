@@ -23,7 +23,7 @@ class _MigrationData2:  # type: ignore[misc]
     """
 
     migration: str = field(max=260)
-    key: uuid.UUID = field(default=uuid.uuid4, primary_key=True)
+    id: uuid.UUID = field(default=uuid.uuid4, primary_key=True)
 
 
 __all__ = [
