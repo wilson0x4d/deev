@@ -40,5 +40,6 @@ Contents
    Overview <self>
    Quick Start <quickstart>
    Reference <ref/index>
+   SKILL <SKILL>
    MIT License <license>
    Contact <contact>
