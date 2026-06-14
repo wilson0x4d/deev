@@ -114,7 +114,7 @@ def resolve_mongodb_auth_source(connectionstring: ConnectionString) -> str:
             f'?authSource={auth_source}'
         )
         try:
-            client = pymongo.MongoClient(mongo_uri)
+            client = pymongo.MongoClient(mongo_uri)  # type: ignore[var-annotated]
             client.list_database_names()  # forces real auth handshake
             return auth_source
         except _pymongo_errors.OperationFailure as e:
@@ -195,26 +195,26 @@ def create_database(connectionstring: ConnectionString | str) -> None:
             raise DbError(f'Unsupported database provider: {connectionstring.provider}')
 
 
-def apply_migrations(connectionstring: ConnectionString, migrations_path: Optional[Path | str], stop_at: Optional[str] = None) -> None:
+def apply_migrations(migration_name: str, connectionstring: ConnectionString, migrations_path: Optional[Path | str]) -> None:
     if migrations_path is None and connectionstring.database is not None:
         migrations_path = os.path.join('.', 'migrations', connectionstring.database.lower())
     if migrations_path is not None:
         updater = DbMigrator(connectionstring)
-        updater.apply(migrations_path, stop_at)
+        updater.apply(migrations_path, migration_name)
     else:
         raise ValueError('A value for `migrations_path` must be provided.')
 
 
 def undo_migrations(
+    migration_name: str,
     connectionstring: ConnectionString,
-    migrations_path: Optional[Path | str],
-    stop_at: Optional[str] = None
+    migrations_path: Optional[Path | str]
 ) -> None:
     if migrations_path is None and connectionstring.database is not None:
         migrations_path = os.path.join('.', 'migrations', connectionstring.database.lower())
     if migrations_path is not None:
         updater = DbMigrator(connectionstring)
-        updater.undo(migrations_path, stop_at)
+        updater.undo(migrations_path, migration_name)
     else:
         raise ValueError('A value for `migrations_path` must be provided.')
 

@@ -14,7 +14,7 @@ def get_mongodb_connectionstring():
     import appsettings2
     from deev.common.ConnectionString import ConnectionString
     configuration = appsettings2.get_configuration()
-    connection_str = configuration.connections.mongodb_test
+    connection_str = configuration.connections.mongo_test
     return ConnectionString(connection_str)
 
 

@@ -15,7 +15,7 @@ from uuid import uuid4
 def get_mongodb_connectionstring():
     """Get the ConnectionString to be used by mongodb tests."""
     configuration = appsettings2.get_configuration()
-    connection_str = configuration.connections.mongodb_test
+    connection_str = configuration.connections.mongo_test
     return ConnectionString(connection_str)
 
 

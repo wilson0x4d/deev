@@ -34,22 +34,21 @@ def __parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help='Apply migrations.',
     )
     apply_parser.add_argument(
-        'connectionstring',
-        metavar='connectionstring',
-        help='Database connection string.',
+        'migration_name',
+        metavar='migration-name',
+        help='The name of the migration at which apply should stop processing.  Specify "all" to process all migrations.',
+    )
+    apply_parser.add_argument(
+        'connection',
+        metavar='connection',
+        help='Database connection string (name from config or literal `key=value` format).',
     )
     apply_parser.add_argument(
         'path',
         nargs='?',
         default=None,
         metavar='path',
-        help='Directory containing migration scripts (optional). If omitted, a path is calculated from the connectionstring argument, ie. `./migrations/databnase_name/`.',
-    )
-    apply_parser.add_argument(
-        '--stop-at',
-        dest='stop_at',
-        metavar='name',
-        help='Stop processing at the named migration.',
+        help='Directory containing migration scripts (optional). If omitted, a path is calculated from the connection argument, ie. `./migrations/database_name/`.',
     )
 
     undo_parser = subparsers.add_parser(
@@ -57,22 +56,21 @@ def __parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help='Undo migrations.',
     )
     undo_parser.add_argument(
-        'connectionstring',
-        metavar='connectionstring',
-        help='Database connection string.',
+        'migration_name',
+        metavar='migration-name',
+        help='The name of the migration at which undo should stop processing.  Specify "all" to process all migrations.',
+    )
+    undo_parser.add_argument(
+        'connection',
+        metavar='connection',
+        help='Database connection string (name from config or literal `key=value` format).',
     )
     undo_parser.add_argument(
         'path',
         nargs='?',
         default=None,
         metavar='path',
-        help='Directory containing migration scripts (optional). If omitted, a path is calculated from the connectionstring argument, ie. `./migrations/databnase_name/`.',
-    )
-    undo_parser.add_argument(
-        '--stop-at',
-        dest='stop_at',
-        metavar='name',
-        help='Stop processing at the named migration.',
+        help='Directory containing migration scripts (optional). If omitted, a path is calculated from the connection argument, ie. `./migrations/database_name/`.',
     )
 
     # # # generate_parser = subparsers.add_parser(
@@ -121,25 +119,25 @@ def main() -> None:
     hanaro.configure_logging(configuration)
 
     args = __parse_args()
-    connectionstring: ConnectionString
-    if '=' not in args.connectionstring:
+    connection: ConnectionString
+    if '=' not in args.connection:
         # load via appsettings2
         candidate_config_keys = list[str]([
-            f'connectionStrings__{args.connectionstring}',
-            f'connections__{args.connectionstring}'
+            f'connectionStrings__{args.connection}',
+            f'connections__{args.connection}'
         ])
         for candidate_config_key in candidate_config_keys:
             candidate_connection_str = configuration.get(candidate_config_key, None)
             if candidate_connection_str is not None:
-                connectionstring = ConnectionString(candidate_connection_str)
+                connection = ConnectionString(candidate_connection_str)
                 break
-        assert connectionstring is not None  # type: ignore[unbound-name]
+        assert connection is not None  # type: ignore[unbound-name]
     else:
         # take as literal
-        connectionstring = ConnectionString(args.connectionstring)
+        connection = ConnectionString(args.connection)
 
     match args.command:
         case 'apply':
-            apply_migrations(connectionstring, args.path, getattr(args, 'stop_at', None))
+            apply_migrations(args.migration_name, connection, args.path)
         case 'undo':
-            undo_migrations(connectionstring, args.path, getattr(args, 'stop_at', None))
+            undo_migrations(args.migration_name, connection, args.path)

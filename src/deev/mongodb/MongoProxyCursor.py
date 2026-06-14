@@ -246,14 +246,18 @@ class MongoProxyCursor(DbCursor):
     def _execute_select(self, sql: str, params: tuple[Any, ...]) -> None:
         """Parse a SELECT statement and execute the corresponding MongoDB find."""
         select_re = re.compile(
-            r"SELECT\s+(.+?)\s+FROM\s+(`[^`]+`|\w+)(?:\s+WHERE\s+(.+?))?(?:\s+ORDER\s+BY\s+(.+?))?(?:\s+LIMIT\s+(\d+))?\s*$",
+            r"SELECT\s+(.+?)(?:\s+FROM\s+(`[^`]+`|\w+))?(?:\s+WHERE\s+(.+?))?(?:\s+ORDER\s+BY\s+(.+?))?(?:\s+LIMIT\s+(\d+))?\s*$",
             re.IGNORECASE | re.DOTALL,
         )
         m = select_re.match(sql.strip())
         if not m:
             raise DbError(f'Cannot parse SELECT statement: {sql}')
         columns_str = m.group(1).strip()
-        table_name = m.group(2).strip('`')
+        table_name = m.group(2)
+        if table_name is None:
+            raise DbError('SELECT without a table name present not supported for MongoDB')
+        else:
+            table_name.strip('`]["')
         where_clause = m.group(3)
         order_by_str = m.group(4)
         limit_val = int(m.group(5)) if m.group(5) else None
@@ -294,13 +298,17 @@ class MongoProxyCursor(DbCursor):
     def _execute_insert(self, sql: str, params: tuple[Any, ...]) -> None:
         """Parse an INSERT statement and execute the corresponding MongoDB insert_one."""
         insert_re = re.compile(
-            r'INSERT\s+(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)\s*$',
+            r'INSERT\s+(?:\w+\s+)?(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)\s*$',
             re.IGNORECASE | re.DOTALL,
         )
         m = insert_re.match(sql.strip())
         if not m:
             raise DbError(f'Cannot parse INSERT statement: {sql}')
         table_name = m.group(1)
+        if table_name is None:
+            raise DbError('INSERT without a table name present not supported for MongoDB')
+        else:
+            table_name.strip('`]["')
         columns_str = m.group(2)
         values_str = m.group(3)
         self._set_collection_name(table_name)
@@ -343,6 +351,10 @@ class MongoProxyCursor(DbCursor):
         if not m:
             raise DbError(f'Cannot parse UPDATE statement: {sql}')
         table_name = m.group(1)
+        if table_name is None:
+            raise DbError('UPDATE without a table name present not supported for MongoDB')
+        else:
+            table_name.strip('`]["')
         set_clause = m.group(2).strip()
         where_clause = m.group(3).strip()
         self._set_collection_name(table_name)
@@ -376,14 +388,18 @@ class MongoProxyCursor(DbCursor):
     def _execute_delete(self, sql: str, params: tuple[Any, ...]) -> None:
         """Parse a DELETE statement and execute the corresponding MongoDB delete_one."""
         delete_re = re.compile(
-            r'DELETE\s+FROM\s+(\w+)\s+WHERE\s+(.+)\s*$',
+            r'DELETE\s+FROM\s+(\w+)(?:\s+WHERE\s+(.+))?\s*$',
             re.IGNORECASE | re.DOTALL,
         )
         m = delete_re.match(sql.strip())
         if not m:
             raise DbError(f'Cannot parse DELETE statement: {sql}')
         table_name = m.group(1)
-        where_clause = m.group(2).strip()
+        if table_name is None:
+            raise DbError('DELETE without a table name present not supported for MongoDB')
+        else:
+            table_name.strip('`]["')
+        where_clause = m.group(2)
         self._set_collection_name(table_name)
         where_filter = _parse_sql_where(where_clause, params) if where_clause else {}
         match_result = self.__get_database()[table_name].delete_one(where_filter)
@@ -392,7 +408,7 @@ class MongoProxyCursor(DbCursor):
     def executemany(self, operation: str, seq_params: Sequence[DbParams]) -> None:
         """Execute an INSERT with multiple parameter sets."""
         insert_re = re.compile(
-            r'INSERT\s+(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)\s*$',
+            r'INSERT\s+(?:\w+\s+)?(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)\s*$',
             re.IGNORECASE | re.DOTALL,
         )
         m = insert_re.match(operation.strip())

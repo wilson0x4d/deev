@@ -69,6 +69,13 @@ class DbMigrator:
         if len(available_migrations) == 0:
             self.__logger.warning(f'Migrations path does not contain migrations: {migrations_path}')
             return
+        available_names = {os.path.splitext(os.path.basename(f))[0] for f in available_migrations}
+        if stop_at is not None and stop_at not in ("all", "*") and stop_at not in available_names:
+            self.__logger.error(
+                f'Migration "{stop_at}" not found in migration files. '
+                f'Valid names: {", ".join(sorted(available_names))}'
+            )
+            return
         migrations_table = self.__get_or_create_migrations_table()
         applied_migrations = dict[str, int]({
             e.migration: e.id
@@ -85,6 +92,7 @@ class DbMigrator:
                 if migration_func is not None:
                     with begin_transaction(self.__connectionstring) as db_transaction:
                         migration_func(db_transaction)
+                        # NOTE: callee (migration_func) is responsible for calling commit (or rollback)
                     migrations_table.create(self.__migrationdata_t(migration=migration_name))  # type: ignore[call-arg]
                     migrations_table.commit()
                     applied_migration_count += 1
@@ -115,6 +123,13 @@ class DbMigrator:
             e.migration: e.id
             for e in migrations_table.query(orderby='migration DESC')
         })
+        applied_names = set(applied_migrations.keys())
+        if stop_at is not None and stop_at not in ("all", "*") and stop_at not in applied_names:
+            self.__logger.error(
+                f'Migration "{stop_at}" not found in applied migrations. '
+                f'Valid names: {", ".join(sorted(applied_names, reverse=True))}'
+            )
+            return
         skipped_migration_count = 0
         applied_migration_count = 0
         for migration_filepath in available_migrations:
@@ -126,6 +141,8 @@ class DbMigrator:
                 if migration_func is not None:
                     with begin_transaction(self.__connectionstring) as db_transaction:
                         migration_func(db_transaction)
+                        db_transaction.commit()
+                        # NOTE: callee (migration_func) is responsible for calling commit (or rollback)
                     migrations_table.delete(id=applied_migrations.get(migration_name, 0))
                     migrations_table.commit()
                     applied_migration_count += 1
