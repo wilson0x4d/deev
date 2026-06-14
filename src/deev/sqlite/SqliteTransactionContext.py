@@ -141,6 +141,7 @@ class SqliteTransactionContext(DbTransactionContext):
         row = self.__cursor.fetchone()
         while row is not None:
             yield row
+            row = self.__cursor.fetchone()
 
     def execute_scalar(self, sql: str, params: Optional[DbParams] = None) -> Any:
         if self.__transaction_state == 3:
