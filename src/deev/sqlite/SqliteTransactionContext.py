@@ -50,7 +50,7 @@ class SqliteTransactionContext(DbTransactionContext):
         exc_type: Optional[type[BaseException]] = None,
         exc_value: Optional[BaseException] = None,
         traceback: Optional[TracebackType] = None
-    ) -> Literal[False]:
+    ) -> bool:
         if exc_type is not None and self.__transaction_state == 2:
             self.rollback()
         elif self.__transaction_state <= 1:
@@ -58,7 +58,7 @@ class SqliteTransactionContext(DbTransactionContext):
         elif self.__transaction_state == 2:
             self.rollback()
             raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
-        return False
+        return exc_value is not None
 
     def __update_transaction_state(self, sql: str) -> None:
         sql = sql.lstrip().upper()

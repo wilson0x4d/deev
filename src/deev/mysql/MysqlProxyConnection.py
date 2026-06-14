@@ -40,9 +40,9 @@ class MysqlProxyConnection(DbConnection):
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> Literal[False]:
+    def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> bool:
         self.__connection.__exit__(exc_type, exc, tb)  # type: ignore[arg-type]
-        return False
+        return exc is not None
 
 
 __all__ = ['MysqlProxyConnection']

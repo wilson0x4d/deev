@@ -28,7 +28,7 @@ class DbConnection(Protocol):
     def __enter__(self) -> Self:
         ...
 
-    def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> Literal[False]:
+    def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> bool:
         ...
 
     @classmethod
