@@ -104,17 +104,19 @@ def _migrator_mocked(cs: ConnectionString):  # type: ignore[type-arg]
     adapter_patch = patch('deev.utils.create_table_adapter')
     db_patch = patch('deev.utils.create_database')
     tx_patch = patch('deev.utils.begin_transaction')
+    resolve_mongodb_auth_source_patch = patch('deev.utils.resolve_mongodb_auth_source')
 
     cp = conn_patch.__enter__()
     ap = adapter_patch.__enter__()
     db_patch.__enter__()
     tx_patch.__enter__()
+    resolve_mongodb_auth_source_patch.__enter__().returns('mongo_test')
     cp().returns(mock_conn)  # type: ignore[attr-defined]
     ap().returns(mock_adapter)  # type: ignore[attr-defined]
 
     migrator = DbMigrator(cs)
     migrator._DbMigrator__get_or_create_migrations_table()  # type: ignore[attr-defined]
-    return migrator, mock_adapter, (conn_patch, adapter_patch, db_patch, tx_patch)
+    return migrator, mock_adapter, (conn_patch, adapter_patch, db_patch, tx_patch, resolve_mongodb_auth_source_patch)
 
 
 def _release_patches(patches: tuple):  # type: ignore[type-arg]
