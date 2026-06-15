@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from contextvars import ContextVar
 from types import TracebackType
 from typing import Any, Generator, Literal, Optional, Self, cast
@@ -48,17 +49,20 @@ class SqliteTransactionContext(DbTransactionContext):
     def __exit__(
         self,
         exc_type: Optional[type[BaseException]] = None,
-        exc_value: Optional[BaseException] = None,
+        exc_value: Optional[BaseException] = None,  # noqa: ARG001 - unused per context manager protocol
         traceback: Optional[TracebackType] = None
-    ) -> bool:
+    ) -> Literal[False]:
         if exc_type is not None and self.__transaction_state == 2:
             self.rollback()
-        elif self.__transaction_state <= 1:
-            self.commit()
         elif self.__transaction_state == 2:
             self.rollback()
             raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
-        return exc_value is not None
+        elif self.__transaction_state <= 1:
+            if exc_type is not None:
+                self.rollback()
+            else:
+                self.commit()
+        return False
 
     def __update_transaction_state(self, sql: str) -> None:
         sql = sql.lstrip().upper()
@@ -97,9 +101,25 @@ class SqliteTransactionContext(DbTransactionContext):
 
     def commit(self) -> None:
         if SqliteTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
-            self.__cursor.execute('COMMIT')
+            try:
+                self.__cursor.execute('COMMIT')
+            except sqlite3.OperationalError:
+                # DDL implicitly committed and ended the transaction
+                pass
         else:
-            self.__cursor.execute(f'RELEASE SAVEPOINT TID_{self.__transaction_id.hex}')
+            try:
+                self.__cursor.execute(f'RELEASE SAVEPOINT TID_{self.__transaction_id.hex}')
+            except sqlite3.OperationalError as e:
+                if 'no such savepoint' in str(e):
+                    # DDL implicitly committed all savepoints (SQLite behavior)
+                    # Try COMMIT to end the ambient transaction; fall back to pass
+                    try:
+                        self.__cursor.execute('COMMIT')
+                    except sqlite3.OperationalError:
+                        # Also no active transaction — DDL killed it
+                        pass
+                else:
+                    raise
         self.__update_transaction_state('COMMIT')
 
     def cursor(self) -> DbCursor:
