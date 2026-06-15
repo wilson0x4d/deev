@@ -37,12 +37,8 @@ class DbMigrator:
                 self.__migrationdata_t = _MigrationData
 
     def __get_or_create_migrations_table(self) -> DbTableAdapter[Any]:
-        from ..utils import resolve_mongodb_auth_source, connect, create_table_adapter
-        connection = (
-            connect(self.__connectionstring, authSource=resolve_mongodb_auth_source(self.__connectionstring))
-            if self.__connectionstring.provider in ('mongodb', 'pymongo')
-            else connect(self.__connectionstring)
-        )
+        from ..utils import connect, create_table_adapter
+        connection = connect(self.__connectionstring)
         table_adapter = create_table_adapter(self.__migrationdata_t, connection)
         table_adapter.create_table()
         return table_adapter

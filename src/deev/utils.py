@@ -43,12 +43,15 @@ def connect(
             import pymongo
             if connectionstring.database is None:
                 raise DbError(f'ConnectionString is missing `database` component: {connectionstring}')
+            # Use caller-provided authSource if given, otherwise resolve it automatically.
+            effective_auth_source = kwargs.pop('authSource', None) or resolve_mongodb_auth_source(connectionstring)
             mongo_uri = f'mongodb://{connectionstring.user}:{connectionstring.password}@{connectionstring.server}/{connectionstring.database}'
             return MongoProxyConnection(
                 pymongo.MongoClient(
                     mongo_uri,
                     serverSelectionTimeoutMS=effective_connect_timeout * 1000,
                     socketTimeoutMS=effective_command_timeout * 1000,
+                    authSource=effective_auth_source,
                     **kwargs
                 ),
                 database_name=connectionstring.database
@@ -88,6 +91,9 @@ def connect(
             raise ValueError(f'Unsupported provider: {connectionstring.provider}')
 
 
+_MONGODB_AUTH_SOURCE_CACHE: dict[str, str] = {}
+
+
 def resolve_mongodb_auth_source(connectionstring: ConnectionString) -> str:
     """
     Attempt to authenticate MongoDB user against each candidate authSource.
@@ -96,10 +102,18 @@ def resolve_mongodb_auth_source(connectionstring: ConnectionString) -> str:
       1. ``connectionstring.database`` (the target database itself)
       2. ``'admin'``
 
+    Results are cached by ``{server}:{database}:{user}`` key so subsequent calls
+    with the same server/database/user return immediately without a network probe.
+
     Returns the first authSource that succeeds. Raises ``DbError`` if all fail.
     """
     import pymongo
     from pymongo import errors as _pymongo_errors
+
+    cache_key = f"{connectionstring.server}:{connectionstring.database}:{connectionstring.user}"
+    cached = _MONGODB_AUTH_SOURCE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
 
     candidates = []
     if connectionstring.database:
