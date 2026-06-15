@@ -46,17 +46,20 @@ class MongoTransactionContext(DbTransactionContext):
     def __exit__(
         self,
         exc_type: Optional[type[BaseException]] = None,
-        exc_value: Optional[BaseException] = None,
+        exc_value: Optional[BaseException] = None,  # noqa: ARG001 - unused per context manager protocol
         traceback: Optional[TracebackType] = None
-    ) -> bool:
+    ) -> Literal[False]:
         if exc_type is not None and self.__transaction_state == 2:
             self.rollback()
         elif self.__transaction_state == 2:
             self.rollback()
             raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
         elif self.__transaction_state <= 1:
-            self.commit()
-        return exc_value is not None
+            if exc_type is not None:
+                self.rollback()
+            else:
+                self.commit()
+        return False
 
     def __update_transaction_state(self, sql: str) -> None:
         sql = sql.lstrip().upper()

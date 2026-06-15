@@ -57,9 +57,9 @@ class MongoProxyConnection(DbConnection):
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> bool:
+    def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> Literal[False]:
         self.mongo_client.__exit__(exc_type, exc, tb)  # type: ignore[arg-type]
-        return exc is not None
+        return False
 
 
 __all__ = ['MongoProxyConnection']

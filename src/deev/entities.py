@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field as dc_field
 from decimal import Decimal
+from enum import StrEnum
 import inspect
 from types import MappingProxyType, NoneType
 from typing import (
@@ -46,13 +48,27 @@ def pluralize(name: str) -> str:
     return name + 's'
 
 
+class IndexOrder(StrEnum):
+    ASCENDING = 'ascending'
+    DESCENDING = 'descending'
+
+
+@dataclass(frozen=True)
+class IndexOptions:
+
+    name: str
+    direction: IndexOrder = dc_field(default=IndexOrder.ASCENDING)
+    rank: int = dc_field(default=0)
+    type: str | None = dc_field(default=None)
+
+
 @final
 class EntityFieldSpec(_ImmutableMixin):
     """Entity Field Specification"""
 
     autoincrement: Optional[bool]  # if the field should be configured for autoincrement (applies to PK only)
     default: Optional[Callable[..., Any] | Any]  # the field should have a default value applied on creation. may be a value or a function.
-    index: Optional[str]  # the field is part of an index definition, this is the index name
+    index: Optional[IndexOptions]  # the field is part of an index definition, this represents the index options for the field
     mapped: Optional[bool]  # whether or not the field is mapped, fields are always mapped by default
     max: Optional[int | float | Decimal]  # maximum length <= value (validation)
     min: Optional[int | float | Decimal]  # minimum length >= value (validation)
@@ -180,7 +196,7 @@ def field(
     *,
     autoincrement: Optional[bool] = None,
     default: Optional[Callable[..., Any] | Any] = __NOTSET__,  # the field should have a default value applied on creation. may be a value or a function.
-    index: Optional[str] = None,  # the field is part of an index definition, this is the index name
+    index: Optional[str | IndexOptions] = None,  # the field is part of an index definition, this is the index name or an IndexField descriptor object defining the index field in more detail
     mapped: Optional[bool] = None,
     max: Optional[int | float | Decimal] = None,  # string maximum length <= value (validation)
     min: Optional[int | float | Decimal] = None,  # string minimum length >= value (validation)
@@ -192,6 +208,8 @@ def field(
     init: bool = True
 ) -> Any:
     # TODO: validation, ie min >= max, autoincrement only valid for integer+pk fields, etc/etc
+    if isinstance(index, str):
+        index = IndexOptions(name=index, direction=IndexOrder.ASCENDING, rank=0)
     field_spec = EntityFieldSpec(
         autoincrement=autoincrement,
         index=index,
@@ -272,6 +290,8 @@ def entity(cls: Optional[Type[T]] = None, *, table_name: Optional[str] = None, n
 __all__ = [
     'EntityFieldSpec',
     'EntitySpec',
+    'IndexOptions',
+    'IndexOrder',
     'define_entity_spec',
     'get_entity_spec',
     'entity',

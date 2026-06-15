@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: © 2023 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
-import bson
+from deev.entities import IndexOptions, IndexOrder
+from collections import defaultdict
 import pymongo
 from typing import Any, Generator, Generic, Optional, TypeVar, cast, get_args, get_origin
 from uuid import UUID
@@ -146,6 +147,26 @@ class MongoTableAdapter(Generic[TEntity]):
                 session=mongo_session,
                 unique=True
             )
+            # create indexes for all entity fields with `index` attributes
+            index_groups = defaultdict[str, list[tuple[str, IndexOptions]]](list)
+            index_attrs = defaultdict[str, dict[str, Any]](dict)
+            for field_name, field_spec in self.__entity_spec.fields.items():
+                if field_spec.index is not None:
+                    assert isinstance(field_spec.index, IndexOptions)
+                    index_groups[field_spec.index.name].append((field_name, field_spec.index))
+                    index_groups[field_spec.index.name] = sorted(index_groups[field_spec.index.name])
+                    index_attrs[field_spec.index.name]['unique'] = field_spec.unique is True
+            for index_name, index_group in index_groups.items():
+                keys = [
+                    (e[0], e[1].type if e[1].type is not None else pymongo.ASCENDING if e[1].direction is IndexOrder.ASCENDING else pymongo.DESCENDING)
+                    for e in index_group
+                ]
+                collection.create_index(
+                    keys=keys,
+                    session=mongo_session,
+                    comment=index_name,
+                    **(index_attrs[index_name])
+                )
 
     def commit(self) -> None:
         self.__context.commit()
