@@ -13,7 +13,7 @@ from ..common.DbCursor import DbCursor
 from ..common.DbError import DbError
 from ..common.DbParams import DbParams
 from ..common.DbTypeMapper import DbTypeMapper
-from ..entities import EntitySpec, get_entity_spec
+from ..entities import EntitySpec, IndexOptions, IndexOrder, get_entity_spec
 from ..translation import hydrate, to_pyobject, splat
 from .MysqlProxyConnection import MysqlProxyConnection
 from .MysqlTransactionContext import MysqlTransactionContext
@@ -115,6 +115,24 @@ class MysqlTableAdapter(Generic[TEntity]):
             )
             sql = f'CREATE TABLE IF NOT EXISTS `{table_name}` ({columns}{primary_key})'
         self.__execute(sql)
+        # Generate CREATE INDEX for secondary indexes defined via field(index=...)
+        self._MysqlTableAdapter__create_indexes(table_name)
+
+    def _MysqlTableAdapter__create_indexes(self, table_name: str) -> None:
+        """Build and execute ``CREATE INDEX`` statements for all secondary indexes."""
+        direction_map = {IndexOrder.ASCENDING: 'ASC', IndexOrder.DESCENDING: 'DESC'}
+        groups: dict[str, list[tuple[str, IndexOrder]]] = {}
+        for field_name, spec in self.__entity_spec.fields.items():
+            if spec.index is None:
+                continue
+            idx_name = spec.index.name
+            direction = spec.index.direction or IndexOrder.ASCENDING
+            groups.setdefault(idx_name, []).append((field_name, direction))
+
+        for idx_name, col_specs in sorted(groups.items()):
+            col_specs.sort(key=lambda cs: cs[0])
+            cols = ', '.join(f'`{name}` {direction_map[direction]}' for name, direction in col_specs)
+            self.__context.cursor().execute(f'CREATE INDEX `{idx_name}` ON `{table_name}` ({cols})')
 
     def commit(self) -> None:
         self.__context.commit()

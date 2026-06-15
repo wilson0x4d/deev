@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
+import hanaro
+import logging
+import mysql.connector
 from types import TracebackType
 from typing import Any, Generator, Literal, Optional, Self, cast
 from uuid import UUID, uuid4
@@ -20,13 +23,15 @@ from .MysqlProxyConnection import MysqlProxyConnection
 class MysqlTransactionContext(DbTransactionContext):
 
     __ambient_transaction_id: ContextVar = ContextVar('ambient_transacton_id', default=None)
-    __transaction_id: UUID
     __context: DbContext
     __cursor: DbCursor
+    __logger: logging.Logger
+    __transaction_id: UUID
     __transaction_state: int
 
     def __init__(self, context: DbContext):
         self.__context = context if isinstance(context, (MysqlProxyConnection, MysqlTransactionContext)) else MysqlProxyConnection(context)  # type: ignore[arg-type]
+        self.__logger = hanaro.get_logger()
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
 
@@ -91,7 +96,7 @@ class MysqlTransactionContext(DbTransactionContext):
 
     def commit(self) -> None:
         if MysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
-            self.__cursor.execute('COMMIT')
+            self.__context.commit()
         else:
             self.__cursor.execute(f'RELEASE SAVEPOINT TID_{self.__transaction_id.hex}')
         self.__update_transaction_state('COMMIT')
@@ -154,9 +159,22 @@ class MysqlTransactionContext(DbTransactionContext):
 
     def rollback(self) -> None:
         if MysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
-            self.__cursor.execute('ROLLBACK')
+            try:
+                self.__cursor.execute('ROLLBACK')
+            except mysql.connector.Error:
+                self.__logger
         else:
-            self.__cursor.execute(f'ROLLBACK TO SAVEPOINT TID_{self.__transaction_id.hex}')
+            try:
+                self.__cursor.execute(f'ROLLBACK TO SAVEPOINT TID_{self.__transaction_id.hex}')
+            except mysql.connector.Error as e:
+                if 'does not exist' in str(e):
+                    # DDL implicitly released all savepoints (MySQL behavior)
+                    try:
+                        self.__cursor.execute('ROLLBACK')
+                    except mysql.connector.Error:
+                        pass
+                else:
+                    raise
         self.__update_transaction_state('ROLLBACK')
 
 
