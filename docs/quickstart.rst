@@ -121,6 +121,8 @@ Next, the CRUD-based code:
 CLI ``db-migrate`` Tool
 -----------------------
 
+.. note:: For comprehensive migration documentation (provider-specific behavior, best practices, DDL auto-commit considerations), see the full :doc:`Migration Guide <migration>`.
+
 The ``db-migrate`` tool can be used to apply a migration script or undo a previously applied migration script. Here is the main syntax from CLI help:
 
 .. code-block:: bash
@@ -145,11 +147,11 @@ The ``db-migrate`` tool can be used to apply a migration script or undo a previo
     positional arguments:
     connectionstring  Database connection string.
     path              Directory containing migration scripts (optional). If omitted, a path is calculated from the connectionstring argument, ie.
-                        `./migrations/databnase_name/`.
+                        `./migrations/database_name/`.
 
     options:
     -h, --help        show this help message and exit
-    --stop-at name    Stop processing at the named migration.
+    --stop-at name    Stop processing at the named migration (use "all" to process all).
 
 A migration script is a Python file which defines two functions ``apply(...)`` and ``undo(...)``, each receiving a ``DbTransactionContext`` you can use to modify the database transactionally.
 
@@ -213,7 +215,7 @@ Undo the change after it has been applied:
 .. code-block:: bash
 
     # undo schema change
-    db-migrate undo 'Server=./test_data/;Database=sqlite3/test.db;Provider=sqlite3' ./migration/test_db/
+    db-migrate undo 'Server=./test_data/;Database=sqlite3/test.db;Provider=sqlite3' ./migrations/test_db/
 
 The tool reports:
 

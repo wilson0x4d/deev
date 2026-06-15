@@ -97,7 +97,7 @@ def __parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # # #     nargs='?',
     # # #     default=None,
     # # #     metavar='path',
-    # # #     help='Directory containing migration scripts (optional). If omitted, a path is calculated from the connectionstring argument, ie. `./migrations/databnase_name/`.',
+    # # #     help='Directory containing migration scripts (optional). If omitted, a path is calculated from the connectionstring argument, ie. `./migrations/database_name/`.',
     # # # )
 
     return parser.parse_args(argv)

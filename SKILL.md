@@ -216,32 +216,52 @@ Built-in checks: `min`/`max` on string length (LEN) and numeric values (VAL), `n
 ### CLI
 
 ```bash
-db-migrate apply <migration_name> <connection_string> [path]
-db-migrate undo  <migration_name> <connection_string> [path]
+db-migrate apply <migration-name> <connection> [path]
+db-migrate undo  <migration-name> <connection> [path]
 ```
 
-### Migration Scripts (Python files)
+- `<migration-name>`: Target migration to process (use `"all"` for all).
+- `<connection>`: Named connection from appsettings2 config or a literal `key=value` connection string.
+- `[path]`: Optional migration directory. Defaults to `./migrations/<database_name>/`.
 
-Each file in the migrations directory must contain:
+### Migration Scripts
+
+Each file in the migrations directory must define two functions with explicit `commit()` calls:
 
 ```python
-def apply(transaction):    # DbTransactionContext with execute(), execute_script(), execute_scalar(), commit(), ...
-    transaction.execute('CREATE TABLE IF NOT EXISTS users (...)')
+from deev.common import DbTransactionContext
 
-def undo(transaction):
-    transaction.execute('DROP TABLE IF EXISTS users')
+def apply(db_transaction: DbTransactionContext) -> None:
+    db_transaction.execute_nonquery('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)')
+    db_transaction.commit()     # MUST be called explicitly
+
+def undo(db_transaction: DbTransactionContext) -> None:
+    db_transaction.execute_nonquery('DROP TABLE IF EXISTS users')
+    db_transaction.commit()     # MUST be called explicitly
 ```
+
+**Ordering**: `apply()` processes files in **alphabetical** order; `undo()` processes in **reverse alphabetical** order. Filenames determine order — use numeric prefixes (``001_``, ``002_``, ...) or date codes to guarantee ordering.
+
+**Commit requirement**: The migrator does not auto-commit on behalf of migration scripts. If you forget to call `commit()`, the context manager exit handler raises a ``DbError``.
 
 ### Programmatic API
 
 ```python
 from deev.utils import apply_migrations, undo_migrations
 
-apply_migrations('all', connection_string, './migrations/')   # or '001_create_users' for single migration
-undo_migrations('001_create_users', connection_string, './migrations/')
+apply_migrations('all', connection_string, './migrations/')     # or '001_create_users' for single migration
+undo_migrations('all', connection_string, './migrations/')
 ```
 
-Migration history stored in `_migrationdata` table within the target database. Default path: `./migrations/<database_name>/`.
+Migration history is stored in `_migrationdata` (table on SQL providers, collection on MongoDB) with:
+- **int auto-increment PK** for MySQL / SQLite
+- **UUID PK** for MongoDB (uses ``_MigrationData2`` entity internally)
+
+### Provider-Specific Notes
+
+**MySQL / SQLite — DDL auto-commits**: Both MySQL and SQLite implicitly commit the active transaction before DDL statements (``CREATE``, ``DROP``, ``ALTER``, etc.). This means DML changes issued before DDL in the same migration are committed automatically and **cannot be rolled back together**. If atomicity matters, split DDL and data changes into separate migration scripts.
+
+**MongoDB — no DDL**: MongoDB is schema-less; collections are created implicitly on first insert. The transaction context uses real ``pymongo.ClientSession`` transactions. Nested (savepoint-level) transactions are NOPs — only the top-level ambient transaction matters.
 
 ## 9. Error Types
 

@@ -118,6 +118,8 @@ Next, let's write some CRUD-based code:
 
 ### CLI `db-migrate` Tool
 
+.. note:: For comprehensive migration documentation (provider-specific behavior, best practices, DDL auto-commit considerations), see the full [Migration Guide](https://deev.readthedocs.io/en/latest/migration.html).
+
 The `db-migrate` tool can be used to apply a migration script or undo a previously applied migration script.
 
 Basic syntax:
@@ -143,11 +145,11 @@ usage: db-migrate apply [-h] [--stop-at name] connectionstring [path]
 positional arguments:
   connectionstring  Database connection string.
   path              Directory containing migration scripts (optional). If omitted, a path is calculated from the connectionstring argument, ie.
-                    `./migrations/databnase_name/`.
+                    `./migrations/database_name/`.
 
 options:
   -h, --help        show this help message and exit
-  --stop-at name    Stop processing at the named migration.
+  --stop-at name    Stop processing at the named migration (use "all" to process all).
 
 ```
 
@@ -208,7 +210,7 @@ We can also undo the change after it has been applied:
 
 ```bash
     # undo schema change
-    db-migrate undo 'Server=./test_data/;Database=sqlite3/test.db;Provider=sqlite3' ./migration/test_db/
+    db-migrate undo 'Server=./test_data/;Database=sqlite3/test.db;Provider=sqlite3' ./migrations/test_db/
 ```
 ```
     ..undo migration "001_initial_seed"

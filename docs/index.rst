@@ -39,6 +39,7 @@ Contents
 
    Overview <self>
    Quick Start <quickstart>
+   Database Migration <migration>
    Reference <ref/index>
    SKILL <SKILL>
    MIT License <license>
