@@ -270,7 +270,7 @@ class MongoProxyCursor(DbCursor):
         self._set_collection_name(table_name)
         if columns_str == '*':
             projection: dict[str, int] | None = None
-            col_names: list[str] = []
+            col_names.clear()
             doc_sample = self.__get_database()[table_name].find_one({})
             if doc_sample is not None:
                 col_names = [k for k in doc_sample.keys() if k != '_id']

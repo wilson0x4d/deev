@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2023 Shaun Wilson
+# SPDX-FileCopyrightText: © 2026 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
 from __future__ import annotations
@@ -20,17 +20,45 @@ from ..common.DbTransactionContext import DbTransactionContext
 
 class MongoTransactionContext(DbTransactionContext):
 
+    _DELEGATE_TXN_CACHE: dict[tuple[str | None, int], bool] = {}
+
     __ambient_transaction_id: ContextVar[Optional[UUID]] = ContextVar[Optional[UUID]]('ambient_transaction_id', default=None)
     __context: DbContext
     __cursor: DbCursor
+    __database_name: str
     __transaction_id: UUID
     __transaction_state: int
+    __delegate_mode: bool | None
 
     def __init__(self, context: DbContext):
         self.__context = context
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
         self.__database_name = context.mongo_database_name  # type: ignore[missing-attribute, union-attr]
+        self.__delegate_mode = MongoTransactionContext._DELEGATE_TXN_CACHE.get(
+            MongoTransactionContext.__server_key(self.mongo_client), None
+        )
+        if self.__delegate_mode is None:
+            try:
+                self.__delegate_mode = self._detect_delegated_mode(
+                    self.__context.mongo_client   # type: ignore[attr-defined, union-attr]
+                )
+            except Exception:
+                pass
+
+    @staticmethod
+    def __server_key(mongo_client: pymongo.MongoClient[Any]) -> tuple[str | None, int]:
+        """Extract (hostname, port) from a pymongo.MongoClient as cache key."""
+        return (mongo_client.HOST, mongo_client.PORT)
+
+    @staticmethod
+    def _detect_delegated_mode(mongo_client: pymongo.MongoClient[Any]) -> bool:
+        """Return True when the server is known NOT to support transactions."""
+        try:
+            return 'replSetName' not in mongo_client.admin.command('ismaster')  # type: ignore[return-value]
+        except Exception:
+            # Can't determine — assume full transactional support (current safe default)
+            return False
 
     def __del__(self):
         try:
@@ -49,6 +77,9 @@ class MongoTransactionContext(DbTransactionContext):
         exc_value: Optional[BaseException] = None,  # noqa: ARG001 - unused per context manager protocol
         traceback: Optional[TracebackType] = None
     ) -> Literal[False]:
+        if self.__delegate_mode:
+            self.__transaction_state = 3
+            return False
         if exc_type is not None and self.__transaction_state == 2:
             self.rollback()
         elif self.__transaction_state == 2:
@@ -106,10 +137,8 @@ class MongoTransactionContext(DbTransactionContext):
         self.__cursor = self.__context.cursor()
         if MongoTransactionContext.__ambient_transaction_id.get(None) is None:
             MongoTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
-            cast(MongoProxyCursor, self.__cursor).mongo_session.start_transaction()  # type: ignore[attr-defined, valid-type]
-        else:
-            # NOTE: we NOP with the expectation that a parent scope will commit/rollback everything, making this a bookkeeping call
-            pass
+            if not self.__delegate_mode:
+                self.__cursor.mongo_session.start_transaction()  # type: ignore[attr-defined, valid-type]
         return self
 
     def close(self) -> None:
@@ -117,11 +146,8 @@ class MongoTransactionContext(DbTransactionContext):
         pass
 
     def commit(self) -> None:
-        if MongoTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
+        if not self.__delegate_mode and MongoTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
             self.mongo_session.commit_transaction()
-        else:
-            # NOTE: we NOP with the expectation that a parent scope will commit/rollback everything, making this a bookkeeping call
-            pass
         self.__update_transaction_state('COMMIT')
 
     def cursor(self) -> DbCursor:

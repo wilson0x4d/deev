@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2023 Shaun Wilson
+# SPDX-FileCopyrightText: © 2026 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
 from datetime import date, datetime, time, timedelta

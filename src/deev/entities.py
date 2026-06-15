@@ -164,9 +164,9 @@ def define_entity_spec(entity_type: type, *, table_name: Optional[str] = None, n
                     has_autoincrement = True
             field_spec.__freeze__()
         entity_spec = EntitySpec(
-            attrs=MappingProxyType(attrs if attrs is not None else dict[str, Any]()),
+            attrs=(attrs if attrs is not None else {}),
             entity_type=entity_type,
-            fields=MappingProxyType(fields),
+            fields=fields,
             has_autoincrement=has_autoincrement,
             primary_key=tuple(primary_key),
             table_name=(

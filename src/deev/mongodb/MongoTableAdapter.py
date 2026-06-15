@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2023 Shaun Wilson
+# SPDX-FileCopyrightText: © 2026 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
 from deev.entities import IndexOptions, IndexOrder
@@ -124,7 +124,7 @@ class MongoTableAdapter(Generic[TEntity]):
         collection_name = self.__get_collection_name()
         connection = cast(pymongo.MongoClient[Any], getattr(self.__context, 'mongo_client', None))
         db = connection.get_database(self.__database_name)
-        mongo_session = getattr(self.__context.cursor(), 'mongo_session', None)
+        mongo_session = cast(pymongo.client_session.ClientSession, getattr(self.__context.cursor(), 'mongo_session', None))
         if collection_name not in db.list_collection_names():
             collection: pymongo.collection.Collection[Any]
             if len(self.primary_key) > 0:
@@ -132,21 +132,24 @@ class MongoTableAdapter(Generic[TEntity]):
             else:
                 collection = db.create_collection(
                     name=collection_name,
-                    session=mongo_session,
+                    session=None if mongo_session.in_transaction is not True else mongo_session,
                     check_exists=True
                     # TODO: implement validation as much as is possible between entity spec and mongodb
                     # validator=
                     # validationLevel=
                     # validationAction=
                 )
-            collection.create_index(
-                {
-                    k: 1
-                    for k in self.primary_key
-                },
-                session=mongo_session,
-                unique=True
-            )
+            primary_key = {
+                k: 1
+                for k in self.primary_key
+            }
+            if len(primary_key) > 0:
+                collection.create_index(
+                    primary_key,
+                    session=mongo_session,
+                    unique=True,
+                    name='pk'
+                )
             # create indexes for all entity fields with `index` attributes
             index_groups = defaultdict[str, list[tuple[str, IndexOptions]]](list)
             index_attrs = defaultdict[str, dict[str, Any]](dict)
@@ -156,6 +159,7 @@ class MongoTableAdapter(Generic[TEntity]):
                     index_groups[field_spec.index.name].append((field_name, field_spec.index))
                     index_groups[field_spec.index.name] = sorted(index_groups[field_spec.index.name])
                     index_attrs[field_spec.index.name]['unique'] = field_spec.unique is True
+                    index_attrs[field_spec.index.name]['name'] = field_spec.index.name
             for index_name, index_group in index_groups.items():
                 keys = [
                     (e[0], e[1].type if e[1].type is not None else pymongo.ASCENDING if e[1].direction is IndexOrder.ASCENDING else pymongo.DESCENDING)
