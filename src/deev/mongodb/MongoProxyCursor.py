@@ -254,8 +254,14 @@ class MongoProxyCursor(DbCursor):
             raise DbError(f'Cannot parse SELECT statement: {sql}')
         columns_str = m.group(1).strip()
         table_name = m.group(2)
+        col_names = [c.strip().strip('`][]"') for c in columns_str.split(',')]
         if table_name is None:
-            raise DbError('SELECT without a table name present not supported for MongoDB')
+            # SELECT without FROM (e.g. `SELECT 1`) — valid no-op for migration scripts;
+            # produce an empty result set whose description matches the selected columns.
+            self.__result_set: list[dict[str, Any]] = []
+            self.__description_fields = tuple(col_names)
+            self.__row_count = 0
+            return
         else:
             table_name.strip('`]["')
         where_clause = m.group(3)
@@ -269,7 +275,7 @@ class MongoProxyCursor(DbCursor):
             if doc_sample is not None:
                 col_names = [k for k in doc_sample.keys() if k != '_id']
         else:
-            col_names = [c.strip().strip('`').strip('"') for c in columns_str.split(',')]
+            col_names = [c.strip().strip('`]["') for c in columns_str.split(',')]
             projection = {c: 1 for c in col_names}
         where_filter = _parse_sql_where(where_clause, params) if where_clause else {}
         sort_spec: list[tuple[str, int]] | None = None
@@ -418,7 +424,7 @@ class MongoProxyCursor(DbCursor):
         table_name = m.group(1)
         columns_str = m.group(2)
         values_pattern = m.group(3)
-        columns = [c.strip().strip('`').strip('"') for c in columns_str.split(',')]
+        columns = [c.strip().strip('`]["') for c in columns_str.split(',')]
         placeholders = values_pattern.split(',')
         docs: list[dict[str, Any]] = []
         for param_set in seq_params:
