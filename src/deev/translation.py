@@ -268,17 +268,22 @@ def splat(entity: object, attrs: Optional[list[str]] = None, to_sql: bool = Fals
     return result
 
 
-def hydrate(entity: object, data: dict[str, Any], attrs: Optional[list[str]] = None, from_sql: bool = False) -> Any:
+def hydrate(entity: object | type, data: dict[str, Any], attrs: Optional[list[str]] = None, from_sql: bool = False) -> Any:
     """
     Hydrates an entity in-place from a "splat."
 
-    :param entity: The entity to hydrate.
+    :param entity: The entity to hydrate, or a type specifier of an entity to create and then hydrate.
     :param data: The data to hydrate.
     :param attrs: Specify which attrs/props to hydrate, otherwise hydrates all.
     :param from_sql: If True, source values are presumed to be sql objects that need to be mapped to python objects.
     :return: The original entity, hydrated.
     """
-    t = type(entity)
+    t: type
+    if isinstance(entity, type):
+        t = entity
+        entity = entity()
+    else:
+        t = type(entity)
     entity_spec = get_entity_spec(t)
     for attr_name, attr_value in data.items():
         if attrs is not None and attr_name not in attrs:

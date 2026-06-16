@@ -245,7 +245,7 @@ class MongoTableAdapter(Generic[TEntity]):
             return None
         doc = {k: v for k, v in raw_doc.items() if k != '_id'}
         result = doc
-        return hydrate(self.__entity_spec.entity_type(), result, from_sql=False)  # type: ignore[arg-type]
+        return hydrate(self.__entity_spec.entity_type, result, from_sql=False)  # type: ignore[arg-type]
 
     def update(self, entity: TEntity) -> None:
         self.__deferred_init()
@@ -346,7 +346,7 @@ class MongoTableAdapter(Generic[TEntity]):
         results = list(cursor)
         for result in results:
             doc = {k: v for k, v in result.items() if k != '_id'}
-            yield hydrate(self.__entity_spec.entity_type(), doc, from_sql=False)  # type: ignore[arg-type]
+            yield hydrate(self.__entity_spec.entity_type, doc, from_sql=False)  # type: ignore[arg-type]
 
 
 __all__ = ['MongoTableAdapter']
