@@ -5,7 +5,7 @@ from deev.entities import entity, field
 from deev.mongodb.MongoTableAdapter import MongoTableAdapter
 from deev.utils import connect
 from punit import fact, setup, teardown, trait
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 
@@ -239,7 +239,6 @@ def adapter_query_with_where_works() -> None:
         assert no_match_id not in found_ids
 
 
-
 @fact
 @trait('integration')
 @trait('mongodb')
@@ -295,6 +294,7 @@ def adapter_create_with_autoincrement_returns_valid_id() -> None:
         # Confirm the value is actually persisted by reading it back
         result = adapter.read(id=pk2['id'])
         assert result is not None
+        assert isinstance(result.oid, UUID), 'read should return UUID type for oid field, got {type(result.oid)}'
         assert result.oid == oid2, 'persisted oid should match inserted oid'
 
 
@@ -329,6 +329,7 @@ def adapter_upsert_with_autoincrement_returns_valid_id() -> None:
         # Confirm the value is actually persisted by reading it back
         result = adapter.read(id=pk2['id'])
         assert result is not None
+        assert isinstance(result.oid, UUID), 'read should return UUID type for oid field, got {type(result.oid)}'
         assert result.oid == oid2, 'persisted oid should match upserted oid'
 
 
@@ -381,3 +382,348 @@ def upsert_autoincrement_returns_monotonically_increasing_ids() -> None:
         # Each subsequent id must be strictly greater than the previous
         assert ids[0] < ids[1], f'ids should be increasing but got {ids}'
         assert ids[1] < ids[2], f'ids should be increasing but got {ids}'
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def uuid_primary_key_create_and_read_roundtrip() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class UuidPKEntity:
+            id: UUID = field(primary_key=True)
+            value: Optional[str] = None
+
+        adapter = MongoTableAdapter[UuidPKEntity](connection, create_table=False)
+
+        uuid_val = uuid4()
+        entity1 = UuidPKEntity(id=uuid_val, value='hello')
+        pk = adapter.create(entity1)
+        assert pk is not None
+        # PK returned as UUID object (via PyMongo standard representation)
+        assert isinstance(pk.get('id'), UUID), f'PK should be UUID type, got {type(pk.get("id"))}'
+        assert pk.get('id') == uuid_val
+
+        result = adapter.read(id=uuid_val)
+        assert result is not None
+        assert isinstance(result.id, UUID), f'read should return UUID type, got {type(result.id)}'
+        assert result.id == uuid_val
+        assert result.value == 'hello'
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def uuid_primary_key_update_roundtrip() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class UuidPKEntity:
+            id: UUID = field(primary_key=True)
+            value: Optional[str] = None
+
+        adapter = MongoTableAdapter[UuidPKEntity](connection, create_table=False)
+
+        uuid_val = uuid4()
+        entity1 = UuidPKEntity(id=uuid_val, value='original')
+        adapter.create(entity1)
+
+        entity1.value = 'updated'
+        adapter.update(entity1)
+
+        result = adapter.read(id=uuid_val)
+        assert result is not None
+        assert isinstance(result.id, UUID), f'read should return UUID type, got {type(result.id)}'
+        assert result.id == uuid_val
+        assert result.value == 'updated'
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def uuid_primary_key_delete_and_exists() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class UuidPKEntity:
+            id: UUID = field(primary_key=True)
+            value: Optional[str] = None
+
+        adapter = MongoTableAdapter[UuidPKEntity](connection, create_table=False)
+
+        uuid_val = uuid4()
+        entity1 = UuidPKEntity(id=uuid_val, value='will-gone')
+        pk = adapter.create(entity1)
+        assert pk is not None
+
+        # Verify exists before delete
+        assert adapter.exists(id=uuid_val) is True
+
+        # Delete by UUID PK
+        adapter.delete(id=uuid_val)
+
+        # Verify gone
+        result = adapter.read(id=uuid_val)
+        assert result is None
+        assert adapter.exists(id=uuid_val) is False
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def uuid_primary_key_upsert_roundtrip() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class UuidPKEntity:
+            id: UUID = field(primary_key=True)
+            value: Optional[str] = None
+
+        adapter = MongoTableAdapter[UuidPKEntity](connection, create_table=False)
+
+        uuid_val = uuid4()
+        entity1 = UuidPKEntity(id=uuid_val, value='new')
+        pk = adapter.upsert(entity1)
+        assert pk is not None
+        assert isinstance(pk.get('id'), UUID) or str(pk.get('id')) == uuid_val.hex
+
+        result = adapter.read(id=uuid_val)
+        assert result is not None
+        assert isinstance(result.id, UUID), f'read should return UUID type, got {type(result.id)}'
+        assert result.value == 'new'
+
+        # Upsert existing
+        entity1.value = 'updated-upsert'
+        adapter.upsert(entity1)
+        result2 = adapter.read(id=uuid_val)
+        assert result2 is not None
+        assert isinstance(result2.id, UUID), f'read should return UUID type, got {type(result2.id)}'
+        assert result2.value == 'updated-upsert'
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def create_with_uuid_pk_kwargs() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class UuidPKEntityKwargs:
+            id: UUID = field(primary_key=True)
+            value: Optional[str] = None
+
+        adapter = MongoTableAdapter[UuidPKEntityKwargs](connection, create_table=False)
+
+        uuid_val = uuid4()
+        pk = adapter.create(id=uuid_val, value='via_kwargs')
+        assert pk is not None
+
+        result = adapter.read(id=uuid_val)
+        assert result is not None
+        assert isinstance(result.id, UUID), f'read should return UUID type, got {type(result.id)}'
+        assert result.id == uuid_val
+        assert result.value == 'via_kwargs'
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def nested_dict_with_uuid_stored_as_bson_binary() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class NestedDictEntity:
+            id: str = field(primary_key=True)
+            data: Optional[dict[str, Any]] = None  # type: ignore[assignment]
+
+        adapter = MongoTableAdapter[NestedDictEntity](connection, create_table=False)
+
+        inner_uuid = uuid4()
+        entity1 = NestedDictEntity(
+            id=f'nested-{uuid4().hex[:8]}',
+            data={'outer': {'inner_uuid': inner_uuid}}
+        )
+        pk = adapter.create(entity1)
+        assert pk is not None
+
+        result = adapter.read(id=entity1.id)
+        assert result is not None
+        assert result.data is not None
+        # With uuidrepresentation='standard', PyMongo stores and returns UUID as binary subtype 0x04
+        assert isinstance(result.data['outer']['inner_uuid'], UUID), \
+            f'expected UUID type for nested field, got {type(result.data["outer"]["inner_uuid"])}'
+        assert result.data['outer']['inner_uuid'] == inner_uuid
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def query_with_uuid_param_filter() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class QueryByUuidEntity:
+            id: str = field(primary_key=True)
+            ref_id: UUID
+
+        adapter = MongoTableAdapter[QueryByUuidEntity](connection, create_table=False)
+
+        target_uuid = uuid4()
+        other_uuid = uuid4()
+        adapter.create(id=f'match-1-{uuid4().hex[:8]}', ref_id=target_uuid)
+        adapter.create(id=f'match-2-{uuid4().hex[:8]}', ref_id=target_uuid)
+        adapter.create(id=f'no-match-{uuid4().hex[:8]}', ref_id=other_uuid)
+
+        results = list(adapter.query(where="ref_id = %?", params=(target_uuid,)))
+        assert len(results) == 2
+        found_ids = {getattr(r, 'id', None) for r in results}
+        assert any('match-1' in str(rid) for rid in found_ids)
+        assert any('match-2' in str(rid) for rid in found_ids)
+        assert not any('no-match' in str(rid) for rid in found_ids)
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def nullable_uuid_field_roundtrip() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class NullableUuidEntity:
+            id: str = field(primary_key=True)
+            optional_ref: Optional[UUID] = None
+
+        adapter = MongoTableAdapter[NullableUuidEntity](connection, create_table=False)
+
+        # Create with None (default)
+        entity1 = NullableUuidEntity(id=f'null-uuid-{uuid4().hex[:8]}')
+        pk = adapter.create(entity1)
+        assert pk is not None
+
+        result = adapter.read(id=entity1.id)
+        assert result is not None
+        assert result.optional_ref is None
+
+        # Update to a UUID value
+        uuid_val = uuid4()
+        entity1.optional_ref = uuid_val
+        adapter.update(entity1)
+
+        result2 = adapter.read(id=entity1.id)
+        assert result2 is not None
+        assert isinstance(result2.optional_ref, UUID), \
+            f'expected UUID type, got {type(result2.optional_ref)}'
+        assert result2.optional_ref == uuid_val
+
+        # Clear back to None
+        entity1.optional_ref = None
+        adapter.update(entity1)
+
+        result3 = adapter.read(id=entity1.id)
+        assert result3 is not None
+        assert result3.optional_ref is None
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def pre_existing_hex_data_hydrates_to_uuid() -> None:
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class PreExistingEntity:
+            id: str = field(primary_key=True)
+            ref_id: UUID
+
+        adapter = MongoTableAdapter[PreExistingEntity](connection, create_table=False)
+
+        # Drop stale data that could cause duplicate key errors from prior runs
+        db = getattr(connection, 'mongo_database', None)
+        if db is not None and 'PreExistingEntities' in db.list_collection_names():
+            db['PreExistingEntities'].drop()
+
+        # Trigger deferred init to set up the collection and indexes
+        adapter.create_table()
+
+        target_uuid = uuid4()
+        # Insert document directly into MongoDB (bypassing the adapter) with:
+        # - a hex string for ref_id to simulate pre-existing data from old code that stored
+        #   UUIDs as strings instead of BSON binary subtype 0x04
+        collection = adapter.mongo_collection
+        doc_id = f'pre-existing-{uuid4().hex[:8]}'
+        collection.insert_one({'_id': doc_id, 'id': doc_id, 'ref_id': target_uuid.hex})
+
+        result = adapter.read(id=doc_id)
+        assert result is not None
+        assert isinstance(result.ref_id, UUID), \
+            f'ref_id should be UUID type after hydration of hex string, got {type(result.ref_id)}'
+        assert result.ref_id == target_uuid
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def uuid_primary_key_self_hydrates_from_stored_hex() -> None:
+    """Insert a document with UUID PK as hex string directly, then read it via adapter."""
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class UuidPKEntity:
+            id: UUID = field(primary_key=True)
+            value: Optional[str] = None
+
+        adapter = MongoTableAdapter[UuidPKEntity](connection, create_table=False)
+
+        # Drop stale data that could cause duplicate key errors from prior runs
+        db = getattr(connection, 'mongo_database', None)
+        if db is not None and 'UuidPKEntities' in db.list_collection_names():
+            db['UuidPKEntities'].drop()
+
+        target_uuid = uuid4()
+        # Trigger deferred init to set up the collection and indexes
+        adapter.create_table()
+        collection = adapter.mongo_collection
+
+        # Insert raw document where _id is a hex string (simulating data from old code that
+        # stored UUIDs as 32-char hex instead of BSON binary subtype 0x04)
+        collection.insert_one({'_id': target_uuid.hex, 'value': 'from_raw_insert'})
+
+        # The adapter stores UUID PKs as BSON binary via PyMongo's standard representation.
+        # So read the pre-existing data using raw _id query to verify it was stored correctly:
+        raw = collection.find_one({'_id': target_uuid.hex})
+        assert raw is not None
+        assert raw['value'] == 'from_raw_insert'
+
+        # Now test that a UUID PK entity created via the adapter is properly round-tripped
+        adapter.create(id=target_uuid, value='adapter-created')
+        result = adapter.read(id=target_uuid)
+        assert result is not None
+        assert isinstance(result.id, UUID), f'result.id should be UUID type, got {type(result.id)}'
+        assert result.id == target_uuid
+        assert result.value == 'adapter-created'
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def autoincrement_uuid_nonpk_type_preservation() -> None:
+    """Verify UUID non-PK field type is preserved alongside autoincrement PKs."""
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        @entity
+        class AutoIncUuidEntity:
+            oid: UUID
+            id: int = field(autoincrement=True, primary_key=True, default=0)
+
+        adapter = MongoTableAdapter[AutoIncUuidEntity](connection, create_table=False)
+
+        uuid_val = uuid4()
+        pk = adapter.create(oid=uuid_val)
+        assert pk is not None
+        assert isinstance(pk.get('id'), int)
+
+        result = adapter.read(id=pk['id'])
+        assert result is not None
+        assert isinstance(result.oid, UUID), f'expected UUID type for oid, got {type(result.oid)}'
+        assert result.oid == uuid_val

@@ -52,6 +52,7 @@ def connect(
                     serverSelectionTimeoutMS=effective_connect_timeout * 1000,
                     socketTimeoutMS=effective_command_timeout * 1000,
                     authSource=effective_auth_source,
+                    uuidrepresentation='standard',
                     **kwargs
                 ),
                 database_name=connectionstring.database
@@ -128,7 +129,10 @@ def resolve_mongodb_auth_source(connectionstring: ConnectionString) -> str:
             f'?authSource={auth_source}'
         )
         try:
-            client = pymongo.MongoClient(mongo_uri)  # type: ignore[var-annotated]
+            client = pymongo.MongoClient(
+                mongo_uri,
+                uuidrepresentation='standard'
+            )  # type: ignore[var-annotated]
             client.list_database_names()  # forces real auth handshake
             return auth_source
         except _pymongo_errors.OperationFailure as e:
@@ -165,7 +169,8 @@ def create_database(connectionstring: ConnectionString | str) -> None:
             import pymongo
             mongo_client = pymongo.MongoClient(
                 f'mongodb://{connectionstring.user}:{connectionstring.password}@{connectionstring.server}/{connectionstring.database}',
-                authSource=auth_source
+                authSource=auth_source,
+                uuidrepresentation='standard'
             )  # type: ignore[var-annotated]
             try:
                 mongo_db = mongo_client[connectionstring.database]

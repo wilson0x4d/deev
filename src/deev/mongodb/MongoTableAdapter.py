@@ -5,7 +5,6 @@ from deev.entities import IndexOptions, IndexOrder
 from collections import defaultdict
 import pymongo
 from typing import Any, Generator, Generic, Optional, TypeVar, cast, get_args, get_origin
-from uuid import UUID
 
 from ..common.DbContext import DbContext
 from ..common.DbCursor import DbCursor
@@ -20,13 +19,6 @@ from .MongoTypeMapper import MongoTypeMapper
 
 TEntity = TypeVar('TEntity')
 
-
-def _bson_safe(data: dict[str, Any]) -> dict[str, Any]:
-    """Convert UUID objects to hex strings for MongoDB BSON serialization."""
-    return {
-        k: (v.hex if type(v) is UUID else v)
-        for k, v in data.items()
-    }
 
 
 class MongoTableAdapter(Generic[TEntity]):
@@ -217,7 +209,7 @@ class MongoTableAdapter(Generic[TEntity]):
             pk_field = self.__entity_spec.primary_key[0]
             increment = self.__get_autoincrement()
             collection.insert_one(
-                _bson_safe(data) | {
+                data | {
                     pk_field: increment
                 }
             )
@@ -225,7 +217,7 @@ class MongoTableAdapter(Generic[TEntity]):
                 pk_field: increment
             }
         else:
-            collection.insert_one(_bson_safe(data))
+            collection.insert_one(data)
         return primary_key
 
     def read(self, **kwargs: Any) -> TEntity | None:
@@ -234,7 +226,7 @@ class MongoTableAdapter(Generic[TEntity]):
         """
         self.__deferred_init()
         primary_key = {
-            k: (v.hex if type(v) is UUID else v)
+            k: v
             for k, v in kwargs.items()
             if k in self.__entity_spec.primary_key
         }
@@ -251,18 +243,18 @@ class MongoTableAdapter(Generic[TEntity]):
         self.__deferred_init()
         entity_data = splat(entity, to_sql=False)  # type: ignore[arg-type]
         primary_key = {
-            k: (v.hex if type(v) is UUID else v)
+            k: v
             for k, v in entity_data.items()
             if k in self.__entity_spec.primary_key
         }
         collection = self._get_collection()
         update_fields = {k: v for k, v in entity_data.items() if k not in self.__entity_spec.primary_key}
-        collection.update_one(primary_key, {'$set': _bson_safe(update_fields)})  # type: ignore[union-attr]
+        collection.update_one(primary_key, {'$set': update_fields})  # type: ignore[union-attr]
 
     def delete(self, **kwargs: Any) -> None:
         self.__deferred_init()
         primary_key = {
-            k: (v.hex if type(v) is UUID else v)
+            k: v
             for k, v in kwargs.items()
             if k in self.__entity_spec.primary_key
         }
@@ -272,7 +264,7 @@ class MongoTableAdapter(Generic[TEntity]):
     def exists(self, **kwargs: Any) -> bool:
         self.__deferred_init()
         primary_key = {
-            k: (v.hex if type(v) is UUID else v)
+            k: v
             for k, v in kwargs.items()
             if k in self.__entity_spec.primary_key
         }
@@ -282,7 +274,7 @@ class MongoTableAdapter(Generic[TEntity]):
         self.__deferred_init()
         data = splat(entity, to_sql=False)  # type: ignore[arg-type]
         primary_key = {
-            k: (v.hex if type(v) is UUID else v)
+            k: v
             for k, v in data.items()
             if k in self.__entity_spec.primary_key
         }
@@ -295,7 +287,7 @@ class MongoTableAdapter(Generic[TEntity]):
             pk_field = self.__entity_spec.primary_key[0]
             increment = self.__get_autoincrement()
             collection.insert_one(
-                _bson_safe(data) | {
+                data | {
                     pk_field: increment
                 }
             )
@@ -303,9 +295,11 @@ class MongoTableAdapter(Generic[TEntity]):
                 pk_field: increment
             }
         else:
-            doc_data = _bson_safe(data)
+            doc_data = data
             primary_key_set = {
-                k: v for k, v in data.items() if k in self.__entity_spec.primary_key
+                k: v
+                for k, v in data.items()
+                if k in self.__entity_spec.primary_key
             }
             collection.replace_one(primary_key_set, doc_data, upsert=True)  # type: ignore[union-attr]
         return primary_key
@@ -318,13 +312,9 @@ class MongoTableAdapter(Generic[TEntity]):
         limit: Optional[int] = None
     ) -> Generator[TEntity, None, None]:
         self.__deferred_init()
-        if params is not None:
-            params = [
-                p.hex if type(p) is UUID else p
-                for p in params
-            ]
-        else:
-            params = []
+        # UUID values in params are passed through unchanged — PyMongo handles them natively with uuidrepresentation='standard'
+        if params is None:
+            params = ()
         where_clause = where
         where_filter: dict[str, Any] = _parse_sql_where(where_clause, tuple(params)) if where_clause else {}
         raw_orderby = orderby
