@@ -118,7 +118,7 @@ class MongoTransactionContext(DbTransactionContext):
     @property
     def mongo_database(self) -> pymongo.database.Database[Any]:
         # NOTE: this is a non-conformant property that we require for migration scripts (QOL), and must be retained.
-        return self.connection.mongo_client[self.__database_name].mongo_database  # type: ignore
+        return self.connection.mongo_client[self.__database_name]  # type: ignore
 
     @property
     def mongo_database_name(self) -> str:
