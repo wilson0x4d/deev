@@ -1,313 +1,448 @@
 ---
 name: deev
-description: deev Python entity framework — define entities with @entity and field(), perform CRUD via TableAdapter, translate between entity/dict/SQL via splat()/hydrate(), validate entities, manage migrations. Use when working with deev entities, table adapters, connection strings, or db-migrate CLI.
+description: deev Python entity framework — define entities with @entity and field(), perform CRUD via TableAdapter, translate between entity/dict/SQL via splat()/hydrate(), validate entities, manage migrations. Use as a reference document for deev API and concepts.
 user-invocable: true
 disable-model-invocation: false
+type: reference
 ---
 
-# deev — Python Entity Framework SKILL
+# deev — AI-First Library Reference
 
-## 1. Installation
+**deev** is an entity framework for Python 3.11+. It lets you perform CRUD using Python objects instead of hand-crafting SQL, provides a migration CLI (`db-migrate`), and abstracts across SQLite, MySQL, and MongoDB behind PEP 249-compatible protocols.
+
+---
+
+## Installation
 
 ```bash
-pip install deev                    # core package (SQLite built-in)
-pip install "deev[mongodb]"         # add MongoDB support
-pip install "deev[mysql]"           # add MySQL support
-pip install "deev[dev]"             # development dependencies/tools
+pip install deev          # core
+pip install deev[mongodb] # add MongoDB support
+pip install deev[mysql]   # add MySQL support
 ```
 
-Requires **Python >= 3.11**. Dependencies: `appsettings2`, `hanaro`.
+---
 
-## 2. Entity Definition
+## 1. Defining Entities
 
-Entities are defined with the `@entity` decorator (a `dataclass_transform`). It injects an `__init__` that applies field defaults and constructs parameterized keyword arguments.
+Decorate a class with `@entity` and annotate its fields. Use `field(...)` from `deev` to configure PK, autoincrement, nullability, validation bounds, etc.
 
 ```python
 from datetime import datetime, timezone
-from deev import entity, field
 from typing import Optional
+from deev import entity, field
 
-@entity(table_name='users')                      # bare form — use @entity or @entity(table_name='...')
+@entity
 class User:
-    id: int = field(autoincrement=True, primary_key=True)
-    name: str
-    email: Optional[str]         # auto: nullable=True (detected from type hint)
-    age: int = field(min=0, max=150)
-    created_at: datetime = field(
-        default=lambda: datetime.now(timezone.utc)
-    )
+    id: int = field(autoincrement=True, primary_key=True, default=None)
+    name: str = field(max=256)
+    email: Optional[str] = field(default=None)
+    score: Optional[int] = field(default=None, min=0, max=100)
+    created: datetime = field(default=lambda: datetime.now(timezone.utc))
 ```
 
-Key behaviors:
+### `field(...)` parameters
 
-- **Table name**: auto-pluralizes class name via `pluralize()` (simple English rules; if already ends with 's', unchanged). Override with `table_name=`, or disable pluralization entirely with `no_pluralization=True`.
-- **Spec caching**: entity spec is stored on `__deev_entity__` at decoration time. Repeated decoration returns the cached spec.
-- **Nullable inference**: `Optional[X]` or `Union[..., None]` type hints auto-set `nullable=True`. Override with `nullable=False` on `field()`.
-- **Immutable specs**: `EntityFieldSpec` is frozen via `_ImmutableMixin.__freeze__()` after decoration. Do not modify post-decoration.
+| Parameter    | Type                            | Meaning                                                         |
+|--------------|---------------------------------|-----------------------------------------------------------------|
+| `autoincrement` | `bool`                       | Column is auto-increment (PK only). Default: `False`.           |
+| `default`      | `Any \| Callable`               | Static value or callable producing a value at instantiation.    |
+| `index`        | `str \| IndexOptions`           | Name of an index, or `IndexOptions(...)` descriptor.            |
+| `mapped`       | `bool`                           | If `False`, field is excluded from SQL translation.             |
+| `min`          | `int \| float \| Decimal`       | Minimum value (strings: min length, numeric: min value).        |
+| `max`          | `int \| float \| Decimal`       | Maximum value (strings: max length, numeric: max value).        |
+| `nullable`     | `bool`                           | `True` allows NULL. Inferred from `Optional[...]` automatically.|
+| `primary_key`  | `bool`                           | Mark the field as part of the PK.                               |
+| `dbtype`       | `str`                            | Override the auto-detected DB type.                             |
+| `unique`       | `bool`                           | Add a unique constraint.                                        |
+| `validator`    | `Callable[[Any], ValidationError \| None]` | Custom validation function. Return `None` to pass.      |
 
-## 3. Field Options (`field()`)
+### `@entity` parameters
 
-All parameters are keyword-only:
+| Parameter        | Type     | Meaning                                                       |
+|------------------|----------|---------------------------------------------------------------|
+| `table_name`     | `str`    | Override auto-generated table name (pluralized class name).   |
+| `no_pluralization` | `bool` | If `True`, use class name as-is (don't pluralize).            |
 
-| Parameter | Type | Effect |
-|-----------|------|--------|
-| `autoincrement` | `bool \| None` | Mark for auto-increment (INTEGER PK in SQLite) |
-| `default` | `Any \| Callable` | Default value; callable invoked at `__init__`. Pass nothing for no default. |
-| `index` | `str \| None` | Field is part of an index (names the index) |
-| `mapped` | `bool \| None` | Exclude from `splat()`/`hydrate()` operations |
-| `max` | `int / float / Decimal` | Validation: max length for str, max value for numeric |
-| `min` | `int / float / Decimal` | Validation: min length for str, min value for numeric |
-| `nullable` | `bool \| None` | Explicit null override (overrides type-hint inference) |
-| `primary_key` | `bool \| None` | Marks field as part of primary key |
-| `dbtype` | `str \| None` | Override auto-detected database column type |
-| `unique` | `bool \| None` | Adds UNIQUE constraint |
-| `validator` | `Callable[[Any], ValidationError \| None]` | Custom validation callback |
-| `init` | `bool` | Include in `__init__` parameter list (default: `True`) |
-
-## 4. Connection String Format
-
-ADO-style key-value pairs separated by `;`:
-
-```
-Server=host;Database=db_name;Provider=sqlite3;UID=user;PWD=pass;Connection Timeout=3;Command Timeout=9
-```
-
-Parseable keys (case-insensitive): `server`, `database`, `uid`/`user`/`user id`/`username`, `pwd`/`password`/`pass`, `provider`, `connection timeout`, `command timeout`.
-
-**Provider dispatch** (used by `connect()` and `create_table_adapter()`):
-
-| Provider value | Python driver | Package required |
-|----------------|---------------|-----------------|
-| `sqlite` or `sqlite3` | `sqlite3` (stdlib) | none |
-| `mysql` or `mysql.connector` | `mysql.connector` | optional `[mysql]` |
-| `mongodb` or `pymongo` | `pymongo` | optional `[mongodb]` |
+### Defining indexes
 
 ```python
-from deev import connect, entity, field
-from deev.utils import create_database, create_table_adapter
+from deev import entity, field
+from deev.entities import IndexOptions, IndexOrder
 
-connection_str = 'Server=./data;Database=mydb;Provider=sqlite3'
-create_database(connection_str)
-
-with connect(connection_str) as db:               # DbConnection returned, use as context manager
-    adapter = create_table_adapter(User, db)       # factory dispatches to correct provider
-    # or directly: from deev.sqlite import SqliteTableAdapter; adapter = SqliteTableAdapter[User](db)
+@entity
+class Post:
+    id: int = field(autoincrement=True, primary_key=True)
+    title: str = field(index='idx_post_title')          # shorthand: by index name
+    author: str = field(index=IndexOptions(
+        name='idx_post_author', direction=IndexOrder.DESCENDING, rank=1
+    ))
 ```
 
-`connect()` accepts `ConnectionString | str`. Defaults: `connect_timeout=3`, `command_timeout=9`.
+### Custom table names and non-pluralized names
 
-## 5. Table Adapter CRUD
+```python
+@entity(table_name='users')
+class Users:
+    ...
 
-The `DbTableAdapter[TEntity]` Protocol (satisfied by all providers):
+@entity(no_pluralization=True)
+class Category:
+    ...  # table_name stays "Category", not "Categorys"
+```
 
-| Method | Signature | Returns | Notes |
-|--------|-----------|---------|-------|
-| `create_table()` | `() -> None` | — | Creates table from entity spec |
-| `create(entity=None, **kwargs)` | `(entity: TEntity \| None, **kwargs) -> dict[str, Any]` | PK values as dict | Returns primary key values |
-| `read(**kwargs)` | `(**kwargs) -> TEntity \| None` | Entity or None | By primary key |
-| `update(entity)` | `(entity: TEntity) -> None` | — | Updates by primary key |
-| `delete(**kwargs)` | `(**kwargs) -> None` | — | Deletes by primary key |
-| `exists(**kwargs)` | `(**kwargs) -> bool` | bool | By primary key |
-| `upsert(entity)` | `(entity: TEntity) -> dict[str, Any]` | PK values | Insert or update |
-| `query(where, params, orderby, limit)` | `(where=None, params=None, orderby=None, limit=None) -> Generator[TEntity, None, None]` | Generator | All kwargs optional |
-| `commit()` / `rollback()` | `() -> None` | — | Transaction control |
+---
 
-**SQL parameterization**: all providers use `%?` syntax (normalized across SQLite/MySQL/MongoDB).
+## 2. Connecting to a Database
+
+Use `deev.connect(...)` with a SQL-connection-string style string. It returns a context-managed `DbConnection`.
 
 ```python
 from deev import connect
+
+conn_str = 'Server=./data/;Database=mydb.db;Provider=sqlite3'
+# MySQL:  'Server=localhost;Database=mydb;UID=root;PWD=secret;Provider=mysql'
+# MongoDB: 'Server=localhost;Database=mydb;Provider=mongodb'
+
+with connect(conn_str) as db:
+    ...
+```
+
+Timeouts can be specified in the connection string or as kwargs:
+
+```python
+with connect(conn_str, connect_timeout=5, command_timeout=15) as db:
+    ...
+```
+
+### Supported providers
+
+| Provider string      | Package required    |
+|----------------------|---------------------|
+| `sqlite3` / `sqlite` | Built-in `sqlite3`  |
+| `mysql` / `mysql.connector` | `mysql-connector-python` |
+| `mongodb` / `pymongo` | `pymongo`           |
+
+### Creating a database
+
+```python
+from deev.utils import create_database
+
+create_database(conn_str)  # creates DB if it doesn't exist
+```
+
+---
+
+## 3. Table Adapters (CRUD)
+
+Create a typed table adapter using Python 3.12+ generic syntax:
+
+```python
 from deev.sqlite import SqliteTableAdapter
 
-with connect(connection_str) as db:
+with connect(conn_str) as db:
     table = SqliteTableAdapter[User](db)
-    pk = table.create(User(name="Alice"))         # → {"id": 1}
-    user = table.read(**pk)                        # → User instance
-    for u in table.query(where='name LIKE %?', params=('%Alic%',)):
-        print(u.name)
+    table.create_table()  # DDL
 ```
 
-## 6. Translation (splat / hydrate)
+The same interface exists for MySQL (`MysqlTableAdapter`) and MongoDB (`MongoTableAdapter`).
 
-### `splat()` — entity → dict
+### Helper: auto-create table adapter from connection string
 
 ```python
-from deev.translation import splat
+from deev.utils import create_table_adapter
 
-# Entity attributes as Python values:
-data = splat(user)                     # {"id": 1, "name": "Alice", ...}
-
-# Convert for database storage (applies to_sqlobject()):
-sql_data = splat(user, to_sql=True)    # datetime→isoformat, UUID→hex, collections→JSON, ...
+table = create_table_adapter(User, conn_str)  # auto-detects provider
 ```
 
-### `hydrate()` — dict → entity (in-place)
+### `SqliteTableAdapter[User]` methods
+
+| Method     | Signature                                                    | Returns                              |
+|------------|--------------------------------------------------------------|--------------------------------------|
+| `create`   | `create(entity: User, \| \*\*kwargs) -> dict[str, Any]`     | `{id: <pk_value>}`                   |
+| `read`     | `read(\*\*pk_kwargs) -> User \| None`                       | Single entity, or `None`             |
+| `update`   | `update(entity: User) -> None`                              | —                                    |
+| `delete`   | `delete(\*\*pk_kwargs) -> None`                             | —                                    |
+| `exists`   | `exists(\*\*pk_kwargs) -> bool`                             | `True` if found                      |
+| `upsert`   | `upsert(entity: User) -> dict[str, Any]`                    | `{id: <pk_value>}`                   |
+| `query`    | `query(where?, params?, orderby?, limit?) -> Generator[...]` | Yields `User` objects               |
+| `create_table` | `create_table() -> None`                                  | —                                    |
+
+### Examples
 
 ```python
-from deev.translation import hydrate
+# CREATE
+pk = table.create(User(name="Alice", email="a@b.com"))
+# pk == {"id": 1}
 
-# Python values → entity:
-user = hydrate(User(), {"id": 1, "name": "Alice"})
+# READ
+user = table.read(id=1)
 
-# SQL values → entity (applies to_pyobject()):
-hydrated = hydrate(User(), row_from_db, from_sql=True)
+# UPDATE
+user.email = "alice@new.com"
+table.update(user)
+
+# DELETE
+table.delete(id=1)
+
+# EXISTS
+table.exists(id=1)  # False
+
+# UPSERT (insert or update on PK match)
+pk = table.upsert(User(id=2, name="Bob", email="b@c.com"))
+
+# QUERY
+results = table.query(
+    where='score > %? AND name LIKE %?',
+    params=(50, 'A%'),
+    orderby='score DESC',
+    limit=10
+)
+for user in results:
+    print(user.name, user.score)
 ```
 
-### `deunionize()` — type hint helper
+### Parameter syntax
 
-Extracts the inner type from `Optional[X]` or `Union[X, None]` for use with `to_pyobject()`.
+All providers use normalized `%?` placeholders, translated automatically at runtime:
+- SQLite → `?`
+- MySQL → `%s` (native prepared statements)
+- MongoDB → passed through
 
-### Custom Serialization
+---
+
+## 4. Translation: `splat()` / `hydrate()`
+
+Convert between entity objects and dictionaries.
 
 ```python
-from deev.translation import configure_serialization, DeevJsonEncoder, DeevJsonDecoder
+from deev.translation import splat, hydrate
 
-class MyEncoder(DeevJsonEncoder): ...
-configure_serialization(encoder=MyEncoder, decoder=MyDecoder)
+# Entity → dict (useful for partial updates, logging, etc.)
+user = User(name="Alice", score=42)
+d = splat(user)
+# {"id": 1, "name": "Alice", "email": None, "score": 42, "created": datetime(...)}
 
-# Or wholesale replacement:
-configure_serialization(serializer=my_serialize, deserializer=my_deserialize)
+d_sql = splat(user, to_sql=True)  # serialize complex types for DB storage
+
+# Dict → entity (from DB query results)
+row = {"id": 3, "name": "Charlie", "score": 77, "created": "2025-01-01T00:00:00+00:00"}
+user = hydrate(User, row, from_sql=True)
+# User(id=3, name="Charlie", score=77, created=datetime(...))
+
+# Hydrate into existing entity
+hydrate(user, row)  # modifies in-place
 ```
 
-Default `DeevJsonEncoder` supports: datetime (`dt`), date (`date`), time (`time`), Decimal (`r`), UUID (`u`), set (`s`), tuple (`t`), bytes (base64, `b`) — all stored as JSON strings with tick-delimited type codes.
+### Supported complex types (auto-serialized to JSON)
 
-### Type Mapping Reference
+`list`, `dict`, `set`, `tuple`, `Decimal`, `UUID`, `datetime`, `date`, `time`, `timedelta`, `bytes`
 
-| Python type | SQLite | MySQL | MongoDB |
-|-------------|--------|-------|---------|
-| int | INTEGER | BIGINT | int32 |
-| float | REAL | DOUBLE | double |
-| Decimal | NUMERIC | DECIMAL(20,10) | decimal |
-| str | TEXT | VARCHAR(20)+ | string |
-| bool | INTEGER (0/1) | BIT | bool |
-| list / dict / tuple / set | TEXT(JSON) | MEDIUMTEXT(JSON) | array / object |
-| UUID | TEXT(hex) | CHAR(32) | string |
-| datetime | DATETIME(iso) | DATETIME(6)(iso) | datetime |
-| date | DATE(iso) | DATE(iso) | date |
-| time | TIME(iso) | TIME(6)(iso) | time |
-| timedelta | INTEGER(us) | BIGINT | int64 |
+### Custom serialization
 
-## 7. Validation
+```python
+from deev.translation import configure_serialization
+import json
+
+configure_serialization(
+    encoder=MyCustomEncoder,
+    decoder=MyCustomDecoder
+)
+# or replace entirely:
+configure_serialization(
+    serializer=my_serialize_fn,
+    deserializer=my_deserialize_fn
+)
+```
+
+---
+
+## 5. Validation
+
+Entities validate before persistence automatically. You can also validate on demand.
 
 ```python
 from deev.validation import validate, ValidationError
 
-errors = validate(user)        # None if valid, list[ValidationError] if not
-
-if errors:
-    for e in errors:
-        print(f"{e.field_name}: {e.reason}")   # "age": "VAL < 0"
-
-# Custom validator:
-def must_be_positive(v):
-    if v is not None and v <= 0:
-        return ValidationError('price', 'must be positive')
-    return None
-
-@entity
-class Product:
-    id: int = field(autoincrement=True, primary_key=True)
-    price: float = field(validator=must_be_positive)
+user = User(name="", score=200)  # violates max=100
+errors = validate(user)
+# [ValidationError("score"): "VAL > 100"]
 ```
 
-Built-in checks: `min`/`max` on string length (LEN) and numeric values (VAL), `nullable=False` enforcement. Custom validators receive the field value, return `ValidationError(reason)` or `None`.
+Custom validators per field:
 
-## 8. Migrations
+```python
+@entity
+class Account:
+    pin: int = field(validator=lambda v: None if str(v).isdigit() and len(str(v)) == 4 else ValidationError("pin", "must be 4 digits"))
+```
 
-### CLI
+---
+
+## 6. Transaction Contexts
+
+Enter a transactional scope using `begin_transaction()` or provider-specific contexts.
+
+```python
+from deev.utils import begin_transaction
+
+with begin_transaction(conn_str) as tx:
+    table = create_table_adapter(User, tx)
+    table.create(User(name="Alice"))
+    table.create(User(name="Bob"))
+    tx.commit()  # required — migration writer must call this explicitly
+```
+
+### `DbTransactionContext` methods
+
+| Method           | Signature                                    | Returns            |
+|------------------|----------------------------------------------|--------------------|
+| `cursor`         | `cursor() -> DbCursor`                      | —                  |
+| `commit`         | `commit() -> None`                          | —                  |
+| `rollback`       | `rollback() -> None`                        | —                  |
+| `execute`        | `execute(sql, params?) -> DbCursor`          | Cursor             |
+| `execute_script` | `execute_script(sql) -> None`                | —                  |
+| `execute_nonquery`| `execute_nonquery(sql, params?) -> None`    | —                  |
+| `execute_reader` | `execute_reader(sql, params?) -> Generator[...]` | Yields tuples  |
+| `execute_scalar` | `execute_scalar(sql, params?) -> Any`        | Single value       |
+
+### Raw SQL example
+
+```python
+with begin_transaction(conn_str) as tx:
+    count = tx.execute_scalar('SELECT COUNT(*) FROM Users WHERE score > %?', (50,))
+    tx.rollback()  # or tx.commit()
+```
+
+---
+
+## 7. Database Migrations with `db-migrate` CLI
+
+### Basic usage
 
 ```bash
-db-migrate apply <migration-name> <connection> [path]
-db-migrate undo  <migration-name> <connection> [path]
+# Apply migrations
+db-migrate apply 'Server=./data/;Database=mydb;Provider=sqlite3' ./migrations/mydb/
+
+# Undo last migration
+db-migrate undo --stop-at "002_somemigration" 'Server=...' ./migrations/mydb/
+
+# Undo all
+db-migrate undo 'Server=...' ./migrations/mydb/
+
+# Use a named connection from appsettings2 config
+db-migrate apply my_production
 ```
 
-- `<migration-name>`: Target migration to process (use `"all"` for all).
-- `<connection>`: Named connection from appsettings2 config or a literal `key=value` connection string.
-- `[path]`: Optional migration directory. Defaults to `./migrations/<database_name>/`.
-
-### Migration Scripts
-
-Each file in the migrations directory must define two functions with explicit `commit()` calls:
+### Creating a migration script
 
 ```python
+# migrations/mydb/001_create_users.py
 from deev.common import DbTransactionContext
+from deev.utils import create_table_adapter
+from myapp.entities import User
 
-def apply(db_transaction: DbTransactionContext) -> None:
-    db_transaction.execute_nonquery('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)')
-    db_transaction.commit()     # MUST be called explicitly
+def apply(tx: DbTransactionContext) -> None:
+    table = create_table_adapter(User, tx)
+    table.create_table()
+    tx.commit()  # REQUIRED: must call explicitly
 
-def undo(db_transaction: DbTransactionContext) -> None:
-    db_transaction.execute_nonquery('DROP TABLE IF EXISTS users')
-    db_transaction.commit()     # MUST be called explicitly
+def undo(tx: DbTransactionContext) -> None:
+    tx.execute_nonquery('DROP TABLE IF EXISTS Users')
+    tx.commit()
 ```
 
-**Ordering**: `apply()` processes files in **alphabetical** order; `undo()` processes in **reverse alphabetical** order. Filenames determine order — use numeric prefixes (``001_``, ``002_``, ...) or date codes to guarantee ordering.
+### Migration conventions
 
-**Commit requirement**: The migrator does not auto-commit on behalf of migration scripts. If you forget to call `commit()`, the context manager exit handler raises a ``DbError``.
+- **Ordering**: alphabetical by filename. Prefix with numbers: `001_`, `002_`, ...
+- **Tracking**: applied migrations stored in `_migrationdata` table/collection.
+- **Idempotency**: the CLI skips already-applied migrations.
+- **Stop-at point**: `--stop-at "migration_name"` halts processing at that file.
 
-### Programmatic API
+---
+
+## 8. ConnectionString
+
+Parse and build connection strings programmatically.
 
 ```python
-from deev.utils import apply_migrations, undo_migrations
+from deev import ConnectionString
 
-apply_migrations('all', connection_string, './migrations/')     # or '001_create_users' for single migration
-undo_migrations('all', connection_string, './migrations/')
+cs = ConnectionString('Server=localhost;Database=prod;UID=admin;PWD=s3cret;Provider=mysql')
+print(cs.server)      # "localhost"
+print(cs.database)    # "prod"
+print(cs.user)        # "admin"
+print(cs.provider)    # "mysql"
+
+str(cs)  # "Server=localhost;Database=prod;UID=admin;PWD=s3cret;Provider=mysql"
 ```
 
-Migration history is stored in `_migrationdata` (table on SQL providers, collection on MongoDB) with:
-- **int auto-increment PK** for MySQL / SQLite
-- **UUID PK** for MongoDB (uses ``_MigrationData2`` entity internally)
+Supported keys: `Server`, `Database`, `UID`/`User`/`Username`, `PWD`/`Password`/`Pass`, `Provider`, `Connection Timeout`, `Command Timeout`.
 
-### Provider-Specific Notes
+---
 
-**MySQL / SQLite — DDL auto-commits**: Both MySQL and SQLite implicitly commit the active transaction before DDL statements (``CREATE``, ``DROP``, ``ALTER``, etc.). This means DML changes issued before DDL in the same migration are committed automatically and **cannot be rolled back together**. If atomicity matters, split DDL and data changes into separate migration scripts.
-
-**MongoDB — no DDL**: MongoDB is schema-less; collections are created implicitly on first insert. The transaction context uses real ``pymongo.ClientSession`` transactions. Nested (savepoint-level) transactions are NOPs — only the top-level ambient transaction matters.
-
-## 9. Error Types
-
-| Exception | Import | When raised |
-|-----------|--------|-------------|
-| `DbError` | `from deev import DbError` | Unsupported provider, missing DB component in connection string |
-| `ValidationError` | `from deev.validation import ValidationError` | Explicit instantiation; returned by `validate()` (as list) |
-
-## 10. Testing Conventions
-
-- Uses **punit** framework (not pytest). Run:
-  ```bash
-  PYTHONPATH=src coverage run -m punit --trait '!integration' --trait '!hardcoded' --trait '!longrunning' --trait '!manual'
-  ```
-- Key decorators: `@fact` (single test), `@theory` + `@inlinedata(...)` (parameterized), `@setup`/`@teardown` (lifecycle)
-- Entity specs are cached on decoration — use unique class names per test to avoid spec collision.
+## 9. Error Handling
 
 ```python
-from deev import entity, field
-from punit import fact, theory, inlinedata
+from deev import DbError
 
-@entity
-class TestEntity:
-    id: int = field(autoincrement=True, primary_key=True)
-    name: str
+try:
+    table.create(...)
+except DbError as e:
+    print(e.reason)  # descriptive error message
+```
 
-@fact
-def test_entity_defaults() -> None:
-    e = TestEntity(name="hello")
-    assert e.name == "hello"
+---
 
-@theory
-@inlinedata("valid", True)
-@inlinedata("", False)
-def test_name_check(name: str, ok: bool) -> None:
+## 10. Provider Type Mappings
+
+| Python type      | SQLite      | MySQL              |
+|------------------|-------------|--------------------|
+| `int`            | `INTEGER`   | `INT`              |
+| `float`          | `REAL`      | `DOUBLE`           |
+| `str`            | `TEXT`      | `TEXT`             |
+| `bool`           | `INTEGER`   | `TINYINT`          |
+| `datetime`       | `TEXT` (ISO) | `DATETIME`        |
+| `date`           | `TEXT` (ISO) | `DATE`            |
+| `bytes`          | `BLOB`      | `BLOB`             |
+| `list` / `dict`  | `TEXT` (JSON) | `TEXT` (JSON)   |
+
+Override with `dbtype="..."` on any field.
+
+---
+
+## 11. MongoDB-specific notes
+
+- Collections are created implicitly on first insert — no DDL needed.
+- The `_migrationdata` uses UUID PKs (MongoDB doesn't support auto-increment).
+- Native `apply(...)` and `undo(...)` signatures are the same, but DDL auto-commit doesn't apply.
+- Access `mongo_client`, `mongo_database`, `mongo_session` properties on the transaction object for advanced operations.
+
+```python
+def apply(tx: DbTransactionContext) -> None:
+    # tx.mongo_session is a pymongo.ClientSession
+    # tx.mongo_database is a pymongo.Database
     ...
 ```
 
-## 11. Code Style for Contributors
+---
 
-- **SPDX headers** on every file (two lines): `# SPDX-FileCopyrightText: © 2023 Shaun Wilson` + `# SPDX-License-Identifier: MIT`
-- `from __future__ import annotations` as first import after SPDX/comments
-- **Heavy typing**: Protocol, Generic[TEntity], TypeVar, full parameter/return annotations everywhere
-- **No docstrings** in `@dataclass_transform` areas; use inline comments (`# NOTE: ...`)
-- **Double-underscore** for private attributes (`__field_name`); access via `object.__getattribute__`
-- **Immutable specs**: `_ImmutableMixin` with `__freeze__()` — raises `AttributeError` after freezing
-- **Protocol-based interfaces** (not ABCs) for all abstractions: DbConnection, DbContext, DbCursor, DbTableAdapter[TEntity], DbTypeMapper, DbTransactionContext
-- Graceful optional imports (try/except around mysql/mongodb imports)
-- Explicit `__all__` exports on every module
+## Quick Reference: Entry Points
+
+| Import from `deev`                  | What it provides                        |
+|--------------------------------------|----------------------------------------|
+| `entity`                             | Decorator to define entity classes     |
+| `field`                              | Configure entity fields                |
+| `connect`                            | Create a context-managed DB connection |
+| `ConnectionString`                   | Parse/build connection strings           |
+| `DbError`                            | DB operation error exception             |
+| `common.DbTransactionContext`        | Protocol for transactional scope         |
+| `validation.validate`                | On-demand entity validation              |
+| `translation.splat` / `hydrate`      | Entity ↔ dict conversion                 |
+| `utils.create_database`              | Create DB if missing                     |
+| `utils.create_table_adapter`         | Auto-detect provider, return adapter     |
+| `utils.begin_transaction`            | Start a transactional scope              |
+
+Provider adapters:
+- `deev.sqlite.SqliteTableAdapter[Entity](db)`
+- `deev.mysql.MysqlTableAdapter[Entity](db)`
+- `deev.mongodb.MongoTableAdapter[Entity](db)`
