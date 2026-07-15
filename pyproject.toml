@@ -44,4 +44,4 @@ Repository = "https://github.com/wilson0x4d/deev.git"
 db-migrate = "deev.db_migrate:main"
 
 [tool.setuptools.package-data]
-"deev" = ["py.typed"]
+"deev" = ["py.typed", "SKILL.md"]
