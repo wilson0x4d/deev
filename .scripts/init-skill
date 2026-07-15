@@ -26,11 +26,12 @@ fi
 echo "SKILL_SRC: $SKILL_SRC"
 
 for DEST_DIR in "$HOME/.opencode/skills/$WORKSPACE_NAME" "$HOME/.claude/skills/$WORKSPACE_NAME"; do
-    if [ ! -d "$DEST_DIR" ]; then
-        echo "⏭ SKIPPED (directory not found): $DEST_DIR"
+    if [ ! -d "$(dirname $DEST_DIR)" ]; then
+        echo "⏭ SKIPPED (directory not found): $(dirname $DEST_DIR)"
         continue
     fi
 
+    mkdir -p $DEST_DIR
     DEST_FILE="$DEST_DIR/SKILL.md"
 
     rm -f "$DEST_FILE"
