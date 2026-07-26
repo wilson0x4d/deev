@@ -66,6 +66,7 @@ class MongoTableAdapter(Generic[TEntity]):
     @property
     def mongo_collection(self) -> pymongo.collection.Collection[Any]:
         # NOTE: this is a non-conformant property that we require for migration scripts (QOL), and must be retained.
+        self.__deferred_init()
         return self.__context.mongo_database[  # type: ignore
             self.__table_name
             if self.__table_name is not None
