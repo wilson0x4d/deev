@@ -302,7 +302,7 @@ class MongoTableAdapter(Generic[TEntity]):
                 for k, v in data.items()
                 if k in self.__entity_spec.primary_key
             }
-            collection.replace_one(primary_key_set, doc_data, upsert=True)  # type: ignore[union-attr]
+            collection.update_one(primary_key_set, {'$set': doc_data}, upsert=True)
         return primary_key
 
     def query(
