@@ -9,6 +9,7 @@ from decimal import Decimal
 import json
 from enum import Enum
 from types import NoneType
+import inspect
 from typing import Any, Callable, Mapping, Optional, Union, get_args, get_origin
 from uuid import UUID
 
@@ -227,7 +228,7 @@ def to_pyobject(value: Any, hint: type) -> Any:
             return value
         else:
             return Decimal(value)
-    elif issubclass(hint, Enum):
+    elif inspect.isclass(hint) and issubclass(hint, Enum):
         return hint(value)
     else:
         org = get_origin(hint)
@@ -294,7 +295,7 @@ def to_sqlobject(value: Any, hint: type) -> Any:
         return str(value)
     elif hint == bool:
         return int(value is True)
-    elif issubclass(hint, Enum):
+    elif inspect.isclass(hint) and issubclass(hint, Enum):
         return value.value
     else:
         return value
