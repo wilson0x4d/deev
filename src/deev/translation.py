@@ -14,6 +14,18 @@ from uuid import UUID
 from .entities import get_entity_spec
 
 
+def _parse_datetime_iso(value: str) -> datetime:
+    if value.endswith('Z'):
+        value = value[:-1] + '+00:00'
+    return datetime.fromisoformat(value)
+
+
+def _parse_time_iso(value: str) -> time:
+    if value.endswith('Z'):
+        value = value[:-1] + '+00:00'
+    return time.fromisoformat(value)
+
+
 class DeevJsonDecoder(json.JSONDecoder):
 
     def decode(self, s: str, _w: Optional[Callable[..., Any]] = None) -> Any:
@@ -27,11 +39,11 @@ class DeevJsonDecoder(json.JSONDecoder):
                 remand = obj[tick_index + 1:]
                 match ident:
                     case 'dt':
-                        return datetime.fromisoformat(remand)
+                        return _parse_datetime_iso(remand)
                     case 'date':
                         return date.fromisoformat(remand)
                     case 'time':
-                        return time.fromisoformat(remand)
+                        return _parse_time_iso(remand)
                     case 'r':
                         return Decimal(remand)
                     case 'u':
@@ -55,22 +67,38 @@ class DeevJsonDecoder(json.JSONDecoder):
         return obj
 
 
+def _utc_z(dt: datetime) -> str:
+    utc_dt = dt.astimezone(timezone.utc)
+    return utc_dt.strftime('%Y-%m-%dT%H:%M:%S') + (
+        ('.%06d' % utc_dt.microsecond) if utc_dt.microsecond else ''
+    ) + 'Z'
+
+
+def _utc_z_time(t: time) -> str:
+    return t.strftime('%H:%M:%S') + (
+        ('.%06d' % t.microsecond) if t.microsecond else ''
+    ) + 'Z'
+
+
 class DeevJsonEncoder(json.JSONEncoder):
 
     def __process(self, obj: Any) -> Any:
         if isinstance(obj, datetime):
-            # ISO-8601 string
-            return f'dt`{obj.isoformat()}'
+            if obj.tzinfo is not None:
+                return f'dt`{_utc_z(obj)}'
+            else:
+                return f'dt`{obj.isoformat()}'
         elif isinstance(obj, date):
-            # ISO-8601 string (date only)
             return f'date`{obj.isoformat()}'
         elif isinstance(obj, time):
-            # ISO-8601 string (time only)
-            return f'time`{obj.isoformat()}'
+            if obj.tzinfo is not None:
+                return f'time`{_utc_z_time(obj)}'
+            else:
+                return f'time`{obj.isoformat()}'
         elif isinstance(obj, Decimal):
             return f'r`{str(obj)}'
         elif isinstance(obj, UUID):
-            return f'u`{obj.hex}'
+            return f'u`{str(obj)}'
         elif isinstance(obj, set):
             return f's`{self.encode([e for e in obj])}'
         elif isinstance(obj, tuple):
@@ -178,19 +206,22 @@ def to_pyobject(value: Any, hint: type) -> Any:
     elif hint == UUID and isinstance(value, str):
         return UUID(value)
     elif hint == datetime and isinstance(value, str):
-        return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+        dt = _parse_datetime_iso(value)
+        if dt.tzinfo is not None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
     elif hint == date and isinstance(value, str):
         return date.fromisoformat(value)
     elif hint == time and isinstance(value, str):
-        return time.fromisoformat(value).replace(tzinfo=timezone.utc)
+        tm = _parse_time_iso(value)
+        if tm.tzinfo is not None:
+            return tm.replace(tzinfo=timezone.utc)
+        return tm
     elif hint == timedelta and isinstance(value, int):
         return timedelta(microseconds=value)
     elif hint == Decimal:
         if isinstance(value, str):
-            if value.startswith('Decimal'):
-                return Decimal(value[9:-2])
-            else:
-                return Decimal(value)
+            return Decimal(value)
         elif isinstance(value, Decimal):
             return value
         else:
@@ -207,6 +238,32 @@ def to_pyobject(value: Any, hint: type) -> Any:
             return value
 
 
+def _to_json_value(value: Any) -> Any:
+    """Convert a single top-level value to a JSON-serializable form for standard json.dumps()."""
+    if value in (None, NoneType, 'null', 'NULL'):
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            return _utc_z(value)
+        else:
+            return value.isoformat()
+    elif isinstance(value, date):
+        return value.isoformat()
+    elif isinstance(value, time):
+        if value.tzinfo is not None:
+            return _utc_z_time(value)
+        else:
+            return value.isoformat()
+    elif isinstance(value, Decimal):
+        return str(value)
+    elif isinstance(value, UUID):
+        return str(value)
+    elif isinstance(value, set):
+        return list(value)
+    # For lists, tuples, dicts: return as-is (preserves nested type round-trips)
+    return value
+
+
 def to_sqlobject(value: Any, hint: type) -> Any:
     if value in (None, NoneType, 'null', 'NULL'):
         return None
@@ -215,19 +272,21 @@ def to_sqlobject(value: Any, hint: type) -> Any:
         value = __to_json(value)
         return value if value != 'null' and value != '' else None
     elif hint == datetime:
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.isoformat()
+        if value.tzinfo is not None:
+            return _utc_z(value)
+        else:
+            u = value.replace(tzinfo=timezone.utc)
+            return _utc_z(u)
     elif hint == date:
         return value.isoformat()
     elif hint == time:
         if value.tzinfo is None:
             value = value.replace(tzinfo=timezone.utc)
-        return value.isoformat()
+        return _utc_z_time(value)
     elif hint == timedelta:
         return value.days * 86_400_000_000 + value.seconds * 1_000_000 + value.microseconds
     elif hint == UUID:
-        return value.hex
+        return str(value)
     elif hint == bool:
         return int(value is True)
     else:
@@ -262,7 +321,7 @@ def splat(entity: object, attrs: Optional[list[str]] = None, to_sql: bool = Fals
                 if to_sql:
                     result[attr_name] = to_sqlobject(attr_value, attr_hint)
                 else:
-                    result[attr_name] = attr_value
+                    result[attr_name] = _to_json_value(attr_value)
             elif field_spec.nullable:
                 result[attr_name] = None
     return result

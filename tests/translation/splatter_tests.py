@@ -101,7 +101,7 @@ def splat_populated_bvt() -> None:
     assert actual_entity.attr_dict == expected_entity.attr_dict
     assert actual_entity.attr_list == expected_entity.attr_list
     assert actual_entity.attr_tuple == expected_entity.attr_tuple
-    assert actual_entity.attr_uuid.hex == expected_entity.attr_uuid.hex
+    assert actual_entity.attr_uuid == expected_entity.attr_uuid
     assert getattr(actual_entity, 'attr_decimal', None) is None
 
 
@@ -152,7 +152,7 @@ def splat_to_sql_bvt() -> None:
     assert actual_entity.attr_int == expected_entity.attr_int
     assert actual_entity.attr_float == expected_entity.attr_float
     assert actual_entity.attr_decimal == expected_entity.attr_decimal
-    assert actual_entity.attr_datetime.isoformat() == expected_entity.attr_datetime.isoformat(), f'{actual_entity.attr_datetime.isoformat()} != {expected_entity.attr_datetime.isoformat()}'
+    assert actual_entity.attr_datetime == expected_entity.attr_datetime
     assert actual_entity.attr_date == expected_entity.attr_date
     assert actual_entity.attr_time == expected_entity.attr_time
     assert actual_entity.attr_timedelta == expected_entity.attr_timedelta
@@ -160,7 +160,7 @@ def splat_to_sql_bvt() -> None:
     assert actual_entity.attr_dict == expected_entity.attr_dict
     assert actual_entity.attr_list == expected_entity.attr_list
     assert actual_entity.attr_tuple == expected_entity.attr_tuple
-    assert actual_entity.attr_uuid.hex == expected_entity.attr_uuid.hex
+    assert actual_entity.attr_uuid == expected_entity.attr_uuid
 
 
 @fact

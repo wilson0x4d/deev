@@ -2,16 +2,18 @@
 # SPDX-License-Identifier: MIT
 
 from __future__ import annotations
-from datetime import date, datetime, time
+
+import json
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 from deev.translation import (  # type: ignore  # pylint: disable=import-error
     __from_json,
     __to_json,
+    to_pyobject,
 )
 from punit import collections, fact
 from typing import Any
 from uuid import UUID
-
 
 @fact
 def when_datetime() -> None:
@@ -101,8 +103,6 @@ def when_complex_structure() -> None:
     json_str: str = __to_json(expected)
     actual: Any = __from_json(json_str)
 
-    # ``set`` objects are unordered; the decoder should reconstruct them
-    # as sets.  All other types preserve their identity.
     assert isinstance(actual, dict), 'Decoded top-level object is not a dict'
     assert actual['when'] == expected['when']
     assert actual['day'] == expected['day']
@@ -110,7 +110,7 @@ def when_complex_structure() -> None:
     assert actual['price'] == expected['price']
     assert actual['uid'] == expected['uid']
     assert isinstance(actual['tags'], set)
-    assert actual['tags'] == expected['tags']
+    assert collections.areSame(actual['tags'], expected['tags'], sort=True)
     assert isinstance(actual['coords'], tuple)
     assert actual['coords'] == expected['coords']
     assert isinstance(actual['payload'], bytes)
