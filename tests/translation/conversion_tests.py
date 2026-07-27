@@ -4,7 +4,10 @@
 from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
+from enum import Enum, IntEnum
+
 from deev.translation import (  # type: ignore  # pylint: disable=import-error
+    _to_json_value,
     deunionize,
     to_pyobject,
     to_sqlobject
@@ -13,6 +16,22 @@ from punit import collections, inlinedata, theory
 from types import NoneType
 from typing import Any, Mapping, Optional, Union, get_origin
 from uuid import UUID
+
+
+class Status(Enum):
+    ACTIVE = 'active'
+    INACTIVE = 'inactive'
+
+
+class NumericStatus(Enum):
+    ACTIVE = 1
+    INACTIVE = 2
+
+
+class Priority(IntEnum):
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
 
 
 @theory
@@ -57,6 +76,12 @@ def can_deunionize_types(input: type, expected: type) -> None:
 @inlinedata('04c182b78c784285b913c8981b4727bf', UUID, UUID('04c182b78c784285b913c8981b4727bf'))
 @inlinedata('123', Decimal, Decimal(123))
 @inlinedata(123, Decimal, Decimal(123))
+@inlinedata('active', Status, Status.ACTIVE)
+@inlinedata('inactive', Status, Status.INACTIVE)
+@inlinedata(1, NumericStatus, NumericStatus.ACTIVE)
+@inlinedata(2, NumericStatus, NumericStatus.INACTIVE)
+@inlinedata(1, Priority, Priority.LOW)
+@inlinedata(3, Priority, Priority.HIGH)
 def to_pyobject_bvt(value: Any, hint: type, expected: Any) -> None:
     # assert compaitble conversion
     actual = to_pyobject(value, hint)
@@ -92,6 +117,12 @@ def to_pyobject_bvt(value: Any, hint: type, expected: Any) -> None:
 @inlinedata(date(2023, 5, 19), date, '2023-05-19')
 @inlinedata(UUID('04c182b78c784285b913c8981b4727bf'), UUID, '04c182b7-8c78-4285-b913-c8981b4727bf')
 @inlinedata(Decimal(123), Decimal, Decimal(123))
+@inlinedata(Status.ACTIVE, Status, 'active')
+@inlinedata(Status.INACTIVE, Status, 'inactive')
+@inlinedata(NumericStatus.ACTIVE, NumericStatus, 1)
+@inlinedata(NumericStatus.INACTIVE, NumericStatus, 2)
+@inlinedata(Priority.LOW, Priority, 1)
+@inlinedata(Priority.HIGH, Priority, 3)
 def to_sqlobject_bvt(value: Any, hint: type, expected: Any) -> None:
     actual = to_sqlobject(value, hint)
     if get_origin(hint) in (Mapping, dict, list, set, tuple):

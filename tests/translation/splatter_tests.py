@@ -6,6 +6,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from deev.entities import entity, field
 from deev.translation import splat, hydrate
+from enum import Enum, IntEnum
 from punit import fact
 from typing import Any, Optional
 from uuid import UUID, uuid4

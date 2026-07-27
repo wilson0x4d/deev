@@ -7,6 +7,7 @@ import base64
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 import json
+from enum import Enum
 from types import NoneType
 from typing import Any, Callable, Mapping, Optional, Union, get_args, get_origin
 from uuid import UUID
@@ -226,13 +227,15 @@ def to_pyobject(value: Any, hint: type) -> Any:
             return value
         else:
             return Decimal(value)
+    elif issubclass(hint, Enum):
+        return hint(value)
     else:
         org = get_origin(hint)
         org = org if org is not None else hint
         if org in (Mapping, dict, list, set, tuple) and isinstance(value, str):
             d = __from_json(value)
             if not isinstance(d, org):
-                d = hint(d)
+                d = hint(d)  # type: ignore[call-arg]
             return d
         else:
             return value
@@ -260,6 +263,8 @@ def _to_json_value(value: Any) -> Any:
         return str(value)
     elif isinstance(value, set):
         return list(value)
+    elif isinstance(value, Enum):
+        return value.value
     # For lists, tuples, dicts: return as-is (preserves nested type round-trips)
     return value
 
@@ -289,6 +294,8 @@ def to_sqlobject(value: Any, hint: type) -> Any:
         return str(value)
     elif hint == bool:
         return int(value is True)
+    elif issubclass(hint, Enum):
+        return value.value
     else:
         return value
 

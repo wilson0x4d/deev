@@ -3,17 +3,29 @@
 
 from __future__ import annotations
 
-import json
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
 from deev.translation import (  # type: ignore  # pylint: disable=import-error
     __from_json,
     __to_json,
-    to_pyobject,
+    _to_json_value,
 )
+from enum import Enum, IntEnum
 from punit import collections, fact
-from typing import Any
 from uuid import UUID
+from typing import Any
+
+
+class TestStatus(Enum):
+    ACTIVE = 'active'
+    INACTIVE = 'inactive'
+
+
+class TestPriority(IntEnum):
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+
 
 @fact
 def when_datetime() -> None:
@@ -124,3 +136,13 @@ def when_complex_structure() -> None:
     ):
         assert isinstance(actual_set, set)
         assert actual_set == expected_set
+
+
+@fact
+def when_enum_to_json_value() -> None:
+    assert _to_json_value(TestStatus.ACTIVE) == 'active', 'enum _to_json_value failed'
+
+
+@fact
+def when_int_enum_to_json_value() -> None:
+    assert _to_json_value(TestPriority.HIGH) == 3, 'int enum _to_json_value failed'
