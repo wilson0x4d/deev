@@ -12,7 +12,7 @@ from ..common.DbError import DbError
 from ..common.DbParams import DbParams
 from ..common.DbTypeMapper import DbTypeMapper
 from ..entities import EntitySpec, get_entity_spec
-from ..translation import hydrate, to_pyobject, splat
+from ..translation import hydrate, splat, to_pyobject
 from .MongoProxyCursor import _parse_sql_where
 from .MongoTypeMapper import MongoTypeMapper
 
@@ -190,12 +190,13 @@ class MongoTableAdapter(Generic[TEntity]):
         """
         self.__deferred_init()
         data = (
-            splat(entity, to_sql=False)  # type: ignore[arg-type]
+            splat(entity, to_sql=False, to_bson=True)  # type: ignore[arg-type]
             if entity is not None
             else dict[str, Any]()
         )
-        if kwargs is not None:
-            data.update(kwargs)
+        if kwargs:
+            for k, v in kwargs.items():
+                data[k] = v
         primary_key = {
             k: v
             for k, v in data.items()
@@ -237,12 +238,11 @@ class MongoTableAdapter(Generic[TEntity]):
         if raw_doc is None:
             return None
         doc = {k: v for k, v in raw_doc.items() if k != '_id'}
-        result = doc
-        return hydrate(self.__entity_spec.entity_type, result, from_sql=False)  # type: ignore[arg-type]
+        return hydrate(self.__entity_spec.entity_type, doc, from_bson=True)  # type: ignore[arg-type]
 
     def update(self, entity: TEntity) -> None:
         self.__deferred_init()
-        entity_data = splat(entity, to_sql=False)  # type: ignore[arg-type]
+        entity_data = splat(entity, to_sql=False, to_bson=True)  # type: ignore[arg-type]
         primary_key = {
             k: v
             for k, v in entity_data.items()
@@ -273,7 +273,7 @@ class MongoTableAdapter(Generic[TEntity]):
 
     def upsert(self, entity: TEntity) -> dict[str, Any]:
         self.__deferred_init()
-        data = splat(entity, to_sql=False)  # type: ignore[arg-type]
+        data = splat(entity, to_sql=False, to_bson=True)  # type: ignore[arg-type]
         primary_key = {
             k: v
             for k, v in data.items()
@@ -296,13 +296,7 @@ class MongoTableAdapter(Generic[TEntity]):
                 pk_field: increment
             }
         else:
-            doc_data = data
-            primary_key_set = {
-                k: v
-                for k, v in data.items()
-                if k in self.__entity_spec.primary_key
-            }
-            collection.update_one(primary_key_set, {'$set': doc_data}, upsert=True)
+            collection.update_one(primary_key, {'$set': data}, upsert=True)
         return primary_key
 
     def query(
@@ -313,7 +307,6 @@ class MongoTableAdapter(Generic[TEntity]):
         limit: Optional[int] = None
     ) -> Generator[TEntity, None, None]:
         self.__deferred_init()
-        # UUID values in params are passed through unchanged — PyMongo handles them natively with uuidrepresentation='standard'
         if params is None:
             params = ()
         where_clause = where
@@ -337,7 +330,7 @@ class MongoTableAdapter(Generic[TEntity]):
         results = list(cursor)
         for result in results:
             doc = {k: v for k, v in result.items() if k != '_id'}
-            yield hydrate(self.__entity_spec.entity_type, doc, from_sql=False)  # type: ignore[arg-type]
+            yield hydrate(self.__entity_spec.entity_type, doc, from_bson=True)  # type: ignore[arg-type]
 
 
 __all__ = ['MongoTableAdapter']

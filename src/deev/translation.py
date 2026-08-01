@@ -270,6 +270,37 @@ def _to_json_value(value: Any) -> Any:
     return value
 
 
+def to_bsonobject(value: Any) -> Any:
+    """Convert a value for MongoDB BSON storage — UUIDs are left as objects for PyMongo natively.
+    
+    This is identical to _to_json_value except UUIDs are NOT converted to strings.
+    PyMongo handles UUID objects as BSON binary subtype 0x04 when uuidrepresentation='standard'.
+    """
+    if value in (None, NoneType, 'null', 'NULL'):
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            return _utc_z(value)
+        else:
+            return value.isoformat()
+    elif isinstance(value, date):
+        return value.isoformat()
+    elif isinstance(value, time):
+        if value.tzinfo is not None:
+            return _utc_z_time(value)
+        else:
+            return value.isoformat()
+    elif isinstance(value, Decimal):
+        return str(value)
+    # UUID: leave as UUID object — PyMongo handles native BSON binary
+    elif isinstance(value, set):
+        return list(value)
+    elif isinstance(value, Enum):
+        return value.value
+    # For lists, tuples, dicts: return as-is (preserves nested type round-trips)
+    return value
+
+
 def to_sqlobject(value: Any, hint: type) -> Any:
     if value in (None, NoneType, 'null', 'NULL'):
         return None
@@ -301,13 +332,14 @@ def to_sqlobject(value: Any, hint: type) -> Any:
         return value
 
 
-def splat(entity: object, attrs: Optional[list[str]] = None, to_sql: bool = False) -> dict[str, Any]:
+def splat(entity: object, attrs: Optional[list[str]] = None, to_sql: bool = False, to_bson: bool = False) -> dict[str, Any]:
     """
     Splatter entity attributes/fields into a dict.
 
     :param entity: The entity to splatter.
     :param attrs: Specify which attrs/fields to splatter, otherwise splatter all.
     :param to_sql: If True, destination values need to be mapped to sql objects.
+    :param to_bson: If True, destination values need to be mapped to bson-compatible objects (for MongoDB).
     :return: The resulting splat.
     """
     result = dict[str, Any]()
@@ -328,6 +360,8 @@ def splat(entity: object, attrs: Optional[list[str]] = None, to_sql: bool = Fals
                 #     continue
                 if to_sql:
                     result[attr_name] = to_sqlobject(attr_value, attr_hint)
+                elif to_bson:
+                    result[attr_name] = to_bsonobject(attr_value)
                 else:
                     result[attr_name] = _to_json_value(attr_value)
             elif field_spec.nullable:
@@ -335,7 +369,7 @@ def splat(entity: object, attrs: Optional[list[str]] = None, to_sql: bool = Fals
     return result
 
 
-def hydrate(entity: object | type, data: dict[str, Any], attrs: Optional[list[str]] = None, from_sql: bool = False) -> Any:
+def hydrate(entity: object | type, data: dict[str, Any], attrs: Optional[list[str]] = None, from_sql: bool = False, from_bson: bool = False) -> Any:
     """
     Hydrates an entity in-place from a "splat."
 
@@ -343,6 +377,7 @@ def hydrate(entity: object | type, data: dict[str, Any], attrs: Optional[list[st
     :param data: The data to hydrate.
     :param attrs: Specify which attrs/props to hydrate, otherwise hydrates all.
     :param from_sql: If True, source values are presumed to be sql objects that need to be mapped to python objects.
+    :param from_bson: If True, source values are presumed to be BSON objects from MongoDB (UUIDs are already UUID objects).
     :return: The original entity, hydrated.
     """
     t: type
@@ -373,5 +408,6 @@ __all__ = [
     'hydrate',
     'splat',
     'to_pyobject',
-    'to_sqlobject'
+    'to_sqlobject',
+    'to_bsonobject'
 ]
