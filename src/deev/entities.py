@@ -236,14 +236,23 @@ def __can_kwarg(func: Callable[..., Any], kwargs: Mapping[str, Any]) -> bool:
 
 
 @dataclass_transform(eq_default=False, order_default=False, field_specifiers=(field,))
-def entity(cls: Optional[Type[T]] = None, *, table_name: Optional[str] = None, no_pluralization: bool = False) -> Any:
+def entity(
+    cls: Optional[Type[T]] = None,
+    *,
+    table_name: Optional[str] = None,
+    no_pluralization: bool = False,
+    defer_init: bool = False,
+) -> Any:
     """
     Transform a "simple" class definition into an "Entity" class.
+
+    When *defer_init* is True, the original class ``__init__`` is called
+    *before* field defaults are applied, allowing mixin base classes
+    that set up backing stores in ``__init__`` to do so first.
     """
     if cls is None:
-        # parameterized, so proxy through a lambda that will collect the class reference
         def __entity(_cls: Type[T]) -> Type[T]:
-            return entity(_cls, table_name=table_name, no_pluralization=no_pluralization)  # type: ignore[bad-return]
+            return entity(_cls, table_name=table_name, no_pluralization=no_pluralization, defer_init=defer_init)  # type: ignore[bad-return]
         return __entity  # type: ignore[return-value]
     else:
         L_init = None if not hasattr(cls, '__init__') else cast(Callable[..., Any], cls.__init__)
@@ -262,26 +271,44 @@ def entity(cls: Optional[Type[T]] = None, *, table_name: Optional[str] = None, n
             return v
         setattr(cls, '__getattribute__', hide_fieldspec)
 
-        def init(*args: Any, **kwargs: Any) -> None:
-            self = args[0]
-            for field_name, field_spec in entity_spec.fields.items():
-                # apply field defaults, if any
-                if hasattr(field_spec, 'default'):  # NOTE: we do not null-check here because `None` may be the default we want to inject!
-                    if field_spec.default is not None and callable(field_spec.default):
-                        setattr(self, field_name, field_spec.default())
+        if defer_init:
+            def init(*args: Any, **kwargs: Any) -> None:
+                self = args[0]
+                if L_init is not None:
+                    if L_init is object.__init__:
+                        L_init(self)
+                    elif len(kwargs) > 0 and __can_kwarg(L_init, kwargs):
+                        L_init(*args, **kwargs)
                     else:
-                        setattr(self, field_name, field_spec.default)
-            if L_init is not None:
-                if L_init is object.__init__:
-                    L_init(self)
-                elif len(kwargs) > 0 and __can_kwarg(L_init, kwargs):
-                    L_init(*args, **kwargs)
-                else:
-                    L_init(*args)
-            # apply initializer-supplied values, if any (overwrites defaults)
-            if kwargs is not None:
-                for k, v in kwargs.items():
-                    setattr(self, k, v)
+                        L_init(*args)
+                for field_name, field_spec in entity_spec.fields.items():
+                    if hasattr(field_spec, 'default'):
+                        if field_spec.default is not None and callable(field_spec.default):
+                            setattr(self, field_name, field_spec.default())
+                        else:
+                            setattr(self, field_name, field_spec.default)
+                if kwargs is not None:
+                    for k, v in kwargs.items():
+                        setattr(self, k, v)
+        else:
+            def init(*args: Any, **kwargs: Any) -> None:
+                self = args[0]
+                for field_name, field_spec in entity_spec.fields.items():
+                    if hasattr(field_spec, 'default'):
+                        if field_spec.default is not None and callable(field_spec.default):
+                            setattr(self, field_name, field_spec.default())
+                        else:
+                            setattr(self, field_name, field_spec.default)
+                if L_init is not None:
+                    if L_init is object.__init__:
+                        L_init(self)
+                    elif len(kwargs) > 0 and __can_kwarg(L_init, kwargs):
+                        L_init(*args, **kwargs)
+                    else:
+                        L_init(*args)
+                if kwargs is not None:
+                    for k, v in kwargs.items():
+                        setattr(self, k, v)
 
         setattr(cls, '__init__', init)
         return cls
