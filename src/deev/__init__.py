@@ -7,6 +7,7 @@ from .entities import (
     entity,
     field
 )
+from .translation import hydrate, splat
 from .utils import connect
 from . import common, entities, mongodb, mysql, translation, utils, validation
 
@@ -23,8 +24,10 @@ __all__ = [
     'entities',
     'entity',
     'field',
+    'hydrate',
     'mongodb',
     'mysql',
+    'splat',
     'translation',
     'utils',
     'validation'

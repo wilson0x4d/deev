@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from .ConnectionString import ConnectionString
+from .DbAdapter import DbAdapter
 from .DbConnection import DbConnection
 from .DbCursor import DbCursor
 from .DbContext import DbContext
@@ -15,6 +16,7 @@ from .DbTypeMapper import DbTypeMapper
 
 __all__ = [
     'ConnectionString',
+    'DbAdapter',
     'DbConnection',
     'DbCursor',
     'DbContext',
