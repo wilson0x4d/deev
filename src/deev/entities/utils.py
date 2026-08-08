@@ -32,8 +32,10 @@ T = TypeVar('T')
 __NOTSET__ = object()
 
 
-def snake_case_name(name: str) -> str:
-    return re.sub(r'([A-Z])', r'_\1', name).lower().strip('_')
+def snake_case_name(s: str) -> str:
+    s = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1_\2', s)
+    s = re.sub(r'([a-z\d])([A-Z])', r'\1_\2', s)
+    return s.lower().strip('_')
 
 
 def pluralize(name: str, snake_case: bool = False) -> str:
