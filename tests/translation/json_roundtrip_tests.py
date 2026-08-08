@@ -7,10 +7,12 @@ import json
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from deev.translation import (  # type: ignore  # pylint: disable=import-error
-    __from_json,
-    __to_json,
     to_pyobject,
     to_sqlobject,
+)
+from deev.translation.utils import (  # type: ignore  # pylint: disable=import-error
+    __from_json,
+    __to_json,
 )
 from punit import (  # type: ignore  # pylint: disable=import-error
     collections,

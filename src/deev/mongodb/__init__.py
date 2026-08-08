@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 try:
-    from .MongoProxyConnection import MongoProxyConnection
-    from .MongoProxyCursor import MongoProxyCursor
-    from .MongoTableAdapter import MongoTableAdapter
-    from .MongoTransactionContext import MongoTransactionContext
-    from .MongoTypeMapper import MongoTypeMapper
+    from .mongo_proxy_connection import MongoProxyConnection
+    from .mongo_proxy_cursor import MongoProxyCursor
+    from .mongo_table_adapter import MongoTableAdapter
+    from .mongo_transaction_context import MongoTransactionContext
+    from .mongo_type_mapper import MongoTypeMapper
 except Exception:
     # NOTE: if required packages are not installed we expect this module to import without errors
     pass

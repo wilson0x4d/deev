@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
-from deev.translation import (  # type: ignore  # pylint: disable=import-error
+from deev.translation.utils import (  # type: ignore  # pylint: disable=import-error
     __from_json,
     __to_json,
     _to_json_value,

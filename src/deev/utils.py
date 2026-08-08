@@ -5,13 +5,13 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-from .common.ConnectionString import ConnectionString
-from .common.DbConnection import DbConnection
-from .common.DbContext import DbContext
-from .common.DbError import DbError
-from .common.DbMigrator import DbMigrator
-from .common.DbTableAdapter import DbTableAdapter
-from .common.DbTransactionContext import DbTransactionContext
+from .common.connection_string import ConnectionString
+from .common.db_connection import DbConnection
+from .common.db_context import DbContext
+from .common.db_error import DbError
+from .common.db_migrator import DbMigrator
+from .common.db_table_adapter import DbTableAdapter
+from .common.db_transaction_context import DbTransactionContext
 
 
 def connect(
@@ -39,7 +39,7 @@ def connect(
     effective_command_timeout = connectionstring.command_timeout if connectionstring.command_timeout is not None else command_timeout
     match connectionstring.provider:
         case 'mongodb':
-            from deev.mongodb.MongoProxyConnection import MongoProxyConnection
+            from deev.mongodb.mongo_proxy_connection import MongoProxyConnection
             import pymongo
             if connectionstring.database is None:
                 raise DbError(f'ConnectionString is missing `database` component: {connectionstring}')
@@ -58,7 +58,7 @@ def connect(
                 database_name=connectionstring.database
             )
         case 'mysql.connector' | 'mysql':
-            from deev.mysql.MysqlProxyConnection import MysqlProxyConnection
+            from deev.mysql.mysql_proxy_connection import MysqlProxyConnection
             import mysql.connector
             if connectionstring.server is None:
                 raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
@@ -82,7 +82,7 @@ def connect(
                 conn.commit()
             return MysqlProxyConnection(conn)
         case 'sqlite3' | 'sqlite':
-            from deev.sqlite.SqliteProxyConnection import SqliteProxyConnection
+            from deev.sqlite.sqlite_proxy_connection import SqliteProxyConnection
             import sqlite3
             if connectionstring.database is None:
                 raise ValueError('Missing `database` value in Connection String.')

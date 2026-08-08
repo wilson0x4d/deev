@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 try:
-    from .MysqlProxyConnection import MysqlProxyConnection
-    from .MysqlProxyCursor import MysqlProxyCursor
-    from .MysqlTableAdapter import MysqlTableAdapter
-    from .MysqlTransactionContext import MysqlTransactionContext
-    from .MysqlTypeMapper import MysqlTypeMapper
+    from .mysql_proxy_connection import MysqlProxyConnection
+    from .mysql_proxy_cursor import MysqlProxyCursor
+    from .mysql_table_adapter import MysqlTableAdapter
+    from .mysql_transaction_context import MysqlTransactionContext
+    from .mysql_type_mapper import MysqlTypeMapper
 except Exception:
     # NOTE: if required packages are not installed we expect this module to import without errors
     pass

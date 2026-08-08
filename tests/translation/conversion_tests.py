@@ -7,10 +7,12 @@ from decimal import Decimal
 from enum import Enum, IntEnum
 
 from deev.translation import (  # type: ignore  # pylint: disable=import-error
-    _to_json_value,
     deunionize,
     to_pyobject,
     to_sqlobject
+)
+from deev.translation.utils import (  # type: ignore  # pylint: disable=import-error
+    _to_json_value,
 )
 from punit import collections, fact, inlinedata, theory
 from types import NoneType

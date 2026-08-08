@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: © 2023 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
-from .common.ConnectionString import ConnectionString
-from .common.DbError import DbError
+from .common.connection_string import ConnectionString
+from .common.db_error import DbError
 from .entities import (
     entity,
     field

@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: © 2026 Shaun Wilson
+# SPDX-License-Identifier: MIT
+
+from __future__ import annotations
+
+from mysql.connector.abstracts import MySQLConnectionAbstract
+from mysql.connector.pooling import PooledMySQLConnection
+from types import TracebackType
+from typing import Any, Literal, Optional, Self
+
+from ..common.db_connection import DbConnection
+from ..common.db_cursor import DbCursor
+from .mysql_proxy_cursor import MysqlProxyCursor
+
+
+class MysqlProxyConnection(DbConnection):
+    """
+    Normalized connection interface for MySQL Connector.
+
+    Ensures features are preserved wherever a connection or cursor is acquired via ``deev``.
+    """
+
+    __connection: MySQLConnectionAbstract | PooledMySQLConnection
+
+    def __init__(self, provider_connection: MySQLConnectionAbstract | PooledMySQLConnection) -> None:
+        self.__connection = provider_connection
+
+    def cursor(self, *args: Any, **kwargs: Any) -> DbCursor:
+        return MysqlProxyCursor(self.__connection.cursor(*args, **kwargs))
+
+    def commit(self) -> None:
+        self.__connection.commit()
+
+    def rollback(self) -> None:
+        self.__connection.rollback()
+
+    def close(self) -> None:
+        self.__connection.close()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> bool:
+        self.__connection.__exit__(exc_type, exc, tb)  # type: ignore[arg-type]
+        return exc is not None
+
+
+__all__ = ['MysqlProxyConnection']

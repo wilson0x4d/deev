@@ -6,7 +6,7 @@ import argparse
 import hanaro
 import sys
 
-from .common.ConnectionString import ConnectionString
+from .common.connection_string import ConnectionString
 from .utils import apply_migrations, undo_migrations
 
 
