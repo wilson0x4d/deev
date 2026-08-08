@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from decimal import Decimal
 import inspect
+import re
 from types import NoneType
 from typing import (
     Any,
@@ -21,7 +22,6 @@ from typing import (
     get_type_hints
 )
 
-from .._immutable_mixin import _ImmutableMixin
 from .entity_field_spec import EntityFieldSpec
 from .entity_spec import EntitySpec
 from .index_options import IndexOptions
@@ -32,7 +32,11 @@ T = TypeVar('T')
 __NOTSET__ = object()
 
 
-def pluralize(name: str) -> str:
+def snake_case_name(name: str) -> str:
+    return re.sub(r'([A-Z])', r'_\1', name).lower().strip('_')
+
+
+def pluralize(name: str, snake_case: bool = False) -> str:
     """
     Derive an plural form of *name* using simple rules (English).
 
@@ -40,6 +44,8 @@ def pluralize(name: str) -> str:
     """
     if not name:
         return name
+    if snake_case is True:
+        name = snake_case_name(name)
     if name.endswith('s'):
         return name
     if name.endswith(('x', 'z', 'ch', 'sh')):
@@ -49,7 +55,7 @@ def pluralize(name: str) -> str:
     return name + 's'
 
 
-def define_entity_spec(entity_type: type, *, table_name: Optional[str] = None, no_pluralization: bool = False) -> EntitySpec:
+def define_entity_spec(entity_type: type, *, table_name: Optional[str] = None, no_pluralization: bool = False, snake_case: bool = False) -> EntitySpec:
     entity_spec = getattr(entity_type, '__deev_entity__', None)
     if entity_spec is None:
         has_autoincrement = False
@@ -92,9 +98,13 @@ def define_entity_spec(entity_type: type, *, table_name: Optional[str] = None, n
                 table_name
                 if table_name is not None
                 else (
-                    pluralize(entity_type.__name__)
+                    pluralize(entity_type.__name__, snake_case=snake_case)
                     if no_pluralization is False
-                    else entity_type.__name__
+                    else (
+                        entity_type.__name__
+                        if snake_case is False
+                        else snake_case_name(entity_type.__name__)
+                    )
                 )
             )
         )
@@ -117,8 +127,8 @@ def field(
     default: Optional[Callable[..., Any] | Any] = __NOTSET__,  # the field should have a default value applied on creation. may be a value or a function.
     index: Optional[str | IndexOptions] = None,  # the field is part of an index definition, this is the index name or an IndexField descriptor object defining the index field in more detail
     mapped: Optional[bool] = None,
-    max: Optional[int | float] = None,  # string maximum length <= value (validation)
-    min: Optional[int | float] = None,  # string minimum length >= value (validation)
+    max: Optional[int | float | Decimal] = None,  # string maximum length <= value (validation)
+    min: Optional[int | float | Decimal] = None,  # string minimum length >= value (validation)
     nullable: Optional[bool] = None,  # the db should support NULL values for this field, default is NOT NULLABLE unless field hint is `Optional[...]` or `Union[...,None]`, etc.
     primary_key: Optional[bool] = None,  # the field is part of a primary key definition
     dbtype: Optional[str] = None,  # dbtype override
@@ -161,6 +171,7 @@ def entity(
     table_name: Optional[str] = None,
     no_pluralization: bool = False,
     defer_init: bool = False,
+    snake_case: bool = False
 ) -> Any:
     """
     Transform a "simple" class definition into an "Entity" class.
@@ -171,11 +182,11 @@ def entity(
     """
     if cls is None:
         def __entity(_cls: Type[T]) -> Type[T]:
-            return entity(_cls, table_name=table_name, no_pluralization=no_pluralization, defer_init=defer_init)  # type: ignore[bad-return]
+            return entity(_cls, table_name=table_name, no_pluralization=no_pluralization, defer_init=defer_init, snake_case=snake_case)  # type: ignore[bad-return]
         return __entity  # type: ignore[return-value]
     else:
         L_init = None if not hasattr(cls, '__init__') else cast(Callable[..., Any], cls.__init__)
-        entity_spec = define_entity_spec(cls, table_name=table_name, no_pluralization=no_pluralization)
+        entity_spec = define_entity_spec(cls, table_name=table_name, no_pluralization=no_pluralization, snake_case=snake_case)
 
         def hide_fieldspec(self: Any, name: str) -> Any:
             v = object.__getattribute__(self, name)
