@@ -32,12 +32,11 @@ echo -n -e "\033]0;$WORKSPACE_NAME\007"
 source .venv/bin/activate
 
 # tools and deps
-#pip install --upgrade pip
-pip install pip-tools
-pip-compile -o requirements.txt --all-extras --strip-extras pyproject.toml
-if [ -f requirements.txt ]; then
-    pip install -r requirements.txt
-fi
+pip install --upgrade pip
+pip install .
+pip install .[mongodb]
+pip install .[mysql]
+pip install .[dev]
 export PYTHONPATH="$SRC_DIR"
 export MYPYPATH="$SRC_DIR"
 if ! [[ ":PATH:" == *":$SCRIPT_DIR:"* ]]; then
