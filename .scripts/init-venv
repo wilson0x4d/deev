@@ -37,7 +37,7 @@ echo -n -e "\033]0;$WORKSPACE_NAME\007"
 source .venv/bin/activate
 
 # tools and deps
-uv sync
+uv sync --all-extras
 export PYTHONPATH="$SRC_DIR"
 export MYPYPATH="$SRC_DIR"
 if ! [[ ":PATH:" == *":$SCRIPT_DIR:"* ]]; then

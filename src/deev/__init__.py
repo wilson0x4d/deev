@@ -9,7 +9,7 @@ from .entities import (
 )
 from .translation import hydrate, splat
 from .utils import connect
-from . import common, entities, mongodb, mysql, translation, utils, validation
+from . import clickhouse, common, entities, mongodb, mysql, translation, utils, validation
 
 
 __version__ = '0.0.0'
@@ -18,6 +18,7 @@ __all__ = [
     '__version__', '__commit__',
     'ConnectionString',
     'DbError',
+    'clickhouse',
     'common',
     'connect',
     'db_migrate',

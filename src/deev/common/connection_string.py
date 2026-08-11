@@ -4,11 +4,106 @@
 from __future__ import annotations
 
 from typing import Optional
+from urllib.parse import parse_qs, urlparse, unquote
+
+
+_DSN_TO_PROVIDER: dict[str, str] = {
+    'mysql': 'mysql.connector',
+    'mysql2': 'mysql.connector',
+    'sqlite': 'sqlite',
+    'sqlite3': 'sqlite3',
+    'mongodb': 'mongodb',
+    'mongodb+srv': 'mongodb',
+    'clickhouse': 'clickhouse',
+}
 
 
 class ConnectionString:
     """
-    A type-safe "Connection String" representation that can parse/build constituent parts.
+    A type-safe connection string representation that can parse and build constituent parts.
+
+    Supports two input formats:
+
+    **DSN (URI) format**
+
+    Standard URI connection strings, automatically mapped to the appropriate provider:
+
+    ================    ===========================================
+    DSN Scheme          Mapped Provider
+    ================    ===========================================
+    ``mysql``           ``mysql.connector``
+    ``mysql2``          ``mysql.connector``
+    ``sqlite``          ``sqlite``
+    ``sqlite3``         ``sqlite3``
+    ``mongodb``         ``mongodb``
+    ``mongodb+srv``     ``mongodb``
+    ``clickhouse``      ``clickhouse``
+    ================    ===========================================
+
+    Examples:
+
+    .. code-block:: python
+
+        # MySQL
+        ConnectionString('mysql://root:pass@127.0.0.1:3306/mydb')
+
+        # SQLite file
+        ConnectionString('sqlite3:///path/to/db.sqlite')
+
+        # SQLite in-memory
+        ConnectionString('sqlite:///:memory:')
+
+        # MongoDB
+        ConnectionString('mongodb://user:pass@mongo.local:27017/mydb')
+
+        # MongoDB Atlas / SRV
+        ConnectionString('mongodb+srv://admin:secret@cluster.mongodb.net/proddb')
+
+        # ClickHouse
+        ConnectionString('clickhouse://default:pass@ch.local:8123/analytics')
+
+    DSN query parameters ``connect_timeout`` and ``command_timeout`` are supported, e.g.:
+
+    .. code-block:: python
+
+        ConnectionString('mysql://user:pass@localhost:3306/db?connect_timeout=10&command_timeout=30')
+
+    Credentials may be percent-encoded as in standard URIs (``urlparse`` decodes them automatically).
+
+    **OLEDB / key-value format**
+
+    Semicolon-delimited ``Key=Value`` pairs, as used in ADO / ADO.NET connection strings:
+
+    .. code-block:: python
+
+        ConnectionString('Server=127.0.0.1;Database=mydb;UID=root;PWD=pass;Provider=mysql.connector')
+
+    Recognized keys (case-insensitive):
+
+    ======================  ===================================
+    Key                     Maps To
+    ======================  ===================================
+    ``server``              ``server``
+    ``database``            ``database``
+    ``uid``                 ``user``
+    ``user``                ``user``
+    ``user id``             ``user``
+    ``username``            ``user``
+    ``pwd``                 ``password``
+    ``password``            ``password``
+    ``pass``                ``password``
+    ``provider``            ``provider``
+    ``connection timeout``  ``connect_timeout``
+    ``command timeout``     ``command_timeout``
+    ======================  ===================================
+
+    **Properties**
+
+    All fields are accessible via getter/setter properties:
+    ``server``, ``database``, ``user``, ``password``, ``provider``,
+    ``connect_timeout``, ``command_timeout``.
+
+    ``str(connectionString)`` reconstructs the OLEDB-style format from the parsed parts.
     """
 
     __server: Optional[str]
@@ -108,17 +203,45 @@ class ConnectionString:
         self.__command_timeout = value
 
     def parse(self, connectionstring: Optional[str]) -> ConnectionString:
-        parts = (
-            []
-            if connectionstring is None
-            else connectionstring.split(';')
-        )
+        if not connectionstring:
+            return self
+        parsed = urlparse(connectionstring)
+        if parsed.scheme and parsed.scheme in _DSN_TO_PROVIDER:
+            self.__parse_dsn(parsed)
+        else:
+            self.__parse_oledb(connectionstring)
+        return self
+
+    def __parse_dsn(self, parsed) -> None:
+        provider = _DSN_TO_PROVIDER[parsed.scheme]
+        self.provider = provider
+        if parsed.username is not None:
+            self.user = unquote(parsed.username)
+        if parsed.password is not None:
+            self.password = unquote(parsed.password)
+        host_port = parsed.hostname or ''
+        if parsed.port:
+            host_port = f'{host_port}:{parsed.port}'
+        self.server = host_port or None
+        if parsed.path:
+            db = parsed.path.lstrip('/')
+            self.database = db or None
+        params = parse_qs(parsed.query)
+        if 'connect_timeout' in params:
+            self.connect_timeout = int(params['connect_timeout'][0])
+        if 'command_timeout' in params:
+            self.command_timeout = int(params['command_timeout'][0])
+
+    def __parse_oledb(self, connectionstring: str) -> None:
+        parts = connectionstring.split(';')
         for part in parts:
+            if not part:
+                continue
             key, value = part.split('=')
             match key.lower():
-                case 'server':
+                case 'server' | 'data source':
                     self.server = value
-                case 'database':
+                case 'database' | 'catalog':
                     self.database = value
                 case 'uid' | 'user' | 'user id' | 'username':
                     self.user = value
@@ -130,7 +253,6 @@ class ConnectionString:
                     self.connect_timeout = int(value)
                 case 'command timeout':
                     self.command_timeout = int(value)
-        return self
 
 
 __all__ = ['ConnectionString']

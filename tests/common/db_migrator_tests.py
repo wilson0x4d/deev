@@ -172,6 +172,19 @@ def when_constructed_with_pymongo_provider__then_migration_data_type_is_v2() -> 
 
 @fact
 @trait('unit')
+def when_constructed_with_clickhouse_provider__then_migration_data_type_is_v2() -> None:
+    cs = ConnectionString()
+    cs.server = 'localhost:8123'
+    cs.database = 'testdb'
+    cs.provider = 'clickhouse'
+
+    migrator, mock_adapter, patches = _migrator_mocked(cs)
+    assert migrator._DbMigrator__migrationdata_t is _MigrationData2, f'expected _MigrationData2, got {type(migrator._DbMigrator__migrationdata_t)}'  # type: ignore[attr-defined]
+    _release_patches(patches)
+
+
+@fact
+@trait('unit')
 def when_apply_given_nonexistent_path__then_returns_early_and_logs_warning() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -645,6 +658,16 @@ def when_constructed_with_mysql_test_connection__then_selects_migration_data_typ
 def when_constructed_with_mongo_test_connection__then_selects_migration_data_type_is_v2() -> None:
     """Uses real appsettings connection but patches DB layer — tests type-selection logic."""
     cs = _get_test_connectionstring('mongo_test')
+
+    migrator, mock_adapter, patches = _migrator_mocked(cs)
+    assert migrator._DbMigrator__migrationdata_t is _MigrationData2  # type: ignore[attr-defined]
+    _release_patches(patches)
+
+
+@fact
+def when_constructed_with_clickhouse_test_connection__then_selects_migration_data_type_v2() -> None:
+    """Uses real appsettings connection but patches DB layer — tests type-selection logic."""
+    cs = _get_test_connectionstring('clickhouse_test')
 
     migrator, mock_adapter, patches = _migrator_mocked(cs)
     assert migrator._DbMigrator__migrationdata_t is _MigrationData2  # type: ignore[attr-defined]

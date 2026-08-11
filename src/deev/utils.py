@@ -88,6 +88,28 @@ def connect(
                 raise ValueError('Missing `database` value in Connection String.')
             db_path = connectionstring.database if connectionstring.server is None else os.path.join(connectionstring.server, connectionstring.database)
             return SqliteProxyConnection(sqlite3.connect(db_path))
+        case 'clickhouse':
+            from deev.clickhouse.clickhouse_proxy_connection import ClickHouseProxyConnection
+            from clickhouse_connect.dbapi.connection import Connection as ClickHouseDBAPIConnection
+            if connectionstring.server is None:
+                raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
+            if connectionstring.database is None:
+                raise DbError(f'ConnectionString is missing `database` component: {connectionstring}')
+            parts = connectionstring.server.split(':')
+            host_name, port_number = (parts[0], int(parts[1])) if len(parts) == 2 else (parts[0], 8123)
+            return ClickHouseProxyConnection(
+                ClickHouseDBAPIConnection(
+                    username=connectionstring.user or 'default',
+                    password=connectionstring.password or '',
+                    host=host_name,
+                    database=connectionstring.database,
+                    port=port_number,
+                    compress=True,
+                    connect_timeout=effective_connect_timeout,
+                    send_receive_timeout=effective_command_timeout,
+                    **kwargs
+                )
+            )
         case _:
             raise ValueError(f'Unsupported provider: {connectionstring.provider}')
 
@@ -210,6 +232,23 @@ def create_database(connectionstring: ConnectionString | str) -> None:
             if len(path) > 0:
                 os.makedirs(path, exist_ok=True)
             connect(connectionstring)
+        case 'clickhouse':
+            from clickhouse_connect.driver import create_client
+            if connectionstring.server is None:
+                raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
+            parts = connectionstring.server.split(':')
+            host_name, port_number = (parts[0], int(parts[1])) if len(parts) == 2 else (parts[0], 8123)
+            ch_client = create_client(
+                host=host_name,
+                username=connectionstring.user or 'default',
+                password=connectionstring.password or '',
+                port=port_number,
+                compress=True
+            )
+            try:
+                ch_client.command(f'CREATE DATABASE IF NOT EXISTS `{connectionstring.database}`')
+            finally:
+                ch_client.close()
         case _:
             raise DbError(f'Unsupported database provider: {connectionstring.provider}')
 
@@ -260,6 +299,9 @@ def create_table_adapter(
         case 'MongoProxyConnection' | 'MongoTransactionContext':
             import deev.mongodb
             return deev.mongodb.MongoTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table)  # type: ignore[valid-type]
+        case 'ClickHouseProxyConnection' | 'ClickHouseTransactionContext':
+            import deev.clickhouse
+            return deev.clickhouse.ClickHouseTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table)  # type: ignore[valid-type]
         case _:
             raise DbError(f'Unsupported object: {dbcontext}')
 
@@ -280,6 +322,9 @@ def begin_transaction(dbcontext_or_connectionstring: DbContext | ConnectionStrin
         case 'SqliteProxyConnection' | 'SqliteTransactionContext':
             import deev.sqlite
             return deev.sqlite.SqliteTransactionContext(dbcontext)
+        case 'ClickHouseProxyConnection' | 'ClickHouseTransactionContext':
+            import deev.clickhouse
+            return deev.clickhouse.ClickHouseTransactionContext(dbcontext)
         case _:
             raise DbError(f'Unsupported object: {dbcontext}')
 

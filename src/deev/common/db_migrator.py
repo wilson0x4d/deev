@@ -31,7 +31,7 @@ class DbMigrator:
         self.__connectionstring = connectionstring
         self.__logger = logging.getLogger(__name__)
         match connectionstring.provider:
-            case 'mongodb' | 'pymongo':
+            case 'mongodb' | 'pymongo' | 'clickhouse':
                 self.__migrationdata_t = _MigrationData2
             case _:
                 self.__migrationdata_t = _MigrationData

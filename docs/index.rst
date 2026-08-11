@@ -15,20 +15,16 @@ Overview
 Features
 ========
 
-* Entity-based; perform CRUD operations using Python objects instead of
-  hand-crafting SQL.
-* Validation; Entities validate before they get persisted to a database, also validate entities on-demand.
-* Transaction Contexts; enter and exit transaction scopes with language-level
-  context management, avoid mismanaged transaction states.
-* DB Migrations; use Python code to apply (and undo) schema changes, data
-  translation, etc. using the ``db-migrate`` CLI tool for use from CI/CD
-  pipelines.
-* PEP 249 compatible abstractions; no need to refactor code just to switch
-  DBMS.
-* Syntax normalization; parameterize SQL using ``%?`` instead of
-  provider-specific syntaxes.
-* Raw SQL Access; execute raw SQL as-needed, including provider/DBMS-specific
-  functions (primarily intended for advanced ``db-migrate`` cases).
+- **Entity-based CRUD** — work with Python objects, not hand-crafted SQL.
+- **Validation** — entities are validated before persistence and on-demand.
+- **Transaction Contexts** — scope transactions with context managers, never leave a mismanaged state.
+- **Migrations** — version-controlled schema and data migrations via the ``db-migrate`` CLI or programmatically via the ``DbMigrate`` class.
+- **Multi-provider** — built-in providers for SQLite, MySQL, ClickHouse, and MongoDB.
+- **PEP 249 compatibility** — switch DBMS without refactoring data access code.
+- **Parameterized queries** — unified ``%?`` syntax across all providers.
+- **Connection strings** — Supports both DSN URIs (``sqlite://``, ``mysql://``) and OLEDB-style strings.
+- **Declarative indexes** — define composite, unique, and directional indexes on entity fields.
+- **Native Interface Access** — drop down to provider-specific methods when the ORM layer isn't enough.
 
 
 Contents

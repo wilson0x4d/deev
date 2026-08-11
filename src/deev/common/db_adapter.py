@@ -126,6 +126,9 @@ class DbAdapter(DbConnection, ABC):
                 case 'MongoProxyConnection':
                     from ..mongodb import MongoTableAdapter
                     return MongoTableAdapter[entity_type](self.__connection)  # type: ignore[valid-type]
+                case 'ClickHouseProxyConnection':
+                    from ..clickhouse import ClickHouseTableAdapter
+                    return ClickHouseTableAdapter[entity_type](self.__connection)  # type: ignore[valid-type]
         raise ValueError(f'No connection established and no provider detected.')
 
     def __create_transaction_context(self) -> DbTransactionContext:
@@ -140,6 +143,9 @@ class DbAdapter(DbConnection, ABC):
                 case 'SqliteProxyConnection':
                     from ..sqlite import SqliteTransactionContext
                     return SqliteTransactionContext(self.__connection)
+                case 'ClickHouseProxyConnection':
+                    from ..clickhouse import ClickHouseTransactionContext
+                    return ClickHouseTransactionContext(self.__connection)
         raise ValueError(f'No connection established and no provider detected.')
 
     def begin_transaction(self) -> DbTransactionContext:
