@@ -29,7 +29,7 @@ extensions = [
     'sphinx_autodoc_typehints'     # type-hint rendering
 ]
 
-autosummary_generate = True        # generate stub pages automatically
+autosummary_generate: list[str] = []  # we use automodule in our RST files, not autosummary stubs
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']

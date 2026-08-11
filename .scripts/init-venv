@@ -1,5 +1,5 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: © 2023 Shaun Wilson
+# SPDX-FileCopyrightText: © 2026 Shaun Wilson
 # SPDX-License-Identifier: MIT
 ##
 #
@@ -10,7 +10,12 @@
 # source .scripts/init-venv
 #
 ##
-set -euo pipefail
+set -eo pipefail
+
+# pin python version
+if [[ ! -z "$PYTHON_VERSION" ]]; then
+    uv python pin "$PYTHON_VERSION"
+fi
 
 # resolve
 SCRIPT_DIR=$(dirname $(realpath "${BASH_SOURCE[0]}"))
@@ -23,7 +28,7 @@ if [ ! -z "$(which deactivate)" ]; then
     deactivate
 fi
 if [ ! -d ".venv" ]; then
-    "python${PYTHON_VERSION:-3}" -m venv --prompt "$WORKSPACE_NAME" .venv
+    uv venv --prompt "$WORKSPACE_NAME" .venv
 fi
 
 # activate
@@ -32,11 +37,7 @@ echo -n -e "\033]0;$WORKSPACE_NAME\007"
 source .venv/bin/activate
 
 # tools and deps
-pip install --upgrade pip
-pip install .
-pip install .[mongodb]
-pip install .[mysql]
-pip install .[dev]
+uv sync
 export PYTHONPATH="$SRC_DIR"
 export MYPYPATH="$SRC_DIR"
 if ! [[ ":PATH:" == *":$SCRIPT_DIR:"* ]]; then

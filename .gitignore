@@ -16,3 +16,5 @@ tmp/
 *cov/
 *,cover
 *.local.json
+uv.lock
+.python-version
