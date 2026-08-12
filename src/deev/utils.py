@@ -292,16 +292,16 @@ def create_table_adapter(
     match type(dbcontext).__name__:
         case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MysqlTransactionContext':
             import deev.mysql
-            return deev.mysql.MysqlTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table)  # type: ignore[valid-type]
+            return deev.mysql.MysqlTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table)  # type: ignore[arg-type, valid-type]
         case 'SqliteProxyConnection' | 'SqliteTransactionContext':
             import deev.sqlite
-            return deev.sqlite.SqliteTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table)  # type: ignore[valid-type]
+            return deev.sqlite.SqliteTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table)  # type: ignore[arg-type, valid-type]
         case 'MongoProxyConnection' | 'MongoTransactionContext':
             import deev.mongodb
-            return deev.mongodb.MongoTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table)  # type: ignore[valid-type]
+            return deev.mongodb.MongoTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table)  # type: ignore[arg-type, valid-type]
         case 'ClickHouseProxyConnection' | 'ClickHouseTransactionContext':
             import deev.clickhouse
-            return deev.clickhouse.ClickHouseTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table)  # type: ignore[valid-type]
+            return deev.clickhouse.ClickHouseTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table)  # type: ignore[arg-type, valid-type]
         case _:
             raise DbError(f'Unsupported object: {dbcontext}')
 

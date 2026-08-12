@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from deev import entity, field
 from deev.common import ConnectionString
 from deev.utils import connect, create_database
-from deev.clickhouse import ClickHouseTableAdapter
+from deev.clickhouse import ClickHouseProxyConnection, ClickHouseTableAdapter
 from uuid import UUID, uuid4
 from punit import fact, trait
 from typing import Any, Optional
@@ -37,6 +37,7 @@ def basic_verification() -> None:
             dt: Optional[datetime] = None
 
         with connect(cxnstring) as connection:
+            assert isinstance(connection, ClickHouseProxyConnection)
             adapter = ClickHouseTableAdapter[BasicEntity](connection, create_table=True)
 
             entity1 = BasicEntity(

@@ -6,16 +6,14 @@ from __future__ import annotations
 from collections.abc import Mapping as AbcMapping
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Mapping, TypeVar, get_args, get_origin
+from typing import Any, Mapping, TypeVar, get_args, get_origin
+from uuid import UUID
 
 from ..common.db_error import DbError
 from ..common.db_type_mapper import DbTypeMapper
 from ..entities import EntitySpec
 from ..entities.entity_field_spec import EntityFieldSpec
 from ..translation import deunionize
-
-if TYPE_CHECKING:
-    from uuid import UUID
 
 
 TEntity = TypeVar('TEntity')
@@ -52,15 +50,11 @@ class ClickHouseTypeMapper(DbTypeMapper):
             Decimal: 'Decimal128(18)',
             str: 'String',
             bool: 'Bool',
-            dict: 'String',
-            list: 'String',
-            Mapping: 'String',
-            tuple: 'String',
-            set: 'String',
             date: 'Date32',
             datetime: 'DateTime64(6)',
             time: 'String',
-            timedelta: 'Int64'
+            timedelta: 'Int64',
+            UUID: 'UUID',
         }
 
     def __make_nullable(self, type_str: str, field_spec: EntityFieldSpec) -> str:

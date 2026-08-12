@@ -138,7 +138,7 @@ def bare_collection_fallbacks_to_string() -> None:
 @inlinedata('complex_tuple', 'Tuple(Decimal128(18))')
 @inlinedata('complex_map', 'Map(String, Int64)')
 @inlinedata('bit', 'Bool')
-@inlinedata('uid', 'String')
+@inlinedata('uid', 'UUID')
 @inlinedata('min_max_str', 'String')
 @inlinedata('min_str', 'String')
 @inlinedata('max_str', 'String')

@@ -119,17 +119,17 @@ class DbAdapter(DbConnection, ABC):
             match type(self.__connection).__name__:
                 case 'mysql_proxy_connection/impl' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection':
                     from ..mysql import MysqlTableAdapter
-                    return MysqlTableAdapter[entity_type](self.__connection)  # type: ignore[valid-type]
+                    return MysqlTableAdapter[entity_type](self.__connection)  # type: ignore[arg-type, valid-type]
                 case 'SqliteProxyConnection':
                     from ..sqlite import SqliteTableAdapter
-                    return SqliteTableAdapter[entity_type](self.__connection)  # type: ignore[valid-type]
+                    return SqliteTableAdapter[entity_type](self.__connection)  # type: ignore[arg-type, valid-type]
                 case 'MongoProxyConnection':
                     from ..mongodb import MongoTableAdapter
-                    return MongoTableAdapter[entity_type](self.__connection)  # type: ignore[valid-type]
+                    return MongoTableAdapter[entity_type](self.__connection)  # type: ignore[arg-type, valid-type]
                 case 'ClickHouseProxyConnection':
                     from ..clickhouse import ClickHouseTableAdapter
-                    return ClickHouseTableAdapter[entity_type](self.__connection)  # type: ignore[valid-type]
-        raise ValueError(f'No connection established and no provider detected.')
+                    return ClickHouseTableAdapter[entity_type](self.__connection)  # type: ignore[arg-type, valid-type]
+        raise ValueError('No connection established and no provider detected.')
 
     def __create_transaction_context(self) -> DbTransactionContext:
         if self.__connection is not None:

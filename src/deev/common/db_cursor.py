@@ -29,7 +29,7 @@ class DbCursor(Protocol):
     def execute(self, operation: str, params: Optional[DbParams] = ...) -> None:
         ...
 
-    def executemany(self, operation: str, seq_of_params: Sequence[DbParams]) -> None:
+    def executemany(self, operation: str, seq_params: Sequence[DbParams]) -> None:
         ...
 
     def fetchone(self) -> tuple[Any, ...] | None:

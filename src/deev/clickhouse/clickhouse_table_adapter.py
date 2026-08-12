@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import (
+    TYPE_CHECKING,
     Any,
     Generator,
     Generic,
@@ -25,30 +26,33 @@ from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_params import DbParams
 from ..common.db_type_mapper import DbTypeMapper
-from ..entities import EntitySpec, IndexOptions, IndexOrder, get_entity_spec
+from ..entities import EntitySpec, get_entity_spec
 from ..translation import hydrate, splat, to_pyobject
 from .clickhouse_proxy_connection import ClickHouseProxyConnection
 from .clickhouse_transaction_context import ClickHouseTransactionContext
 from .clickhouse_type_mapper import ClickHouseTypeMapper
+
+if TYPE_CHECKING:
+    from clickhouse_connect.driver.client import Client
 
 TEntity = TypeVar('TEntity')
 
 
 class ClickHouseTableAdapter(Generic[TEntity]):
     __column_names: str
-    __context: DbContext
+    __context: ClickHouseProxyConnection | ClickHouseTransactionContext
     __create_table: bool
     __cursor: DbCursor
     __entity_spec: EntitySpec
     __initialized: bool
     __logger: logging.Logger
-    __dbtype_mapper:DbTypeMapper
+    __dbtype_mapper: DbTypeMapper
     __table_name: Optional[str]
     __transaction_state: int
 
     def __init__(
         self,
-        context: DbContext,
+        context: ClickHouseProxyConnection | ClickHouseTransactionContext,
         *,
         create_table: Optional[bool] = False,
         table_name: Optional[str] = None
@@ -69,6 +73,10 @@ class ClickHouseTableAdapter(Generic[TEntity]):
             self.__initialized = True
             if self.__create_table is True:
                 self.create_table()
+
+    @property
+    def clickhouse_client(self) -> Client:
+        return self.__context.clickhouse_client
 
     @property
     def primary_key(self) -> tuple[str, ...]:
@@ -109,12 +117,34 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         where = ' AND '.join([f'`{k}` = %?' for k in pk_values.keys()])
         return where, tuple(pk_values.values())
 
-    def __prepare_insert_data(
+    def __hexify(self, value: Any) -> Any:
+        return value.hex if isinstance(value, UUID) else value
+
+    def __hex_and_to_pyformat(
+        self,
+        sql: str,
+        params: Sequence[Any]
+    ) -> tuple[str, dict[str, Any]]:
+        """Convert %? placeholders to pyformat params, applying UUID hex conversion."""
+        param_dict: dict[str, Any] = {}
+        result: list[str] = []
+        i = 0
+        for part in re.split(r'(%\?)', sql):
+            if part == '%?':
+                name = f'p{i}'
+                param_dict[name] = self.__hexify(params[i])
+                result.append(f'(%({name})s)')
+                i += 1
+            else:
+                result.append(part)
+        return ''.join(result), param_dict
+
+    def __to_columnar(
         self,
         data: dict[str, Any],
         column_names: Sequence[str]
     ) -> list[list[Any]]:
-        """Convert entity data dict to list of lists for ClickHouse insert()."""
+        """Convert entity data dict to columnar structure (list of lists) for ClickHouse native calls."""
         row = []
         for col in column_names:
             val = data.get(col)
@@ -131,10 +161,6 @@ class ClickHouseTableAdapter(Generic[TEntity]):
                 key, value = pair.split('=', 1)
                 options[key.strip()] = value.strip()
         return options
-
-    def __get_client(self) -> Any:
-        """Get the underlying clickhouse_connect.Client from the context."""
-        return cast(ClickHouseProxyConnection, self.__context).clickhouse_client
 
     def create_table(self, *, native_options: Optional[str] = None) -> None:
         """
@@ -182,9 +208,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
 
     def create(self, entity: Optional[TEntity] = None, **kwargs: Any) -> dict[str, Any]:
         """
-        Creates a new record using ClickHouse's native bulk insert API.
-
-        Uses ``client.insert()`` under the hood for maximum throughput.
+        Creates a new record.
 
         :param entity: An entity instance of type ``TEntity``.
         :param kwargs: Individual field values for the new record.
@@ -208,9 +232,9 @@ class ClickHouseTableAdapter(Generic[TEntity]):
 
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         column_names = list(self.__entity_spec.fields.keys())
-        rows = self.__prepare_insert_data(data, column_names)
+        rows = self.__to_columnar(data, column_names)
         try:
-            client = self.__get_client()
+            client = getattr(self.__context, 'clickhouse_client')
             client.insert(
                 table=table_name,
                 data=rows,
@@ -227,21 +251,22 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         """
         self.__deferred_init()
         where, keys = self.__build_where_clause(kwargs)
-        cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'SELECT {self.__column_names} FROM `{table_name}` WHERE {where}'
-        cursor.execute(sql, keys)
-        data = cursor.fetchone()
-        if data:
-            if cursor.description is None:
-                raise DbError('Provider did not provide a description.')
-            result: dict[str, Any] = {}
-            for kvp in zip(cursor.description, data):
-                value = self.__get_pyobject(kvp[0][0], kvp[1])
-                if value is not None:
-                    result[kvp[0][0]] = value
-            return hydrate(self.__entity_spec.entity_type(), result, from_sql=True)
-        return None
+        pyformat_sql, pyformat_params = self.__hex_and_to_pyformat(sql, keys)
+        client = self.clickhouse_client
+        try:
+            result = client.query(pyformat_sql, parameters=pyformat_params)  # type: ignore[attr-defined]
+            rows = list(result.named_results())  # type: ignore[attr-defined]
+            if rows:
+                raw: dict[str, Any] = {}
+                for key, value in rows[0].items():
+                    if value is not None:
+                        raw[key] = self.__get_pyobject(key, value)
+                return hydrate(self.__entity_spec.entity_type(), raw, from_sql=True)
+            return None
+        except Exception as e:
+            raise DbError(f'ClickHouse read failed: {e}') from e
 
     def update(self, entity: TEntity) -> None:
         """
@@ -251,7 +276,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         data parts and are **asynchronous** and **expensive** operations.
         This should only be used for infrequent corrections, not in hot paths.
         """
-        self.__logger.warning(
+        self.__logger.debug(
             'ClickHouseTableAdapter.update() called — this executes ALTER TABLE UPDATE mutation, '
             'which rewrites data parts and is an expensive, asynchronous operation.'
         )
@@ -264,9 +289,8 @@ class ClickHouseTableAdapter(Generic[TEntity]):
 
         for key in entity_data.keys():
             if key in self.__entity_spec.primary_key:
-                val = entity_data[key].hex if type(entity_data[key]) is UUID else entity_data[key]
                 pk_where_parts.append(f'`{key}` = %?')
-                params.append(val)
+                params.append(entity_data[key])
             else:
                 set_parts.append(f'`{key}` = %?')
                 params.append(entity_data[key])
@@ -286,7 +310,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         data parts and are **asynchronous** and **expensive** operations.
         This should only be used for infrequent corrections, not in hot paths.
         """
-        self.__logger.warning(
+        self.__logger.debug(
             'ClickHouseTableAdapter.delete() called — this executes ALTER TABLE DELETE mutation, '
             'which rewrites data parts and is an expensive, asynchronous operation.'
         )
@@ -297,12 +321,21 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         self.__execute(sql, keys)
 
     def exists(self, **kwargs: Any) -> bool:
+        """
+        Checks whether a record with the given primary key exists.
+        """
         self.__deferred_init()
         where, keys = self.__build_where_clause(kwargs)
-        cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
-        cursor.execute(f'SELECT 1 FROM `{table_name}` WHERE {where} LIMIT 1', keys)
-        return cursor.fetchone() is not None
+        sql = f'SELECT 1 FROM `{table_name}` WHERE {where} LIMIT 1'
+        pyformat_sql, pyformat_params = self.__hex_and_to_pyformat(sql, keys)
+        client = self.clickhouse_client
+        try:
+            result = client.query(pyformat_sql, parameters=pyformat_params)  # type: ignore[attr-defined]
+            rows = list(result.named_results())  # type: ignore[attr-defined]
+            return len(rows) > 0
+        except Exception as e:
+            raise DbError(f'ClickHouse exists check failed: {e}') from e
 
     def upsert(self, entity: TEntity) -> dict[str, Any]:
         """
@@ -346,7 +379,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
 
         for entity in entities:
             data = splat(entity, to_sql=True)
-            all_rows.extend(self.__prepare_insert_data(data, column_names))
+            all_rows.extend(self.__to_columnar(data, column_names))
             pk_values_list.append({
                 k: v
                 for k, v in data.items()
@@ -354,7 +387,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
             })
 
         try:
-            client = self.__get_client()
+            client = getattr(self.__context, 'clickhouse_client')
             client.insert(
                 table=table_name,
                 data=all_rows,
@@ -376,33 +409,26 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         Queries records using a standard ``SELECT`` statement.
         """
         self.__deferred_init()
-        if params is not None:
-            params = [
-                p.hex if type(p) is UUID else p
-                for p in params
-            ]
-        else:
-            params = []
         where_clause = f' WHERE {where}' if where is not None and len(where) > 0 else ''
         orderby_clause = f' ORDER BY {orderby}' if orderby is not None and len(orderby) > 0 else ''
         limit_str = f' LIMIT {limit}' if limit is not None and limit > 0 else ''
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'SELECT {self.__column_names} FROM `{table_name}`{where_clause}{orderby_clause}{limit_str}'
-        cursor = self.__context.cursor()
-        if cursor.description is None:
-            raise Exception('cursor missing required descriptor')
-        cursor.execute(sql, tuple(params))
-        row = cursor.fetchone()
-        while row is not None:
-            if cursor.description is None:
-                raise DbError('Provider did not provide a description.')
-            result: dict[str, Any] = {}
-            for kvp in zip(cursor.description, row):
-                value = self.__get_pyobject(kvp[0][0], kvp[1])
-                if value is not None:
-                    result[kvp[0][0]] = value
-            yield hydrate(self.__entity_spec.entity_type(), result, from_sql=True)
-            row = cursor.fetchone()
+        if params is not None:
+            pyformat_sql, pyformat_params = self.__hex_and_to_pyformat(sql, [p for p in params])
+        else:
+            pyformat_sql, pyformat_params = sql, {}
+        client = self.clickhouse_client
+        try:
+            result = client.query(pyformat_sql, parameters=pyformat_params or None)  # type: ignore[attr-defined]
+            for row in result.named_results():  # type: ignore[attr-defined]
+                raw: dict[str, Any] = {}
+                for key, value in row.items():
+                    if value is not None:
+                        raw[key] = self.__get_pyobject(key, value)
+                yield hydrate(self.__entity_spec.entity_type(), raw, from_sql=True)
+        except Exception as e:
+            raise DbError(f'ClickHouse query failed: {e}') from e
 
 
 __all__ = ['ClickHouseTableAdapter']

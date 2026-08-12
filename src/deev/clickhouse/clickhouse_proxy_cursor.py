@@ -5,13 +5,17 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Optional, Sequence
 
 import hanaro
 
 from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_params import DbParams
+
+if TYPE_CHECKING:
+    from clickhouse_connect.dbapi.cursor import Cursor
+    from clickhouse_connect.driver.client import Client
 
 
 class ClickHouseProxyCursor(DbCursor):
@@ -26,15 +30,15 @@ class ClickHouseProxyCursor(DbCursor):
     method for optimal performance.
     """
 
-    __cursor: Any  # clickhouse_connect.dbapi.cursor.Cursor
+    __cursor: Cursor
     __logger: logging.Logger
 
-    def __init__(self, provider_cursor: Any) -> None:
+    def __init__(self, provider_cursor: Cursor) -> None:
         self.__cursor = provider_cursor
         self.__logger = hanaro.get_logger()
 
     @property
-    def clickhouse_client(self) -> Any:
+    def clickhouse_client(self) -> Client:
         """The underlying clickhouse_connect.Client used by the cursor."""
         return self.__cursor.client
 
@@ -127,10 +131,8 @@ class ClickHouseProxyCursor(DbCursor):
             # Try native client INSERT first
             if self._try_client_bulk_insert(operation, param_tuple):
                 return
-            self.__logger.debug('execute(%r, %r)', pyformat_sql, pyformat_params)
             self.__cursor.execute(pyformat_sql, parameters=pyformat_params)
         else:
-            self.__logger.debug('execute(%r, None)', operation)
             self.__cursor.execute(operation)
 
     def executemany(self, operation: str, seq_params: Sequence[DbParams]) -> None:
@@ -155,7 +157,6 @@ class ClickHouseProxyCursor(DbCursor):
                         return
                     except Exception:
                         pass
-        self.__logger.debug('executemany(%r, %r)', operation, seq_params)
         self.__cursor.executemany(operation, [list(p) if not isinstance(p, tuple) else p for p in seq_params])
 
     def fetchone(self) -> tuple[Any, ...] | None:
