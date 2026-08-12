@@ -31,7 +31,7 @@ def basic_verification() -> None:
             another: Optional[bool] = None
             floaty: Optional[float] = None
             backed_value: Optional[int] = None
-            x: Optional[dict[str, Any]] = None
+            x: Optional[dict[str, str]] = None
             y: Optional[list[int]] = None
             z: Optional[tuple[str, int]] = None
             dt: Optional[datetime] = None

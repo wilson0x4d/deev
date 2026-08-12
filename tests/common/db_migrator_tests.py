@@ -137,7 +137,6 @@ def when_constructed_with_sqlite_provider__then_migration_data_type_is_v1():
 
 
 @fact
-@trait('unit')
 def when_constructed_with_mysql_provider__then_migration_data_type_is_v1() -> None:
     cs = ConnectionString()
     cs.server = 'localhost:3306'
@@ -150,7 +149,6 @@ def when_constructed_with_mysql_provider__then_migration_data_type_is_v1() -> No
 
 
 @fact
-@trait('unit')
 def when_constructed_with_mongodb_provider__then_migration_data_type_is_v2() -> None:
     cs = _get_test_connectionstring('mongo_test')
 
@@ -161,7 +159,6 @@ def when_constructed_with_mongodb_provider__then_migration_data_type_is_v2() -> 
 
 
 @fact
-@trait('unit')
 def when_constructed_with_pymongo_provider__then_migration_data_type_is_v2() -> None:
     cs = _get_test_connectionstring('mongo_test')
 
@@ -171,7 +168,6 @@ def when_constructed_with_pymongo_provider__then_migration_data_type_is_v2() -> 
 
 
 @fact
-@trait('unit')
 def when_constructed_with_clickhouse_provider__then_migration_data_type_is_v2() -> None:
     cs = ConnectionString()
     cs.server = 'localhost:8123'
@@ -184,7 +180,6 @@ def when_constructed_with_clickhouse_provider__then_migration_data_type_is_v2() 
 
 
 @fact
-@trait('unit')
 def when_apply_given_nonexistent_path__then_returns_early_and_logs_warning() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -204,7 +199,6 @@ def when_apply_given_nonexistent_path__then_returns_early_and_logs_warning() -> 
 
 
 @fact
-@trait('unit')
 def when_apply_given_empty_directory__then_returns_early_and_logs_warning() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -218,7 +212,6 @@ def when_apply_given_empty_directory__then_returns_early_and_logs_warning() -> N
 
 
 @fact
-@trait('unit')
 def when_apply_with_invalid_stop_at__then_logs_error_and_returns_early() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -242,7 +235,6 @@ def when_apply_with_invalid_stop_at__then_logs_error_and_returns_early() -> None
 
 
 @fact
-@trait('unit')
 def when_apply_with_stop_at_all__then_applies_all_migrations() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -256,7 +248,6 @@ def when_apply_with_stop_at_all__then_applies_all_migrations() -> None:
 
 
 @fact
-@trait('unit')
 def when_apply_with_stop_at_star__then_applies_all_migrations() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -270,7 +261,6 @@ def when_apply_with_stop_at_star__then_applies_all_migrations() -> None:
 
 
 @fact
-@trait('unit')
 def when_apply_with_specific_stop_at__then_applies_until_that_migration() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -284,7 +274,6 @@ def when_apply_with_specific_stop_at__then_applies_until_that_migration() -> Non
 
 
 @fact
-@trait('unit')
 def when_apply_processes_files_sorted_alphabetically() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -298,7 +287,6 @@ def when_apply_processes_files_sorted_alphabetically() -> None:
 
 
 @fact
-@trait('unit')
 def when_apply_skips_already_applied_migration__then_does_not_reapply() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -316,7 +304,6 @@ def when_apply_skips_already_applied_migration__then_does_not_reapply() -> None:
 
 
 @fact
-@trait('unit')
 def when_apply_migration_missing_apply_function__then_raises_DbError() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -336,7 +323,6 @@ def when_apply_migration_missing_apply_function__then_raises_DbError() -> None:
 
 
 @fact
-@trait('unit')
 def when_apply_successfully_applies_migration__then_records_in_table_and_calls_commit() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -364,7 +350,6 @@ def when_apply_successfully_applies_migration__then_records_in_table_and_calls_c
 
 
 @fact
-@trait('unit')
 def when_undo_given_nonexistent_path__then_returns_early_and_logs_warning() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -381,7 +366,6 @@ def when_undo_given_nonexistent_path__then_returns_early_and_logs_warning() -> N
 
 
 @fact
-@trait('unit')
 def when_undo_given_empty_directory__then_returns_early_and_logs_warning() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -395,7 +379,6 @@ def when_undo_given_empty_directory__then_returns_early_and_logs_warning() -> No
 
 
 @fact
-@trait('unit')
 def when_undo_with_invalid_stop_at_not_in_applied__then_logs_error_and_returns_early() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -421,7 +404,6 @@ def when_undo_with_invalid_stop_at_not_in_applied__then_logs_error_and_returns_e
 
 
 @fact
-@trait('unit')
 def when_undo_with_stop_at_all__then_undoes_all_applied_migrations() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -440,7 +422,6 @@ def when_undo_with_stop_at_all__then_undoes_all_applied_migrations() -> None:
 
 
 @fact
-@trait('unit')
 def when_undo_with_specific_stop_at__then_undoes_up_to_and_including_that_migration() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -459,7 +440,6 @@ def when_undo_with_specific_stop_at__then_undoes_up_to_and_including_that_migrat
 
 
 @fact
-@trait('unit')
 def when_undo_processes_migrations_in_reverse_order() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -478,7 +458,6 @@ def when_undo_processes_migrations_in_reverse_order() -> None:
 
 
 @fact
-@trait('unit')
 def when_undo_skips_already_undone_migration__then_does_not_delete_again() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -497,7 +476,6 @@ def when_undo_skips_already_undone_migration__then_does_not_delete_again() -> No
 
 
 @fact
-@trait('unit')
 def when_undo_migration_missing_undo_function__then_raises_DbError() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -539,7 +517,6 @@ def when_undo_migration_missing_undo_function__then_raises_DbError() -> None:
 
 
 @fact
-@trait('unit')
 def when_load_migration_with_valid_path__then_returns_module_with_apply_and_undo() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -555,7 +532,6 @@ def when_load_migration_with_valid_path__then_returns_module_with_apply_and_undo
 
 
 @fact
-@trait('unit')
 def when_load_migration_with_invalid_path__raises_no_exception() -> None:
     """The ImportError path in __load_migration is unreachable — spec_from_file_location
     returns a valid ModuleSpec even for nonexistent files. The source has # pragma: no cover."""
@@ -572,7 +548,6 @@ def when_load_migration_with_invalid_path__raises_no_exception() -> None:
 
 
 @fact
-@trait('unit')
 def when_apply_migrations_given_no_migrations_path__then_uses_default_path_pattern() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -588,7 +563,6 @@ def when_apply_migrations_given_no_migrations_path__then_uses_default_path_patte
 
 
 @fact
-@trait('unit')
 def when_apply_migrations_given_null_database_and_no_path__then_raises_ValueError() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -603,7 +577,6 @@ def when_apply_migrations_given_null_database_and_no_path__then_raises_ValueErro
 
 
 @fact
-@trait('unit')
 def when_undo_migrations_given_no_migrations_path__then_uses_default_path_pattern() -> None:
     cs = ConnectionString()
     cs.server = 'test'
@@ -619,7 +592,6 @@ def when_undo_migrations_given_no_migrations_path__then_uses_default_path_patter
 
 
 @fact
-@trait('unit')
 def when_apply_migrations_with_custom_migration_name__then_passes_name_to_engine() -> None:
     cs = ConnectionString()
     cs.server = 'test'

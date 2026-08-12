@@ -175,7 +175,6 @@ def transaction_prefix_matching_does_not_false_positive() -> None:
 
 
 @fact
-@trait('unit')
 def transaction_context_var_name_correctly_spelled() -> None:
     """The ContextVar name should be spelled 'transaction' not 'transacton'."""
     var = MongoTransactionContext._MongoTransactionContext__ambient_transaction_id  # type: ignore[attr-defined]
