@@ -306,13 +306,28 @@ class ClickHouseTableAdapter(Generic[TEntity]):
 
     def upsert(self, entity: TEntity) -> dict[str, Any]:
         """
-        Upserts a record. For ClickHouse, writes the entity via ``create()``.
+        Upserts a record. Checks if the primary key exists and updates,
+        otherwise inserts via ``create()``.
 
-        For true upsert semantics, use ``engine=ReplacingMergeTree`` in ``create_table()``
-        and rely on ClickHouse's background merge process to resolve duplicates.
+        **Warning**: In ClickHouse, updates are **mutations** via ``ALTER TABLE
+        UPDATE``, which rewrite data parts and are expensive, asynchronous
+        operations. Use ``engine=ReplacingMergeTree`` in ``create_table()``
+        for better upsert performance on large tables.
         """
         self.__deferred_init()
-        return self.create(entity)
+        entity_data = splat(entity, to_sql=True)
+        if self.__entity_spec.has_autoincrement and entity_data.get(self.__entity_spec.primary_key[0], None) is None:
+            return self.create(entity)
+        primary_key = {
+            k: (v.hex if type(v) is UUID else v)
+            for k, v in entity_data.items()
+            if k in self.__entity_spec.primary_key
+        }
+        if self.exists(**primary_key):
+            self.update(entity)
+        else:
+            self.create(entity)
+        return primary_key
 
     def bulk_create(self, entities: Sequence[TEntity]) -> list[dict[str, Any]]:
         """
