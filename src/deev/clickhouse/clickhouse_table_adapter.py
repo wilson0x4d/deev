@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -283,16 +284,18 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         self.__deferred_init()
         entity_data = splat(entity, to_sql=True)
 
-        pk_where_parts: list[str] = []
         set_parts: list[str] = []
+        pk_where_parts: list[str] = []
         params: list[Any] = []
+
+        for key in entity_data.keys():
+            if key not in self.__entity_spec.primary_key:
+                set_parts.append(f'`{key}` = %?')
+                params.append(entity_data[key])
 
         for key in entity_data.keys():
             if key in self.__entity_spec.primary_key:
                 pk_where_parts.append(f'`{key}` = %?')
-                params.append(entity_data[key])
-            else:
-                set_parts.append(f'`{key}` = %?')
                 params.append(entity_data[key])
 
         where_clause = ' AND '.join(pk_where_parts)
