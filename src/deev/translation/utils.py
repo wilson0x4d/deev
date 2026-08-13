@@ -7,20 +7,19 @@ import json
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
-from types import NoneType
+from types import NoneType, UnionType
 import inspect
-from typing import Any, Callable, Mapping, Optional, Union, get_args, get_origin
+from typing import Any, Callable, Mapping, Union, get_args, get_origin
 
 from .deev_json_decoder import DeevJsonDecoder, _parse_datetime_iso, _parse_time_iso
 from .deev_json_encoder import DeevJsonEncoder, _utc_z, _utc_z_time
 from ..entities import get_entity_spec
 from uuid import UUID
 
-
 __json_encoder: type[json.JSONEncoder] = DeevJsonEncoder
 __json_decoder: type[json.JSONDecoder] = DeevJsonDecoder
-__serializer: Optional[Callable[[Any], str]] = None
-__deserializer: Optional[Callable[[Any], str]] = None
+__serializer: Callable[[Any], str] | None = None
+__deserializer: Callable[[Any], str] | None = None
 
 
 def __to_json(obj: Any) -> str:
@@ -50,10 +49,10 @@ def __from_json(s: str) -> Any:
 
 def configure_serialization(  # pragma: no cover
     *,
-    encoder: Optional[type[json.JSONEncoder]] = None,
-    decoder: Optional[type[json.JSONDecoder]] = None,
-    serializer: Optional[Callable[[Any], str]] = None,
-    deserializer: Optional[Callable[[str], Any]] = None
+    encoder: type[json.JSONEncoder] | None = None,
+    decoder: type[json.JSONDecoder] | None = None,
+    serializer: Callable[[Any], str] | None = None,
+    deserializer: Callable[[str], Any] | None = None
 ) -> None:
     """
     Set json encoders/decoders used for sql translations.
@@ -89,7 +88,7 @@ def configure_serialization(  # pragma: no cover
 
 
 def deunionize(t: type) -> type:
-    if get_origin(t) is Union:
+    if get_origin(t) in (Union, UnionType):
         t = [e for e in get_args(t) if e is not NoneType][0]
     return t
 
@@ -171,7 +170,7 @@ def _to_json_value(value: Any) -> Any:
 
 def to_bsonobject(value: Any) -> Any:
     """Convert a value for MongoDB BSON storage — UUIDs are left as objects for PyMongo natively.
-    
+
     This is identical to _to_json_value except UUIDs are NOT converted to strings.
     PyMongo handles UUID objects as BSON binary subtype 0x04 when uuidrepresentation='standard'.
     """
@@ -207,6 +206,8 @@ def to_sqlobject(value: Any, hint: type) -> Any:
     if get_origin(hint) in (Mapping, dict, list, set, tuple):
         value = __to_json(value)
         return value if value != 'null' and value != '' else None
+    elif hint == UUID:
+        return value.hex
     elif hint == datetime:
         if value.tzinfo is not None:
             return _utc_z(value)
@@ -221,8 +222,6 @@ def to_sqlobject(value: Any, hint: type) -> Any:
         return _utc_z_time(value)
     elif hint == timedelta:
         return value.days * 86_400_000_000 + value.seconds * 1_000_000 + value.microseconds
-    elif hint == UUID:
-        return str(value)
     elif hint == bool:
         return int(value is True)
     elif inspect.isclass(hint) and issubclass(hint, Enum):
@@ -231,7 +230,7 @@ def to_sqlobject(value: Any, hint: type) -> Any:
         return value
 
 
-def splat(entity: object, attrs: Optional[list[str]] = None, to_sql: bool = False, to_bson: bool = False) -> dict[str, Any]:
+def splat(entity: object, attrs: list[str] | None = None, to_sql: bool = False, to_bson: bool = False) -> dict[str, Any]:
     """
     Splatter entity attributes/fields into a dict.
 
@@ -268,7 +267,7 @@ def splat(entity: object, attrs: Optional[list[str]] = None, to_sql: bool = Fals
     return result
 
 
-def hydrate(entity: object | type, data: dict[str, Any], attrs: Optional[list[str]] = None, from_sql: bool = False, from_bson: bool = False) -> Any:
+def hydrate(entity: object | type, data: dict[str, Any], attrs: list[str] | None = None, from_sql: bool = False, from_bson: bool = False) -> Any:
     """
     Hydrates an entity in-place from a "splat."
 

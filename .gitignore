@@ -18,3 +18,4 @@ tmp/
 *.local.json
 uv.lock
 .python-version
+*.db

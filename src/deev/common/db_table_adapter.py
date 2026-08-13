@@ -6,13 +6,13 @@ from __future__ import annotations
 from typing import (
     Any,
     Generator,
-    Optional,
     Protocol,
     TypeVar,
     runtime_checkable
 )
 
 from .db_params import DbParams
+
 
 TEntity = TypeVar('TEntity')
 
@@ -66,10 +66,10 @@ class DbTableAdapter(Protocol[TEntity]):
 
     def query(
         self,
-        where: Optional[str] = ...,
-        params: Optional[DbParams] = ...,
-        orderby: Optional[str] = ...,
-        limit: Optional[int] = ...
+        where: str | None = ...,
+        params: DbParams | None = ...,
+        orderby: str | None = ...,
+        limit: int | None = ...
     ) -> Generator[TEntity, None, None]:
         ...
 

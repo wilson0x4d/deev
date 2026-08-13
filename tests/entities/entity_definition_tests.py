@@ -6,15 +6,15 @@ from deev import DbError, entity, field
 from deev.entities import EntityFieldSpec, EntitySpec, define_entity_spec, get_entity_spec
 from deev.validation import ValidationError, validate
 from punit import fact
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 
 @entity
 class MyEntity:
-    implied_nullable_with_non_nullable_spec: Optional[int] = field(nullable=False)
-    implied_nullable: Optional[int]
-    description: Optional[str] = field(
+    implied_nullable_with_non_nullable_spec: int | None = field(nullable=False)
+    implied_nullable: int | None
+    description: str | None = field(
         default=None,
         unique=True,
         dbtype='VARCHAR(20)',
@@ -24,7 +24,7 @@ class MyEntity:
         default=uuid4,
         primary_key=True
     )
-    title: Optional[str] = field(
+    title: str | None = field(
         default=None,
         validator=lambda x: None if x is None or (len(x) > 0 and len(x) <= 30) else ValidationError(
             'title', 'failed validation checks.'
@@ -38,7 +38,7 @@ class MyEntity:
         max=5,
     )
     non_nullable_with_default: int = 234
-    implied_nullable_with_default: Optional[int] = 345
+    implied_nullable_with_default: int | None = 345
 
 
 @fact
@@ -190,7 +190,7 @@ def when_invalid_union_then_raises() -> None:
     try:
         @entity
         class WithUnsupportedUnion:
-            a: Optional[int | str]  # NOTE: cannot express multiple types
+            a: int | str | None  # NOTE: cannot express multiple types
     except DbError:
         pass
     else:
@@ -202,7 +202,7 @@ def when_valid_union_then_not_raises() -> None:
     # NOTE: the types used (int, str) are not as relevant as being unionized with None/NoneType
     @entity
     class WithSupportedUnions:
-        a: Optional[int]
+        a: int | None
         b: str | None
 
 

@@ -5,7 +5,7 @@ import mysql.connector
 import mysql.connector.abstracts
 import mysql.connector.cursor
 import mysql.connector.types
-from typing import Any, Generator, Generic, Optional, TypeVar, cast, get_args, get_origin
+from typing import Any, Generator, Generic, TypeVar, cast, get_args, get_origin
 from uuid import UUID
 
 from ..common.db_context import DbContext
@@ -13,7 +13,7 @@ from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_params import DbParams
 from ..common.db_type_mapper import DbTypeMapper
-from ..entities import EntitySpec, IndexOptions, IndexOrder, get_entity_spec
+from ..entities import EntitySpec, IndexOrder, get_entity_spec
 from ..translation import hydrate, to_pyobject, splat
 from .mysql_proxy_connection import MysqlProxyConnection
 from .mysql_transaction_context import MysqlTransactionContext
@@ -27,19 +27,18 @@ class MysqlTableAdapter(Generic[TEntity]):
     __column_names: str  # NOTE: just an optimization so we don't have to concat over and over
     __context: DbContext
     __create_table: bool
-    __cursor: DbCursor
     __entity_spec: EntitySpec
     __initialized: bool
     __dbtype_mapper: DbTypeMapper
-    __table_name: Optional[str]
+    __table_name: str | None
     __transaction_state: int
 
     def __init__(
         self,
         context: DbContext,
         *,
-        create_table: Optional[bool] = False,
-        table_name: Optional[str] = None
+        create_table: bool | None = False,
+        table_name: str | None = None
     ) -> None:
         self.__context = context if isinstance(context, (MysqlProxyConnection, MysqlTransactionContext)) else MysqlProxyConnection(context)  # type: ignore[arg-type]
         self.__create_table = create_table is True
@@ -61,7 +60,7 @@ class MysqlTableAdapter(Generic[TEntity]):
     def primary_key(self) -> tuple[str, ...]:
         return self.__entity_spec.primary_key
 
-    def __execute(self, sql: str, params: Optional[DbParams] = None) -> None:
+    def __execute(self, sql: str, params: DbParams | None = None) -> None:
         cursor = self.__context.cursor()
         cursor.execute(sql, params)
 
@@ -86,6 +85,22 @@ class MysqlTableAdapter(Generic[TEntity]):
             f'Could not determine the entity type for {obj.__class__.__qualname__}. '
             'Instantiate via the generic alias, e.g. MysqlTableAdapter[MyEntity]().'
         )
+
+    def __create_indexes(self, table_name: str) -> None:
+        """Build and execute ``CREATE INDEX`` statements for all secondary indexes."""
+        direction_map = {IndexOrder.ASCENDING: 'ASC', IndexOrder.DESCENDING: 'DESC'}
+        groups: dict[str, list[tuple[str, IndexOrder]]] = {}
+        for field_name, spec in self.__entity_spec.fields.items():
+            if spec.index is None:
+                continue
+            idx_name = spec.index.name
+            direction = spec.index.direction or IndexOrder.ASCENDING
+            groups.setdefault(idx_name, []).append((field_name, direction))
+
+        for idx_name, col_specs in sorted(groups.items()):
+            col_specs.sort(key=lambda cs: cs[0])
+            cols = ', '.join(f'`{name}` {direction_map[direction]}' for name, direction in col_specs)
+            self.__context.cursor().execute(f'CREATE INDEX `{idx_name}` ON `{table_name}` ({cols})')
 
     def create_table(self) -> None:
         """Utility method for creating the target table."""
@@ -116,23 +131,8 @@ class MysqlTableAdapter(Generic[TEntity]):
             sql = f'CREATE TABLE IF NOT EXISTS `{table_name}` ({columns}{primary_key})'
         self.__execute(sql)
         # Generate CREATE INDEX for secondary indexes defined via field(index=...)
-        self._MysqlTableAdapter__create_indexes(table_name)
-
-    def _MysqlTableAdapter__create_indexes(self, table_name: str) -> None:
-        """Build and execute ``CREATE INDEX`` statements for all secondary indexes."""
-        direction_map = {IndexOrder.ASCENDING: 'ASC', IndexOrder.DESCENDING: 'DESC'}
-        groups: dict[str, list[tuple[str, IndexOrder]]] = {}
-        for field_name, spec in self.__entity_spec.fields.items():
-            if spec.index is None:
-                continue
-            idx_name = spec.index.name
-            direction = spec.index.direction or IndexOrder.ASCENDING
-            groups.setdefault(idx_name, []).append((field_name, direction))
-
-        for idx_name, col_specs in sorted(groups.items()):
-            col_specs.sort(key=lambda cs: cs[0])
-            cols = ', '.join(f'`{name}` {direction_map[direction]}' for name, direction in col_specs)
-            self.__context.cursor().execute(f'CREATE INDEX `{idx_name}` ON `{table_name}` ({cols})')
+        self.__create_indexes(table_name)
+        self.__create_table = False
 
     def commit(self) -> None:
         self.__context.commit()
@@ -140,7 +140,7 @@ class MysqlTableAdapter(Generic[TEntity]):
     def rollback(self) -> None:
         self.__context.rollback()
 
-    def create(self, entity: Optional[TEntity] = None, **kwargs: Any) -> dict[str, Any]:
+    def create(self, entity: TEntity | None = None, **kwargs: Any) -> dict[str, Any]:
         """
         Creates a new record in the specified table with the provided attributes/values.
 
@@ -294,10 +294,10 @@ class MysqlTableAdapter(Generic[TEntity]):
 
     def query(
         self,
-        where: Optional[str] = None,
-        params: Optional[DbParams] = None,
-        orderby: Optional[str] = None,
-        limit: Optional[int] = None
+        where: str | None = None,
+        params: DbParams | None = None,
+        orderby: str | None = None,
+        limit: int | None = None
     ) -> Generator[TEntity, None, None]:
         self.__deferred_init()
         if params is not None:
@@ -307,10 +307,8 @@ class MysqlTableAdapter(Generic[TEntity]):
             ]
         else:
             params = []
-        where = f' WHERE {where}' if where is not None and len(
-            where) > 0 else ''
-        orderby = f' ORDER BY {orderby}' if orderby is not None and len(
-            orderby) > 0 else ''
+        where = f' WHERE {where}' if where is not None and len(where) > 0 else ''
+        orderby = f' ORDER BY {orderby}' if orderby is not None and len(orderby) > 0 else ''
         limit_str = f' LIMIT {limit}' if limit is not None and limit > 0 else ''
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'SELECT {self.__column_names} FROM `{table_name}`{where}{orderby}{limit_str}'

@@ -4,12 +4,11 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Optional
 
 from .validation_error import ValidationError
 
 
-def validate(entity: object, attrs: Optional[list[str]] = None) -> list[ValidationError] | None:
+def validate(entity: object, attrs: list[str] | None = None) -> list[ValidationError] | None:
     """
     Runs validations for the target entity.
 

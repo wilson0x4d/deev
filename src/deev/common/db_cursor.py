@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from typing import (
     Any,
-    Optional,
     Sequence,
     Protocol,
     runtime_checkable
@@ -19,14 +18,14 @@ class DbCursor(Protocol):
     """DB-API 2.0 Cursor proto."""
 
     @property
-    def description(self) -> Optional[Sequence[tuple[Any, Any, Optional[int], Optional[int], Optional[int], Optional[int], bool]]]:
+    def description(self) -> Sequence[tuple[Any, Any, int | None, int | None, int | None, int | None, bool]] | None:
         ...
 
     @property
     def rowcount(self) -> int:
         ...
 
-    def execute(self, operation: str, params: Optional[DbParams] = ...) -> None:
+    def execute(self, operation: str, params: DbParams | None = ...) -> None:
         ...
 
     def executemany(self, operation: str, seq_params: Sequence[DbParams]) -> None:

@@ -23,10 +23,11 @@ from punit import (  # type: ignore  # pylint: disable=import-error
 from typing import Any
 from uuid import UUID
 
-
 # ---------------------------------------------------------------------------
 # JSON encoder/decoder round-trips (via __from_json for prefixed format)
 # ---------------------------------------------------------------------------
+
+
 @fact
 def json_roundtrip_datetime_aware() -> None:
     expected: datetime = datetime(2023, 4, 1, 12, 30, 45, 123456, tzinfo=timezone.utc)

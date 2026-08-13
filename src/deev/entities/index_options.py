@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 from dataclasses import dataclass, field as dc_field
-from typing import Optional
 
 from .index_order import IndexOrder
 

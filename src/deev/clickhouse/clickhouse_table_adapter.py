@@ -3,15 +3,15 @@
 
 from __future__ import annotations
 
+from clickhouse_connect.driver.client import Client
+import hanaro
 import logging
 import re
-import time
 from typing import (
     TYPE_CHECKING,
     Any,
     Generator,
     Generic,
-    Optional,
     Sequence,
     TypeVar,
     cast,
@@ -20,49 +20,48 @@ from typing import (
 )
 from uuid import UUID
 
-import hanaro
-
-from ..common.db_context import DbContext
+from ..common.db_connection import DbConnection
 from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_params import DbParams
 from ..common.db_type_mapper import DbTypeMapper
-from ..entities import EntitySpec, get_entity_spec
+from ..entities import EntitySpec, IndexOptions, get_entity_spec
 from ..translation import hydrate, splat, to_pyobject
 from .clickhouse_proxy_connection import ClickHouseProxyConnection
 from .clickhouse_transaction_context import ClickHouseTransactionContext
 from .clickhouse_type_mapper import ClickHouseTypeMapper
+from .utils import CLICKHOUSE_SKIP_INDEX_TYPES
 
-if TYPE_CHECKING:
-    from clickhouse_connect.driver.client import Client
 
 TEntity = TypeVar('TEntity')
 
 
 class ClickHouseTableAdapter(Generic[TEntity]):
     __column_names: str
-    __context: ClickHouseProxyConnection | ClickHouseTransactionContext
+    __context: DbConnection
     __create_table: bool
     __cursor: DbCursor
     __entity_spec: EntitySpec
     __initialized: bool
     __logger: logging.Logger
     __dbtype_mapper: DbTypeMapper
-    __table_name: Optional[str]
+    __table_name: str | None
     __transaction_state: int
 
     def __init__(
         self,
         context: ClickHouseProxyConnection | ClickHouseTransactionContext,
         *,
-        create_table: Optional[bool] = False,
-        table_name: Optional[str] = None
+        create_table: bool | None = False,
+        table_name: str | None = None,
+        sync_replicas: bool | None = False,
     ) -> None:
-        self.__context = context if isinstance(context, (ClickHouseProxyConnection, ClickHouseTransactionContext)) else ClickHouseProxyConnection(context)  # type: ignore[arg-type]
+        self.__context = context.connection if isinstance(context, ClickHouseTransactionContext) else context  # type: ignore[arg-type]
         self.__create_table = create_table is True
         self.__initialized = False
         self.__table_name = table_name
         self.__transaction_state = 0
+        self.__is_sync_replicas_enabled = sync_replicas is True and getattr(self.__context, 'is_replicated', False) is True
         self.__logger = hanaro.get_logger()
 
     def __deferred_init(self) -> None:
@@ -75,15 +74,21 @@ class ClickHouseTableAdapter(Generic[TEntity]):
             if self.__create_table is True:
                 self.create_table()
 
+    def sync_replicas(self) -> None:
+        """Force all ClickHouse replicas to sync for the current table."""
+        if self.__is_sync_replicas_enabled:
+            table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
+            self.clickhouse_client.command(f'SYSTEM SYNC REPLICA `{table_name}` IF EXISTS')  # type: ignore[attr-defined]
+
     @property
     def clickhouse_client(self) -> Client:
-        return self.__context.clickhouse_client
+        return getattr(self.__context, 'clickhouse_client')
 
     @property
     def primary_key(self) -> tuple[str, ...]:
         return self.__entity_spec.primary_key
 
-    def __execute(self, sql: str, params: Optional[DbParams] = None) -> None:
+    def __execute(self, sql: str, params: DbParams | None = None) -> None:
         cursor = self.__context.cursor()
         cursor.execute(sql, params)
 
@@ -163,15 +168,9 @@ class ClickHouseTableAdapter(Generic[TEntity]):
                 options[key.strip()] = value.strip()
         return options
 
-    def create_table(self, *, native_options: Optional[str] = None) -> None:
+    def create_table(self, *, engine: str | None = None, order_by: str | None = None, partition_by: str | None = None) -> None:
         """
         Create the target table if it does not exist.
-
-        Generates DDL with ``ENGINE = MergeTree()`` (default) or an engine family
-        specified via *native_options* (e.g. ``engine=ReplacingMergeTree``).
-
-        :param native_options: Semicolon-separated ``key=value`` pairs for table settings
-                               (e.g. ``engine=ReplacingMergeTree;order_by=name``).
         """
         self.__deferred_init()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
@@ -181,25 +180,47 @@ class ClickHouseTableAdapter(Generic[TEntity]):
             for k in self.__entity_spec.attrs.keys()
         ])
 
-        options = self.__merge_tree_options_from_native_options(native_options) if native_options else {}
-        engine = options.get('engine', 'MergeTree')
-        order_by = options.get('order_by', None)
-        partition_by = options.get('partition_by', None)
+        skip_indexes: list[str] = []
+        seen_index_names: set[str] = set()
+        for field_name, field_spec in self.__entity_spec.fields.items():
+            idx_opts: IndexOptions | None = field_spec.index
+            if idx_opts is None:
+                continue
+            if idx_opts.type is None or idx_opts.type not in CLICKHOUSE_SKIP_INDEX_TYPES:
+                self.__logger.warning(
+                    f'Field `{field_name}` has index `{idx_opts.name}` but type is {"not set" if idx_opts.type is None else f"unrecognized: `{idx_opts.type}`"}' +
+                    f'. Allowed skip index types: {", ".join(sorted(CLICKHOUSE_SKIP_INDEX_TYPES))}'
+                )
+                continue
+            if idx_opts.name in seen_index_names:
+                continue
+            seen_index_names.add(idx_opts.name)
+            skip_indexes.append(
+                f'INDEX `{idx_opts.name}` {field_name} TYPE {idx_opts.type}'
+            )
+
+        all_definitions = columns
+        if skip_indexes:
+            all_definitions = columns + ', ' + ', '.join(skip_indexes)
+
+        if engine is None:
+            engine = 'ReplicatedMergeTree()'
 
         if order_by:
             order_clause = f' ORDER BY ({order_by})'
-        elif primary_key:
-            if len(primary_key) == 1:
-                order_clause = f' ORDER BY ({primary_key[0]})'
-            else:
-                order_clause = f' ORDER BY ({", ".join(f"`{k}`" for k in primary_key)})'
         else:
-            order_clause = ''
+            order_columns: list[str] = [f'`{k}`' for k in primary_key]
+
+            if order_columns:
+                order_clause = f' ORDER BY ({", ".join(order_columns)})'
+            else:
+                order_clause = ''
 
         partition_clause = f' PARTITION BY ({partition_by})' if partition_by else ''
 
-        sql = f'CREATE TABLE IF NOT EXISTS `{table_name}` ({columns}) ENGINE = {engine}{order_clause}{partition_clause}'
+        sql = f'CREATE TABLE IF NOT EXISTS `{table_name}` ({all_definitions}) ENGINE = {engine}{order_clause}{partition_clause}'
         self.__execute(sql)
+        self.__create_table = False
 
     def commit(self) -> None:
         self.__context.commit()
@@ -207,7 +228,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
     def rollback(self) -> None:
         self.__context.rollback()
 
-    def create(self, entity: Optional[TEntity] = None, **kwargs: Any) -> dict[str, Any]:
+    def create(self, entity: TEntity | None = None, **kwargs: Any) -> dict[str, Any]:
         """
         Creates a new record.
 
@@ -241,6 +262,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
                 data=rows,
                 column_names=column_names
             )
+            self.sync_replicas()
         except Exception as e:
             raise DbError(f'ClickHouse insert failed: {e}') from e
 
@@ -277,10 +299,6 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         data parts and are **asynchronous** and **expensive** operations.
         This should only be used for infrequent corrections, not in hot paths.
         """
-        self.__logger.debug(
-            'ClickHouseTableAdapter.update() called — this executes ALTER TABLE UPDATE mutation, '
-            'which rewrites data parts and is an expensive, asynchronous operation.'
-        )
         self.__deferred_init()
         entity_data = splat(entity, to_sql=True)
 
@@ -304,6 +322,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'ALTER TABLE `{table_name}` UPDATE {set_clause} WHERE {where_clause}'
         self.__execute(sql, tuple(params))
+        self.sync_replicas()
 
     def delete(self, **kwargs: Any) -> None:
         """
@@ -313,10 +332,6 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         data parts and are **asynchronous** and **expensive** operations.
         This should only be used for infrequent corrections, not in hot paths.
         """
-        self.__logger.debug(
-            'ClickHouseTableAdapter.delete() called — this executes ALTER TABLE DELETE mutation, '
-            'which rewrites data parts and is an expensive, asynchronous operation.'
-        )
         self.__deferred_init()
         where, keys = self.__build_where_clause(kwargs)
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
@@ -396,6 +411,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
                 data=all_rows,
                 column_names=column_names
             )
+            self.sync_replicas()
         except Exception as e:
             raise DbError(f'ClickHouse bulk insert failed: {e}') from e
 
@@ -403,10 +419,10 @@ class ClickHouseTableAdapter(Generic[TEntity]):
 
     def query(
         self,
-        where: Optional[str] = None,
-        params: Optional[DbParams] = None,
-        orderby: Optional[str] = None,
-        limit: Optional[int] = None
+        where: str | None = None,
+        params: DbParams | None = None,
+        orderby: str | None = None,
+        limit: int | None = None
     ) -> Generator[TEntity, None, None]:
         """
         Queries records using a standard ``SELECT`` statement.

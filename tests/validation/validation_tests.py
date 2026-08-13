@@ -5,7 +5,7 @@ from decimal import Decimal
 from deev import entity, field
 from deev.validation import ValidationError, validate
 from punit import fact, inlinedata, theory
-from typing import Any, Optional
+from typing import Any
 
 
 @fact
@@ -67,10 +67,10 @@ def validation_min_max(value: str | int | float | Decimal, expect_success: bool)
 def validation_min_max_when_optional(value: str | int | float | Decimal, expect_success: bool) -> None:
     @entity
     class VMM1:
-        s: Optional[str] = field(min=3, max=5, default=None)
-        i: Optional[int] = field(min=3, max=5, default=None)
-        f: Optional[float] = field(min=3.0, max=5.0, default=None)
-        d: Optional[Decimal] = field(min=Decimal(3), max=Decimal(5), default=None)
+        s: str | None = field(min=3, max=5, default=None)
+        i: int | None = field(min=3, max=5, default=None)
+        f: float | None = field(min=3.0, max=5.0, default=None)
+        d: Decimal | None = field(min=Decimal(3), max=Decimal(5), default=None)
     obj: VMM1
     if isinstance(value, str):
         obj = VMM1(s=value)
@@ -87,7 +87,7 @@ def validation_min_max_when_optional(value: str | int | float | Decimal, expect_
 def explicit_non_nullable_raises_when_null() -> None:
     @entity
     class ENNRWN:
-        s: Optional[str] = field(min=3, max=5, default=None, nullable=False)
+        s: str | None = field(min=3, max=5, default=None, nullable=False)
     obj = ENNRWN(s=None)
     assert validate(obj) is not None
 
@@ -96,7 +96,7 @@ def explicit_non_nullable_raises_when_null() -> None:
 def explicit_nullable_does_not_raise_when_null() -> None:
     @entity
     class ENDNRWN:
-        s: Optional[str] = field(min=3, max=5, default=None, nullable=True)
+        s: str | None = field(min=3, max=5, default=None, nullable=True)
     obj = ENDNRWN(s=None)
     assert validate(obj) is None
 
@@ -115,8 +115,8 @@ def validator_callback_bvt() -> None:
 
     @entity
     class VCBVT:
-        a: Optional[str] = field(default=None, nullable=True, validator=invalid_when_null)
-        b: Optional[str] = field(default=None, nullable=True, validator=invalid_when_non_null)
+        a: str | None = field(default=None, nullable=True, validator=invalid_when_null)
+        b: str | None = field(default=None, nullable=True, validator=invalid_when_non_null)
     assert validate(VCBVT(a="123")) is None
     assert len(validate(VCBVT(a="123", b="bob"))) == 1  # type: ignore[arg-type]
     assert len(validate(VCBVT(a=None, b="bob"))) == 2  # type: ignore[arg-type]
@@ -137,8 +137,8 @@ def validator_callback_can_raise() -> None:
 
     @entity
     class VCBVT:
-        a: Optional[str] = field(default=None, nullable=True, validator=invalid_when_null)
-        b: Optional[str] = field(default=None, nullable=True, validator=invalid_when_non_null)
+        a: str | None = field(default=None, nullable=True, validator=invalid_when_null)
+        b: str | None = field(default=None, nullable=True, validator=invalid_when_non_null)
     assert validate(VCBVT(a="123")) is None
     assert len(validate(VCBVT(a="123", b="bob"))) == 1  # type: ignore[arg-type]
     assert len(validate(VCBVT(a=None, b="bob"))) == 2  # type: ignore[arg-type]

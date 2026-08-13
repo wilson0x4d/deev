@@ -3,7 +3,6 @@
 
 from deev.common import ConnectionString
 from punit import fact, inlinedata, theory, trait
-from typing import Optional
 
 
 @theory
@@ -75,10 +74,10 @@ def parses_mysql_without_password() -> None:
 )
 def parses_sqlite_file_dsn(
     uri: str,
-    expected_server: Optional[str],
-    expected_database: Optional[str],
-    expected_user: Optional[str],
-    expected_password: Optional[str],
+    expected_server: str | None,
+    expected_database: str | None,
+    expected_user: str | None,
+    expected_password: str | None,
     expected_provider: str
 ) -> None:
     cs = ConnectionString(uri)

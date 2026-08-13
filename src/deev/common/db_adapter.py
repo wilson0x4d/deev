@@ -10,13 +10,13 @@ from types import TracebackType
 from typing import (
     Any,
     Literal,
-    Optional,
     Self,
     TypeVar,
     cast,
     get_args,
     get_origin,
     get_type_hints,
+    runtime_checkable,
 )
 
 import hanaro
@@ -26,7 +26,6 @@ from .db_cursor import DbCursor
 from .db_table_adapter import DbTableAdapter
 from .db_transaction_context import DbTransactionContext
 from .connection_string import ConnectionString
-
 
 TEntity = TypeVar('TEntity')
 
@@ -54,7 +53,7 @@ class DbAdapter(DbConnection, ABC):
                 return self.get_table_adapter(Document)
     """
 
-    __adapter_map: dict[str, tuple[type, str]]
+    __adapter_map = dict[str, tuple[type, str]]()
     __connection: DbConnection | None
     __connection_string: ConnectionString | str
     __logger: logging.Logger
@@ -63,7 +62,6 @@ class DbAdapter(DbConnection, ABC):
         self.__connection = None
         self.__logger = hanaro.get_queued_logger()
         self.__connection_string = connection_string
-        self.__adapter_map = {}
 
     def __del__(self) -> None:
         try:
@@ -78,9 +76,9 @@ class DbAdapter(DbConnection, ABC):
 
     def __exit__(
         self,
-        exc_type: Optional[type[BaseException]],
-        exc: Optional[BaseException],
-        tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
         /,
     ) -> Literal[False]:
         return False
@@ -104,20 +102,17 @@ class DbAdapter(DbConnection, ABC):
                 continue  # property type cannot be resolved
 
             for hint in hints.values():
-                origin = get_origin(hint)
-                if origin is not DbTableAdapter:
-                    continue
                 type_args = get_args(hint)
                 if len(type_args) == 1:
                     entity_type = type_args[0]
                     cache_attr = f'_adapter__{name}'
-                    cls.__adapter_map[name] = (entity_type, cache_attr)
+                    cls.__adapter_map[entity_type.__name__] = (entity_type, cache_attr)
                     break
 
     def __create_adapter(self, entity_type: type[TEntity]) -> DbTableAdapter[TEntity]:
         if self.__connection is not None:
             match type(self.__connection).__name__:
-                case 'mysql_proxy_connection/impl' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection':
+                case 'mysql_proxy_connection/impl' | 'MySQLConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection':
                     from ..mysql import MysqlTableAdapter
                     return MysqlTableAdapter[entity_type](self.__connection)  # type: ignore[arg-type, valid-type]
                 case 'SqliteProxyConnection':
@@ -137,7 +132,7 @@ class DbAdapter(DbConnection, ABC):
                 case 'MongoProxyConnection':
                     from ..mongodb import MongoTransactionContext
                     return MongoTransactionContext(self.__connection)
-                case 'mysql_proxy_connection/impl' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection':
+                case 'mysql_proxy_connection/impl' | 'MySQLConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection':
                     from ..mysql import MysqlTransactionContext
                     return MysqlTransactionContext(self.__connection)
                 case 'SqliteProxyConnection':

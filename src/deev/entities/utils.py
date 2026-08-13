@@ -6,12 +6,11 @@ from __future__ import annotations
 from decimal import Decimal
 import inspect
 import re
-from types import NoneType
+from types import NoneType, UnionType
 from typing import (
     Any,
     Callable,
     Mapping,
-    Optional,
     Type,
     TypeVar,
     Union,
@@ -57,7 +56,14 @@ def pluralize(name: str, snake_case: bool = False) -> str:
     return name + 's'
 
 
-def define_entity_spec(entity_type: type, *, table_name: Optional[str] = None, no_pluralization: bool = False, snake_case: bool = False) -> EntitySpec:
+def define_entity_spec(
+    entity_type: type,
+    *,
+    table_name: str | None = None,
+    no_pluralization: bool = False,
+    snake_case: bool = False,
+    **kwargs: Any
+) -> EntitySpec:
     entity_spec = getattr(entity_type, '__deev_entity__', None)
     if entity_spec is None:
         has_autoincrement = False
@@ -65,7 +71,7 @@ def define_entity_spec(entity_type: type, *, table_name: Optional[str] = None, n
         fields = dict[str, EntityFieldSpec]()
         primary_key = list[str]()
         for attr_name, attr_type in attrs.items():
-            is_union_type = get_origin(attr_type) is Union
+            is_union_type = get_origin(attr_type) in (Union, UnionType)
             attr_type_args = tuple() if not is_union_type else get_args(attr_type)
             is_nullable_implied = is_union_type and (NoneType in attr_type_args)
             is_unsupported_union = is_union_type and (len(attr_type_args) > 2 or not is_nullable_implied)
@@ -108,7 +114,8 @@ def define_entity_spec(entity_type: type, *, table_name: Optional[str] = None, n
                         else snake_case_name(entity_type.__name__)
                     )
                 )
-            )
+            ),
+            **kwargs
         )
         setattr(entity_type, '__deev_entity__', entity_spec.__freeze__())
     return entity_spec
@@ -125,17 +132,17 @@ def get_entity_spec(entity_type: type) -> EntitySpec:
 
 def field(
     *,
-    autoincrement: Optional[bool] = None,
-    default: Optional[Callable[..., Any] | Any] = __NOTSET__,  # the field should have a default value applied on creation. may be a value or a function.
-    index: Optional[str | IndexOptions] = None,  # the field is part of an index definition, this is the index name or an IndexField descriptor object defining the index field in more detail
-    mapped: Optional[bool] = None,
-    max: Optional[int | float | Decimal] = None,  # string maximum length <= value (validation)
-    min: Optional[int | float | Decimal] = None,  # string minimum length >= value (validation)
-    nullable: Optional[bool] = None,  # the db should support NULL values for this field, default is NOT NULLABLE unless field hint is `Optional[...]` or `Union[...,None]`, etc.
-    primary_key: Optional[bool] = None,  # the field is part of a primary key definition
-    dbtype: Optional[str] = None,  # dbtype override
-    unique: Optional[bool] = None,  # the field should be unique in the table
-    validator: Optional[Callable[[Any], Any]] = None,  # a custom validator function
+    autoincrement: bool | None = None,
+    default: Callable[..., Any] | Any | None = __NOTSET__,  # the field should have a default value applied on creation. may be a value or a function.
+    index: str | IndexOptions | None = None,  # the field is part of an index definition, this is the index name or an IndexField descriptor object defining the index field in more detail
+    mapped: bool | None = None,
+    max: int | float | Decimal | None = None,  # string maximum length <= value (validation)
+    min: int | float | Decimal | None = None,  # string minimum length >= value (validation)
+    nullable: bool | None = None,  # the db should support NULL values for this field, default is NOT NULLABLE unless field hint is `... | None` or `Union[...,None]`, etc.
+    primary_key: bool | None = None,  # the field is part of a primary key definition
+    dbtype: str | None = None,  # dbtype override
+    unique: bool | None = None,  # the field should be unique in the table
+    validator: Callable[[Any], Any] | None = None,  # a custom validator function
     init: bool = True
 ) -> Any:
     # TODO: validation, ie min >= max, autoincrement only valid for integer+pk fields, etc/etc
@@ -168,12 +175,13 @@ def __can_kwarg(func: Callable[..., Any], kwargs: Mapping[str, Any]) -> bool:
 
 @dataclass_transform(eq_default=False, order_default=False, field_specifiers=(field,))
 def entity(
-    cls: Optional[Type[T]] = None,
+    cls: Type[T] | None = None,
     *,
-    table_name: Optional[str] = None,
+    table_name: str | None = None,
     no_pluralization: bool = False,
     defer_init: bool = False,
-    snake_case: bool = False
+    snake_case: bool = False,
+    **kwargs: Any
 ) -> Any:
     """
     Transform a "simple" class definition into an "Entity" class.
@@ -184,11 +192,11 @@ def entity(
     """
     if cls is None:
         def __entity(_cls: Type[T]) -> Type[T]:
-            return entity(_cls, table_name=table_name, no_pluralization=no_pluralization, defer_init=defer_init, snake_case=snake_case)  # type: ignore[bad-return]
+            return entity(_cls, table_name=table_name, no_pluralization=no_pluralization, defer_init=defer_init, snake_case=snake_case, **kwargs)  # type: ignore[bad-return]
         return __entity  # type: ignore[return-value]
     else:
         L_init = None if not hasattr(cls, '__init__') else cast(Callable[..., Any], cls.__init__)
-        entity_spec = define_entity_spec(cls, table_name=table_name, no_pluralization=no_pluralization, snake_case=snake_case)
+        entity_spec = define_entity_spec(cls, table_name=table_name, no_pluralization=no_pluralization, snake_case=snake_case, **kwargs)
 
         def hide_fieldspec(self: Any, name: str) -> Any:
             v = object.__getattribute__(self, name)

@@ -6,7 +6,7 @@ from __future__ import annotations
 import sqlite3
 from contextvars import ContextVar
 from types import TracebackType
-from typing import Any, Generator, Literal, Optional, Self, cast
+from typing import Any, Generator, Literal, Self, cast
 from uuid import UUID, uuid4
 
 from ..common.db_connection import DbConnection
@@ -48,9 +48,9 @@ class SqliteTransactionContext(DbTransactionContext):
 
     def __exit__(
         self,
-        exc_type: Optional[type[BaseException]] = None,
-        exc_value: Optional[BaseException] = None,  # noqa: ARG001 - unused per context manager protocol
-        traceback: Optional[TracebackType] = None
+        exc_type: type[BaseException] | None = None,
+        exc_value: BaseException | None = None,  # noqa: ARG001 - unused per context manager protocol
+        traceback: TracebackType | None = None
     ) -> Literal[False]:
         if exc_type is not None and self.__transaction_state == 2:
             self.rollback()
@@ -125,7 +125,7 @@ class SqliteTransactionContext(DbTransactionContext):
     def cursor(self) -> DbCursor:
         return self.__context.cursor()
 
-    def execute(self, sql: str, params: Optional[DbParams] = None) -> DbCursor:
+    def execute(self, sql: str, params: DbParams | None = None) -> DbCursor:
         """
         An `execute` method that more closely conforms to PEP 249.
 
@@ -141,7 +141,7 @@ class SqliteTransactionContext(DbTransactionContext):
             tuple(params) if params is not None else tuple())
         return cast(DbCursor, self.__cursor)
 
-    def execute_nonquery(self, sql: str, params: Optional[DbParams] = None) -> None:
+    def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
@@ -150,7 +150,7 @@ class SqliteTransactionContext(DbTransactionContext):
             tuple(params) if params is not None else tuple())
         self.__update_transaction_state(sql)
 
-    def execute_reader(self, sql: str, params: Optional[DbParams] = None) -> Generator[Any, None, None]:
+    def execute_reader(self, sql: str, params: DbParams | None = None) -> Generator[Any, None, None]:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
@@ -163,7 +163,7 @@ class SqliteTransactionContext(DbTransactionContext):
             yield row
             row = self.__cursor.fetchone()
 
-    def execute_scalar(self, sql: str, params: Optional[DbParams] = None) -> Any:
+    def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)

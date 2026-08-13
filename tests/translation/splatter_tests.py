@@ -8,7 +8,7 @@ from deev.entities import entity, field
 from deev.translation import splat, hydrate
 from enum import Enum, IntEnum
 from punit import fact
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 
@@ -16,22 +16,22 @@ from uuid import UUID, uuid4
 def splat_empty_bvt() -> None:
     @entity
     class SEEMPTYBVT:
-        attr_int: Optional[int] = field(nullable=False)
+        attr_int: int | None = field(nullable=False)
         attr_float: float
-        attr_datetime: Optional[datetime] = field(nullable=True)
-        attr_decimal: Optional[Decimal] = field(default=None)
-        attr_date: Optional[date] = None
-        attr_time: Optional[time] = None
-        attr_timedelta: Optional[timedelta] = None
-        attr_str: Optional[str] = None
-        attr_dict: Optional[dict[str, Any]] = None
-        attr_list: Optional[list[Any]] = None
-        attr_tuple: Optional[tuple[Any, ...]] = None
-        attr_uuid: Optional[UUID] = None
+        attr_datetime: datetime | None = field(nullable=True)
+        attr_decimal: Decimal | None = field(default=None)
+        attr_date: date | None = None
+        attr_time: time | None = None
+        attr_timedelta: timedelta | None = None
+        attr_str: str | None = None
+        attr_dict: dict[str, Any] | None = None
+        attr_list: list[Any] | None = None
+        attr_tuple: tuple[Any, ...] | None = None
+        attr_uuid: UUID | None = None
 
     expected_entity = SEEMPTYBVT()  # type: ignore[call-arg]
     # NOTE: for coverage we inject a null-value for non-nullable
-    #       field (which is unioned Optional, while valid in Python,
+    #       field (which is unioned, while valid in Python,
     #       it is explicitly spec'd out when translating. we do this
     #       for both splatter here and hydrate further down.)
     setattr(expected_entity, 'attr_int', None)
@@ -169,18 +169,18 @@ def splat_partial_bvt() -> None:
     """verify partial splatter support"""
     @entity
     class SPLATPARTIALBVT:
-        attr_int: Optional[int] = field(nullable=False)
+        attr_int: int | None = field(nullable=False)
         attr_float: float
-        attr_decimal: Optional[Decimal] = field(default=None)
-        attr_datetime: Optional[datetime] = None
-        attr_date: Optional[date] = None
-        attr_time: Optional[time] = None
-        attr_timedelta: Optional[timedelta] = None
-        attr_str: Optional[str] = None
-        attr_dict: Optional[dict[str, Any]] = None
-        attr_list: Optional[list[Any]] = None
-        attr_tuple: Optional[tuple[Any, ...]] = None
-        attr_uuid: Optional[UUID] = None
+        attr_decimal: Decimal | None = field(default=None)
+        attr_datetime: datetime | None = None
+        attr_date: date | None = None
+        attr_time: time | None = None
+        attr_timedelta: timedelta | None = None
+        attr_str: str | None = None
+        attr_dict: dict[str, Any] | None = None
+        attr_list: list[Any] | None = None
+        attr_tuple: tuple[Any, ...] | None = None
+        attr_uuid: UUID | None = None
 
     expected_entity = SPLATPARTIALBVT(  # type: ignore[call-arg]
         attr_int=1,
@@ -199,18 +199,18 @@ def hydrate_partial_bvt() -> None:
     """verify partial hydration support"""
     @entity
     class HYDRATEPARTIALBVT:
-        attr_int: Optional[int] = field(nullable=False)
+        attr_int: int | None = field(nullable=False)
         attr_float: float
-        attr_decimal: Optional[Decimal] = field(default=None)
-        attr_datetime: Optional[datetime] = None
-        attr_date: Optional[date] = None
-        attr_time: Optional[time] = None
-        attr_timedelta: Optional[timedelta] = None
-        attr_str: Optional[str] = None
-        attr_dict: Optional[dict[str, Any]] = None
-        attr_list: Optional[list[Any]] = None
-        attr_tuple: Optional[tuple[Any, ...]] = None
-        attr_uuid: Optional[UUID] = None
+        attr_decimal: Decimal | None = field(default=None)
+        attr_datetime: datetime | None = None
+        attr_date: date | None = None
+        attr_time: time | None = None
+        attr_timedelta: timedelta | None = None
+        attr_str: str | None = None
+        attr_dict: dict[str, Any] | None = None
+        attr_list: list[Any] | None = None
+        attr_tuple: tuple[Any, ...] | None = None
+        attr_uuid: UUID | None = None
 
     expected_entity = HYDRATEPARTIALBVT(  # type: ignore[call-arg]
         attr_int=1,

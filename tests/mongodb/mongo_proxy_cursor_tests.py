@@ -3,7 +3,7 @@
 
 from deev.common.db_error import DbError
 from deev.entities import entity, field
-from deev.mongodb.mongo_proxy_cursor import MongoProxyCursor, _parse_sql_where
+from deev.mongodb.mongo_proxy_cursor import MongoProxyCursor, parse_sql_where
 from deev.mongodb.mongo_table_adapter import MongoTableAdapter
 from deev.utils import connect
 from punit import fact, trait
@@ -107,131 +107,131 @@ def cursor_update_rowcount_reflects_modifications() -> None:
 
 @fact
 def where_parser_equality_returns_direct_value() -> None:
-    result = _parse_sql_where("name='alice'", ())
+    result = parse_sql_where("name='alice'", ())
     assert result == {'name': 'alice'}
 
 
 @fact
 def where_parser_numeric_equality_returns_int_or_float() -> None:
-    int_result = _parse_sql_where("age=30", ())
+    int_result = parse_sql_where("age=30", ())
     assert int_result == {'age': 30}
 
-    float_result = _parse_sql_where("score=3.14", ())
+    float_result = parse_sql_where("score=3.14", ())
     assert float_result == {'score': 3.14}
 
 
 @fact
 def where_parser_placeholder_resolves_from_params() -> None:
-    result = _parse_sql_where("name=%? AND age=%?", ('alice', 25))
+    result = parse_sql_where("name=%? AND age=%?", ('alice', 25))
     assert result == {'name': 'alice', 'age': 25}
 
 
 @fact
 def where_parser_null_returns_none() -> None:
-    result = _parse_sql_where("email IS NULL", ())
+    result = parse_sql_where("email IS NULL", ())
     assert result == {'email': {'$eq': None}}
 
 
 @fact
 def where_parser_is_not_null_works() -> None:
-    result = _parse_sql_where("name IS NOT NULL", ())
+    result = parse_sql_where("name IS NOT NULL", ())
     assert result == {'name': {'$ne': None}}
 
 
 @fact
 def where_parser_comparison_lt() -> None:
-    result = _parse_sql_where("age<30", ())
+    result = parse_sql_where("age<30", ())
     assert result == {'age': {'$lt': 30}}
 
 
 @fact
 def where_parser_comparison_lte() -> None:
-    result = _parse_sql_where("age<=30", ())
+    result = parse_sql_where("age<=30", ())
     assert result == {'age': {'$lte': 30}}
 
 
 @fact
 def where_parser_comparison_gt() -> None:
-    result = _parse_sql_where("age>30", ())
+    result = parse_sql_where("age>30", ())
     assert result == {'age': {'$gt': 30}}
 
 
 @fact
 def where_parser_comparison_gte() -> None:
-    result = _parse_sql_where("age>=30", ())
+    result = parse_sql_where("age>=30", ())
     assert result == {'age': {'$gte': 30}}
 
 
 @fact
 def where_parser_comparison_ne() -> None:
-    result = _parse_sql_where("name!='alice'", ())
+    result = parse_sql_where("name!='alice'", ())
     assert result == {'name': {'$ne': 'alice'}}
 
 
 @fact
 def where_parser_angle_bracket_ne() -> None:
-    result = _parse_sql_where("name<>'alice'", ())
+    result = parse_sql_where("name<>'alice'", ())
     assert result == {'name': {'$ne': 'alice'}}
 
 
 @fact
 def where_parser_in_operator_returns_list() -> None:
-    result = _parse_sql_where("status IN ('active', 'pending')", ())
+    result = parse_sql_where("status IN ('active', 'pending')", ())
     assert result == {'status': {'$in': ['active', 'pending']}}
 
 
 @fact
 def where_parser_in_operator_with_numbers() -> None:
-    result = _parse_sql_where("id IN (1, 2, 3)", ())
+    result = parse_sql_where("id IN (1, 2, 3)", ())
     assert result == {'id': {'$in': [1, 2, 3]}}
 
 
 @fact
 def where_parser_boolean_values() -> None:
-    true_result = _parse_sql_where("active=true", ())
+    true_result = parse_sql_where("active=true", ())
     assert true_result == {'active': True}
 
-    false_result = _parse_sql_where("active=false", ())
+    false_result = parse_sql_where("active=false", ())
     assert false_result == {'active': False}
 
 
 @fact
 def where_parser_and_conditions_merge_flat() -> None:
-    result = _parse_sql_where("name='alice' AND age=30", ())
+    result = parse_sql_where("name='alice' AND age=30", ())
     assert result == {'name': 'alice', 'age': 30}
 
 
 @fact
 def where_parser_or_conditions_produce_or_array() -> None:
-    result = _parse_sql_where("name='alice' OR name='bob'", ())
+    result = parse_sql_where("name='alice' OR name='bob'", ())
     assert '$or' in result
     assert len(result['$or']) == 2
 
 
 @fact
 def where_parser_empty_clause_returns_empty_dict() -> None:
-    assert _parse_sql_where(None, ()) == {}
-    assert _parse_sql_where('', ()) == {}
+    assert parse_sql_where(None, ()) == {}
+    assert parse_sql_where('', ()) == {}
 
 
 @fact
 def where_parser_dot_notation_field_name_preserved() -> None:
     """Dot-notation field names (e.g. 'address.city') must be preserved."""
-    result = _parse_sql_where("address.city='NYC'", ())
+    result = parse_sql_where("address.city='NYC'", ())
     assert 'address.city' in result, f"Expected 'address.city' key, got {list(result.keys())}"
 
 
 @fact
 def where_parser_dot_notation_in_comparison_works() -> None:
     """Dot-notation field with comparison operators must work."""
-    result = _parse_sql_where("user.profile.age>=18", ())
+    result = parse_sql_where("user.profile.age>=18", ())
     assert 'user.profile.age' in result, f"Expected 'user.profile.age' key, got {list(result.keys())}"
 
 
 @fact
 def where_parser_or_chain_resilient_to_unparseable_condition() -> None:
     """An unparseable condition in an OR chain should not corrupt surrounding clauses."""
-    result = _parse_sql_where("x=1 OR invalid_token_xyzz OR y=2", ())
+    result = parse_sql_where("x=1 OR invalid_token_xyzz OR y=2", ())
 
     assert '$or' in result, f"Expected $or array, got {result}"
     groups = result['$or']
@@ -243,7 +243,7 @@ def where_parser_or_chain_resilient_to_unparseable_condition() -> None:
 @fact
 def where_parser_and_chain_resilient_to_unparseable_condition() -> None:
     """An unparseable condition in an AND chain should be silently dropped."""
-    result = _parse_sql_where("a=1 AND invalid_token_xyzz AND b=2", ())
+    result = parse_sql_where("a=1 AND invalid_token_xyzz AND b=2", ())
     assert 'a' in result, f"a missing: {result}"
     assert 'b' in result, f"b missing: {result}"
 
@@ -351,7 +351,7 @@ def adapter_query_with_in_operator_works() -> None:
 def where_parser_raises_when_too_many_placeholders() -> None:
     """When the WHERE clause has more %? placeholders than provided params,
     the first placeholder is resolved but subsequent ones silently dropped."""
-    result = _parse_sql_where("name=%? AND age=%?", ('alice',))
+    result = parse_sql_where("name=%? AND age=%?", ('alice',))
     assert result == {'name': 'alice'}, f"Expected {{'name': 'alice'}}, got {result}"
 
 
@@ -359,21 +359,21 @@ def where_parser_raises_when_too_many_placeholders() -> None:
 def where_parser_unrecognized_value_returns_empty() -> None:
     """A bare unquoted string resolves to empty dict because the DbError from
     _resolve_value is caught and skipped silently."""
-    result = _parse_sql_where("name=garbage_no_quotes", ())
+    result = parse_sql_where("name=garbage_no_quotes", ())
     assert result == {}
 
 
 @fact
 def where_parser_unrecognised_condition_returns_empty() -> None:
     """A truly unrecognised condition token (not matching any regex) is silently skipped."""
-    result = _parse_sql_where("@@invalid_token", ())
+    result = parse_sql_where("@@invalid_token", ())
     assert result == {}
 
 
 @fact
 def where_parser_null_literal_resolves_to_none() -> None:
     """A NULL value string resolves to Python None."""
-    result = _parse_sql_where("email=NULL", ())
+    result = parse_sql_where("email=NULL", ())
     assert 'email' in result
     assert result['email'] is None
 
@@ -381,7 +381,7 @@ def where_parser_null_literal_resolves_to_none() -> None:
 @fact
 def where_parser_mixed_and_or_groups_both_populated() -> None:
     """When both AND and OR are used, all groups should be collected into $or."""
-    result = _parse_sql_where("a=1 AND b=2 OR c=3", ())
+    result = parse_sql_where("a=1 AND b=2 OR c=3", ())
     assert '$or' in result
     groups: list[dict[str, object]] = result['$or']  # type: ignore[index]
     assert len(groups) == 2
@@ -390,7 +390,7 @@ def where_parser_mixed_and_or_groups_both_populated() -> None:
 @fact
 def where_parser_only_or_single_group() -> None:
     """A single condition without AND/OR produces a flat dict."""
-    result = _parse_sql_where("x=1", ())
+    result = parse_sql_where("x=1", ())
     assert '$or' not in result
     assert 'x' in result
 
@@ -398,7 +398,7 @@ def where_parser_only_or_single_group() -> None:
 @fact
 def where_parser_empty_string_returns_empty_dict() -> None:
     """An empty string clause is treated as no clause."""
-    assert _parse_sql_where('', ()) == {}
+    assert parse_sql_where('', ()) == {}
 
 
 @fact
@@ -502,7 +502,7 @@ def cursor_execute_select_backtick_table_name_stripped() -> None:
 
 @fact
 def cursor_execute_select_with_placeholder_params() -> None:
-    """SELECT with %? placeholders should pass params to _parse_sql_where."""
+    """SELECT with %? placeholders should pass params to parse_sql_where."""
     cursor, session, client = _make_cursor()
     mock_db = MagicMock()
     mock_collection = MagicMock()
@@ -1086,7 +1086,6 @@ def set_collection_name_stores_collection_reference() -> None:
     last_col = cursor._MongoProxyCursor__last_collection  # type: ignore[attr-defined]
     assert last_col is not None
 
-
 # _get_database / _get_collection (internal helpers)
 
 
@@ -1115,7 +1114,7 @@ def get_collection_returns_fallback_collection() -> None:
 @fact
 def where_parser_with_or_at_end_of_clause() -> None:
     """OR at end of clause should not cause errors."""
-    result = _parse_sql_where("a=1 OR b=2", ())
+    result = parse_sql_where("a=1 OR b=2", ())
     assert '$or' in result
     groups: list[dict[str, object]] = result['$or']  # type: ignore[index]
     assert len(groups) == 2
@@ -1124,7 +1123,7 @@ def where_parser_with_or_at_end_of_clause() -> None:
 @fact
 def where_parser_with_in_operator_mixed_types() -> None:
     """IN with mixed string/number types should resolve correctly."""
-    result = _parse_sql_where("id IN (1, 'two', 3.0)", ())
+    result = parse_sql_where("id IN (1, 'two', 3.0)", ())
     assert '$in' in result['id']
     assert result['id']['$in'] == [1, 'two', 3.0]
 
@@ -1149,7 +1148,7 @@ def cursor_execute_insert_with_empty_string_literal() -> None:
 @fact
 def where_parser_or_groups_append_final_and_group() -> None:
     """When the last group is an AND group (after OR), it should be appended."""
-    result = _parse_sql_where("a=1 OR b=2 AND c=3", ())
+    result = parse_sql_where("a=1 OR b=2 AND c=3", ())
     assert '$or' in result
     groups: list[dict[str, object]] = result['$or']  # type: ignore[index]
     assert len(groups) == 2

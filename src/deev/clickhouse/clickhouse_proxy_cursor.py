@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, Any, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 
 import hanaro
 
@@ -43,7 +43,7 @@ class ClickHouseProxyCursor(DbCursor):
         return self.__cursor.client
 
     @property
-    def description(self) -> Optional[Sequence[tuple[Any, ...]]]:
+    def description(self) -> Sequence[tuple[Any, ...]] | None:
         return self.__cursor.description
 
     @property
@@ -74,41 +74,6 @@ class ClickHouseProxyCursor(DbCursor):
             columns.append(c.split()[0])
         return (table, columns)
 
-    def _try_client_bulk_insert(self, sql: str, params: tuple[Any, ...] | Sequence[tuple[Any, ...]]) -> bool:
-        """Try to execute an INSERT via the native client."""
-        result = self._parse_insert_statement(sql)
-        if result is None:
-            return False
-        table, columns = result
-
-        first: tuple[Any, ...] | Sequence[tuple[Any, ...]]
-        if not isinstance(params, tuple):
-            if not params:
-                return False
-            if isinstance(params[0], tuple):
-                first = params[0]
-            else:
-                first = params
-        else:
-            first = params
-
-        if len(first) != len(columns):
-            return False
-
-        client = self.__cursor.client
-        all_data = [list(first)] if isinstance(params, tuple) else [list(p) for p in params]
-        try:
-            summary = client.insert(
-                table=table,
-                data=all_data,
-                column_names=columns
-            )
-            self.__cursor._rowcount = summary.written_rows  # type: ignore[attr-defined]
-            self.__cursor.data = []  # type: ignore[attr-defined]
-            return True
-        except Exception:
-            return False
-
     def __convert_positional_to_pyformat(self, operation: str, params: tuple[Any, ...]) -> tuple[str, dict[str, Any]]:
         """Convert %? placeholders to pyformat %(pN)s placeholders and build a params dict."""
         param_dict: dict[str, Any] = {}
@@ -118,19 +83,16 @@ class ClickHouseProxyCursor(DbCursor):
             if part == '%?':
                 name = f'p{i}'
                 param_dict[name] = params[i]
-                result.append(f'(%({name})s)')
+                result.append(f'%({name})s')
                 i += 1
             else:
                 result.append(part)
         return ''.join(result), param_dict
 
-    def execute(self, operation: str, params: Optional[DbParams] = None) -> None:
+    def execute(self, operation: str, params: DbParams | None = None) -> None:
         if params is not None:
             param_tuple: tuple[Any, ...] = tuple(params)
             pyformat_sql, pyformat_params = self.__convert_positional_to_pyformat(operation, param_tuple)
-            # Try native client INSERT first
-            if self._try_client_bulk_insert(operation, param_tuple):
-                return
             self.__cursor.execute(pyformat_sql, parameters=pyformat_params)
         else:
             self.__cursor.execute(operation)

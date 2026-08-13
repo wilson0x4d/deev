@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from sqlite3 import Connection
 from types import TracebackType
-from typing import Any, Literal, Optional, Self
+from typing import Any, Literal, Self
 
 from ..common.db_connection import DbConnection
 from ..common.db_cursor import DbCursor
@@ -24,6 +24,10 @@ class SqliteProxyConnection(DbConnection):
     def __init__(self, provider_connection: Connection) -> None:
         self.__connection = provider_connection
 
+    @property
+    def sqlite_connection(self) -> Connection:
+        return self.__connection
+
     def cursor(self, *args: Any, **kwargs: Any) -> DbCursor:
         return SqliteProxyCursor(self.__connection.cursor(*args, **kwargs))
 
@@ -39,7 +43,7 @@ class SqliteProxyConnection(DbConnection):
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> bool:
+    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None, /) -> bool:
         return self.__connection.__exit__(exc_type, exc, tb)
 
 

@@ -5,11 +5,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 from deev import entity, field
 from punit import fact, setup, teardown
-
 
 # --- Module-scoped fixture ---
 
@@ -27,8 +26,8 @@ def module_teardown() -> None:
     global _seen_defer_init_mixin_init
     _seen_defer_init_mixin_init = []
 
-
 # --- Helper mixins and entity classes ---
+
 
 class _MixinCallsSuperInit:
     """Mixin that logs when __init__ runs."""
@@ -255,7 +254,7 @@ def defer_init_true_multiple_fields() -> None:
         a: int = field(default=1)
         b: int = field(default=2)
         c: int = field(default=3)
-        d: Optional[str] = field(default='ok')
+        d: str | None = field(default='ok')
 
     instance = MultiFieldEntity()  # type: ignore[call-arg]
     assert instance.a == 1

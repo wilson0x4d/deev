@@ -4,6 +4,7 @@
 import appsettings2
 import argparse
 import hanaro
+import os
 import sys
 
 from .common.connection_string import ConnectionString
@@ -117,27 +118,32 @@ def main() -> None:
             ],
         }
     hanaro.configure_logging(configuration)
+    try:
+        args = __parse_args()
+        connection: ConnectionString
+        if '=' not in args.connection:
+            # load via appsettings2
+            candidate_config_keys = list[str]([
+                f'connectionStrings__{args.connection}',
+                f'connections__{args.connection}'
+            ])
+            for candidate_config_key in candidate_config_keys:
+                candidate_connection_str = configuration.get(candidate_config_key, None)
+                if candidate_connection_str is not None:
+                    connection = ConnectionString(candidate_connection_str)
+                    break
+            assert connection is not None  # type: ignore[unbound-name]
+        else:
+            # take as literal
+            connection = ConnectionString(args.connection)
 
-    args = __parse_args()
-    connection: ConnectionString
-    if '=' not in args.connection:
-        # load via appsettings2
-        candidate_config_keys = list[str]([
-            f'connectionStrings__{args.connection}',
-            f'connections__{args.connection}'
-        ])
-        for candidate_config_key in candidate_config_keys:
-            candidate_connection_str = configuration.get(candidate_config_key, None)
-            if candidate_connection_str is not None:
-                connection = ConnectionString(candidate_connection_str)
-                break
-        assert connection is not None  # type: ignore[unbound-name]
-    else:
-        # take as literal
-        connection = ConnectionString(args.connection)
-
-    match args.command:
-        case 'apply':
-            apply_migrations(args.migration_name, connection, args.path)
-        case 'undo':
-            undo_migrations(args.migration_name, connection, args.path)
+        match args.command:
+            case 'apply':
+                apply_migrations(args.migration_name, connection, args.path)
+            case 'undo':
+                undo_migrations(args.migration_name, connection, args.path)
+    except Exception as ex:
+        hanaro.get_logger().exception(ex)
+    finally:
+        sys.stdout.flush()
+        sys.stderr.flush()

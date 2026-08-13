@@ -8,7 +8,7 @@ import logging
 import os
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Optional
+from typing import Any
 
 from .._migration_data import _MigrationData, _MigrationData2
 from .connection_string import ConnectionString
@@ -39,7 +39,7 @@ class DbMigrator:
     def __get_or_create_migrations_table(self) -> DbTableAdapter[Any]:
         from ..utils import connect, create_table_adapter
         connection = connect(self.__connectionstring)
-        table_adapter = create_table_adapter(self.__migrationdata_t, connection)
+        table_adapter = create_table_adapter(self.__migrationdata_t, connection, sync_replicas=True)
         table_adapter.create_table()
         return table_adapter
 
@@ -53,7 +53,7 @@ class DbMigrator:
         spec.loader.exec_module(module)  # type: ignore[arg-type]
         return module
 
-    def apply(self, migrations_path: Path | str, stop_at: Optional[str] = None) -> None:
+    def apply(self, migrations_path: Path | str, stop_at: str | None = None) -> None:
         from ..utils import begin_transaction, create_database
         create_database(self.__connectionstring)
         if isinstance(migrations_path, str):
@@ -102,7 +102,7 @@ class DbMigrator:
                 break
         self.__logger.info(f'Migrations applied {applied_migration_count}, skipped {skipped_migration_count}, available {len(available_migrations)}.')
 
-    def undo(self, migrations_path: Path | str, stop_at: Optional[str] = None) -> None:
+    def undo(self, migrations_path: Path | str, stop_at: str | None = None) -> None:
         from ..utils import begin_transaction, create_database
         create_database(self.__connectionstring)
         if isinstance(migrations_path, str):

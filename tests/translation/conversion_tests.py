@@ -37,9 +37,9 @@ class Priority(IntEnum):
 
 
 @theory
-@inlinedata(Optional[int], int)
-@inlinedata(Optional[str], str)
-@inlinedata(Optional[float], float)
+@inlinedata(int | None, int)
+@inlinedata(str | None, str)
+@inlinedata(float | None, float)
 @inlinedata(Union[int | str], int)
 def can_deunionize_types(input: type, expected: type) -> None:
     actual = deunionize(input)
@@ -102,8 +102,7 @@ def to_pyobject_bvt(value: Any, hint: type, expected: Any) -> None:
 
 @fact
 def to_pyobject_non_class_hint_no_crash() -> None:
-    from typing import Optional as Opt
-    result = to_pyobject('some_value', Opt[str])  # type: ignore[arg-type]
+    result = to_pyobject('some_value', Optional[str])  # type: ignore[arg-type]
     assert result == 'some_value'
 
     result = to_pyobject('some_value', 'Status')  # type: ignore[arg-type]
@@ -130,7 +129,7 @@ def to_pyobject_non_class_hint_no_crash() -> None:
 @inlinedata(time(21, 43, 46, 539436, tzinfo=timezone.utc), time, '21:43:46.539436Z')
 @inlinedata(timedelta(days=3, seconds=7383, microseconds=321), timedelta, 266583000321)
 @inlinedata(date(2023, 5, 19), date, '2023-05-19')
-@inlinedata(UUID('04c182b78c784285b913c8981b4727bf'), UUID, '04c182b7-8c78-4285-b913-c8981b4727bf')
+@inlinedata(UUID('04c182b78c784285b913c8981b4727bf'), UUID, '04c182b78c784285b913c8981b4727bf')
 @inlinedata(Decimal(123), Decimal, Decimal(123))
 @inlinedata(Status.ACTIVE, Status, 'active')
 @inlinedata(Status.INACTIVE, Status, 'inactive')

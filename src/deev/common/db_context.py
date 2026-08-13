@@ -3,10 +3,15 @@
 
 from typing import TypeAlias
 
+from .async_db_connection import AsyncDbConnection
+from .async_db_transaction_context import AsyncDbTransactionContext
 from .db_connection import DbConnection
 from .db_transaction_context import DbTransactionContext
 
+AsyncDbContext: TypeAlias = AsyncDbConnection | AsyncDbTransactionContext
 DbContext: TypeAlias = DbConnection | DbTransactionContext
 
-
-__all__ = ['DbContext']
+__all__ = [
+    'AsyncDbContext',
+    'DbContext'
+]

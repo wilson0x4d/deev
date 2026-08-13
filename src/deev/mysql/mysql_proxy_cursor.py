@@ -8,7 +8,6 @@ import logging
 from mysql.connector.abstracts import MySQLCursorAbstract
 from typing import (
     Any,
-    Optional,
     Sequence
 )
 
@@ -34,14 +33,14 @@ class MysqlProxyCursor(DbCursor):
         self.__sql_arg_subst = '%s'
 
     @property
-    def description(self) -> Optional[Sequence[tuple[Any, ...]]]:
+    def description(self) -> Sequence[tuple[Any, ...]] | None:
         return self.__cursor.description
 
     @property
     def rowcount(self) -> int:
         return self.__cursor.rowcount
 
-    def execute(self, operation: str, params: Optional[DbParams] = None) -> None:
+    def execute(self, operation: str, params: DbParams | None = None) -> None:
         operation = operation.replace(self.__sql_arg_expect, self.__sql_arg_subst)
         self.__logger.debug(f'execute({operation!r}, {params!r})')
         if params is None:

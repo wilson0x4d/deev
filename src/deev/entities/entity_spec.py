@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: © 2023 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
-from types import MappingProxyType
 from typing import Any, Mapping
 
 from .._immutable_mixin import _ImmutableMixin
@@ -25,7 +24,8 @@ class EntitySpec(_ImmutableMixin):
         fields: Mapping[str, EntityFieldSpec],
         has_autoincrement: bool,
         primary_key: tuple[str, ...],
-        table_name: str
+        table_name: str,
+        **kwargs: Any
     ) -> None:
         self.attrs = attrs
         self.entity_type = entity_type
@@ -33,6 +33,7 @@ class EntitySpec(_ImmutableMixin):
         self.has_autoincrement = has_autoincrement
         self.primary_key = primary_key
         self.table_name = table_name
+        self.extra_args = kwargs
 
 
 __all__ = ['EntitySpec']

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: © 2023 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from .._immutable_mixin import _ImmutableMixin
 from .index_options import IndexOptions
@@ -10,17 +10,17 @@ from .index_options import IndexOptions
 class EntityFieldSpec(_ImmutableMixin):
     """Entity Field Specification"""
 
-    autoincrement: Optional[bool]  # if the field should be configured for autoincrement (applies to PK only)
-    default: Optional[Callable[..., Any] | Any]  # the field should have a default value applied on creation. may be a value or a function.
-    index: Optional[IndexOptions]  # the field is part of an index definition, this represents the index options for the field
-    mapped: Optional[bool]  # whether or not the field is mapped, fields are always mapped by default
-    max: Optional[int | float]  # maximum length <= value (validation)
-    min: Optional[int | float]  # minimum length >= value (validation)
-    nullable: Optional[bool]  # the db should support NULL values for this field
-    primary_key: Optional[bool]  # the field is part of a primary key definition
-    dbtype: Optional[str]  # dbtype override
-    unique: Optional[bool]  # the field should be unique in the table
-    validator: Optional[Callable[[Any], Any]]  # a custom validator function
+    autoincrement: bool | None  # if the field should be configured for autoincrement (applies to PK only)
+    default: Callable[..., Any] | Any | None  # the field should have a default value applied on creation. may be a value or a function.
+    index: IndexOptions | None  # the field is part of an index definition, this represents the index options for the field
+    mapped: bool | None  # whether or not the field is mapped, fields are always mapped by default
+    max: int | float | None  # maximum length <= value (validation)
+    min: int | float | None  # minimum length >= value (validation)
+    nullable: bool | None  # the db should support NULL values for this field
+    primary_key: bool | None  # the field is part of a primary key definition
+    dbtype: str | None  # dbtype override
+    unique: bool | None  # the field should be unique in the table
+    validator: Callable[[Any], Any] | None  # a custom validator function
 
     def __init__(self, **kwargs: Any) -> None:
         self.autoincrement = None
@@ -41,7 +41,7 @@ class EntityFieldSpec(_ImmutableMixin):
             setattr(self, k, v)
 
     @property
-    def sqltype(self) -> Optional[str]:  # pragma: nocover
+    def sqltype(self) -> str | None:  # pragma: nocover
         # DEPRECATED: compatibility stub, remove in next major release
         return self.dbtype
 

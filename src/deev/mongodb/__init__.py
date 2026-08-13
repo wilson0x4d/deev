@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT
 
 try:
+    from .async_mongo_proxy_connection import AsyncMongoProxyConnection
+    from .async_mongo_proxy_cursor import AsyncMongoProxyCursor
+    from .async_mongo_table_adapter import AsyncMongoTableAdapter
+    from .async_mongo_transaction_context import AsyncMongoTransactionContext
     from .mongo_proxy_connection import MongoProxyConnection
     from .mongo_proxy_cursor import MongoProxyCursor
     from .mongo_table_adapter import MongoTableAdapter
@@ -13,6 +17,10 @@ except Exception:
 
 
 __all__ = [
+    'AsyncMongoProxyConnection',
+    'AsyncMongoProxyCursor',
+    'AsyncMongoTableAdapter',
+    'AsyncMongoTransactionContext',
     'MongoProxyConnection',
     'MongoProxyCursor',
     'MongoTableAdapter',

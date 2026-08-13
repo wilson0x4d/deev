@@ -7,7 +7,6 @@ import logging
 import re
 from typing import (
     Any,
-    Optional,
     Sequence
 )
 import hanaro
@@ -17,115 +16,7 @@ from pymongo.client_session import ClientSession
 from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_params import DbParams
-
-
-def _parse_sql_where(where_clause: str | None, params: tuple[Any, ...]) -> dict[str, Any]:
-    """Parse a SQL WHERE clause into a MongoDB filter dict.
-    Supports = (equality), != / <> ($ne), < <= > >= ($lt, $lte, $gt, $gte),
-    IN (list), IS NULL / IS NOT NULL, and positional %? placeholders.
-    Conditions joined by AND are merged into a single flat dict
-    (MongoDB treats dict keys as AND).  Conditions joined by OR produce
-    an ``$or`` array in the top-level filter.
-    This is a shared utility used by both MongoProxyCursor.execute() and
-    MongoTableAdapter.query() to avoid code duplication.
-    """
-    if not where_clause:
-        return {}
-    param_idx = 0
-
-    def _next_param() -> Any:
-        nonlocal param_idx
-        if param_idx >= len(params):
-            raise DbError('WHERE clause has more placeholders than provided parameters.')
-        val = params[param_idx]
-        param_idx += 1
-        return val
-
-    def _resolve_value(value_str: str) -> Any:
-        """Resolve a raw SQL value string to a Python/MongoDB value."""
-        if value_str == '%?':
-            return _next_param()
-        lower = value_str.lower()
-        if lower in ('true', 'false'):
-            return lower == 'true'
-        if value_str == 'NULL':
-            return None
-        if value_str.startswith("'") and value_str.endswith("'"):
-            return value_str[1:-1]
-        try:
-            return float(value_str) if '.' in value_str else int(value_str)
-        except ValueError:
-            raise DbError(f'Cannot parse WHERE value: {value_str}')
-
-    def _parse_single_condition(token: str) -> tuple[str, Any]:
-        """Parse a single condition token and return (field_name, mongo_value)."""
-        null_match = re.match(
-            r"([\w.]+)\s+IS\s+NOT\s+NULL", token, re.IGNORECASE
-        )
-        if null_match:
-            return (null_match.group(1), {'$ne': None})
-        null_match2 = re.match(r"([\w.]+)\s+IS\s+NULL", token, re.IGNORECASE)
-        if null_match2:
-            return (null_match2.group(1), {'$eq': None})
-        in_match = re.match(r"([\w.]+)\s+IN\s*\((.+)\)", token, re.IGNORECASE)
-        if in_match:
-            field_name = in_match.group(1)
-            inner = in_match.group(2)
-            items = [it.strip() for it in inner.split(',')]
-            return (field_name, {'$in': [_resolve_value(it) for it in items]})
-        comp_match = re.match(
-            r"([\w.]+)\s*(<=|>=|!=|<>|<|>|=)\s*(.+)", token, re.IGNORECASE
-        )
-        if comp_match:
-            field_name, op_str, raw_val = comp_match.groups()
-            val = _resolve_value(raw_val)
-            upper_op = op_str.upper()
-            mongo_op_map: dict[str, str] = {
-                '!=': 'ne', '<>': 'ne',
-                '<=': 'lte', '>=': 'gte',
-                '<': 'lt', '>': 'gt',
-                '=': '=',
-            }
-            if upper_op == '=':
-                return (field_name, val)
-            else:
-                mongo_op = mongo_op_map.get(upper_op, None)
-                if mongo_op is not None:
-                    return (field_name, {f'${mongo_op}': val})
-        raise DbError(f'Unrecognised WHERE condition: {token}')
-    parts = re.split(r'\s+(AND|OR)\s+', where_clause, flags=re.IGNORECASE)
-    or_groups: list[dict[str, Any]] = []   # groups to become $or array
-    and_group: dict[str, Any] = {}
-    idx = 0
-    while idx < len(parts):
-        token = parts[idx].strip() if idx < len(parts) else ''
-        idx += 1
-        if not token:
-            continue
-        joiner = 'AND'
-        if idx < len(parts):
-            j = parts[idx].upper()
-            if j in ('AND', 'OR'):
-                joiner = j
-                idx += 1
-        try:
-            field_name, mongo_value = _parse_single_condition(token)
-        except DbError:
-            if idx < len(parts) and parts[idx].upper() in ('AND', 'OR'):
-                idx += 1
-            continue
-        if joiner == 'OR':
-            and_group[field_name] = mongo_value
-            or_groups.append(and_group)
-            and_group = {}
-        else:
-            and_group[field_name] = mongo_value
-    if not and_group and not or_groups:
-        return {}
-    if or_groups:
-        or_groups.append(and_group)
-        return {'$or': or_groups}
-    return and_group
+from .utils import infer_description_fields, parse_sql_where
 
 
 class MongoProxyCursor(DbCursor):
@@ -136,13 +27,13 @@ class MongoProxyCursor(DbCursor):
     """
     __database_name: str
     __logger: logging.Logger
-    __session: ClientSession
-    __sql_arg_expect: str
     __result_set: list[dict[str, Any]] | None
     __row_index: int
     __row_count: int
+    __session: ClientSession
+    __sql_arg_expect: str
     __description_fields: tuple[str, ...] | None
-    __last_collection: Optional[Collection]
+    __last_collection: Collection | None
 
     def __init__(self, provider_session: ClientSession, database_name: str) -> None:
         self.__database_name = database_name
@@ -156,7 +47,7 @@ class MongoProxyCursor(DbCursor):
         self.__row_count = 0
 
     @property
-    def description(self) -> Optional[Sequence[tuple[Any, Any, Optional[int], Optional[int], Optional[int], Optional[int], bool]]]:
+    def description(self) -> Sequence[tuple[Any, Any, int | None, int | None, int | None, int | None, bool]] | None:
         if self.__result_set is not None and len(self.__result_set) > 0:
             first_doc = self.__result_set[0]
             fields = list(self.__description_fields) if self.__description_fields else list(first_doc.keys())
@@ -170,36 +61,10 @@ class MongoProxyCursor(DbCursor):
             )
         return None
 
-    def _describe_field(self, field_name: str, doc: dict[str, Any]) -> tuple[Any, Optional[int], Optional[int], Optional[int], Optional[int]]:
+    def _describe_field(self, field_name: str, doc: dict[str, Any]) -> tuple[Any, int | None, int | None, int | None, int | None]:
         """Infer DB-API 2.0 description fields from a single document's value."""
         value = doc.get(field_name)
-        type_code, display_size, internal_size, precision, scale = self._infer_description_fields(value)
-        return type_code, display_size, internal_size, precision, scale
-
-    def _infer_description_fields(self, value: Any) -> tuple[Any, Optional[int], Optional[int], Optional[int], Optional[int]]:
-        """Infer DB-API 2.0 description fields from a Python value.
-        Per PEP 249, only name and type_code are mandatory; the remaining five
-        are optional and should be None when no meaningful values can be provided.
-        We return None for everything except display_size/internal_size (which we
-        can derive from string byte length) and precision/scale (which we know
-        for integer/float types).
-        """
-        if value is None:
-            return None, None, None, None, None
-        if isinstance(value, bool):
-            return bool, None, None, None, None
-        if isinstance(value, int):
-            return int, len(str(abs(value))), 8, 38, 0
-        if isinstance(value, float):
-            return float, None, 8, 24, 16
-        if isinstance(value, str):
-            return str, len(value), len(value.encode()), None, None
-        if isinstance(value, bytes):
-            return bytes, None, len(value), None, None
-        if isinstance(value, (dict, list, tuple, set)):
-            text_repr = str(value)
-            return str, len(text_repr), len(text_repr.encode()), None, None
-        return str, None, None, None, None
+        return infer_description_fields(value)
 
     @property
     def rowcount(self) -> int:
@@ -222,7 +87,7 @@ class MongoProxyCursor(DbCursor):
         """Store the target collection name for use by mongo_fetch* methods."""
         self.__last_collection = self.__get_database()[name]  # type: ignore[attr-defined]
 
-    def execute(self, operation: str, params: Optional[DbParams] = None) -> None:
+    def execute(self, operation: str, params: DbParams | None = None) -> None:
         param_tuple: tuple[Any, ...] = tuple(params) if params is not None else ()
         operation_upper = operation.strip().upper()
         self.__row_index = 0
@@ -258,7 +123,7 @@ class MongoProxyCursor(DbCursor):
         if table_name is None:
             # SELECT without FROM (e.g. `SELECT 1`) — valid no-op for migration scripts;
             # produce an empty result set whose description matches the selected columns.
-            self.__result_set: list[dict[str, Any]] = []
+            self.__result_set = []
             self.__description_fields = tuple(col_names)
             self.__row_count = 0
             return
@@ -277,7 +142,7 @@ class MongoProxyCursor(DbCursor):
         else:
             col_names = [c.strip().strip('`]["') for c in columns_str.split(',')]
             projection = {c: 1 for c in col_names}
-        where_filter = _parse_sql_where(where_clause, params) if where_clause else {}
+        where_filter = parse_sql_where(where_clause, params) if where_clause else {}
         sort_spec: list[tuple[str, int]] | None = None
         if order_by_str:
             sort_entries = [s.strip() for s in order_by_str.split(',')]
@@ -366,7 +231,7 @@ class MongoProxyCursor(DbCursor):
         self._set_collection_name(table_name)
         assignments_re = re.compile(r"(\w+)\s*=\s*(\%\?|'[^']*'|NULL|\d+(?:\.\d+)?)")
         assignment_pairs = assignments_re.findall(set_clause)
-        where_filter = _parse_sql_where(where_clause, params) if where_clause else {}
+        where_filter = parse_sql_where(where_clause, params) if where_clause else {}
         update_data: dict[str, Any] = {}
         param_idx = 0
         for field_name, value_str in assignment_pairs:
@@ -407,7 +272,7 @@ class MongoProxyCursor(DbCursor):
             table_name.strip('`]["')
         where_clause = m.group(2)
         self._set_collection_name(table_name)
-        where_filter = _parse_sql_where(where_clause, params) if where_clause else {}
+        where_filter = parse_sql_where(where_clause, params) if where_clause else {}
         match_result = self.__get_database()[table_name].delete_one(where_filter)
         self.__row_count = match_result.deleted_count
 

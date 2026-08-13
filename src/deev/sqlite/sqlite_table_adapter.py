@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Generator, Generic, Optional, TypeVar, cast, get_args, get_origin
+from typing import Any, Generator, Generic, TypeVar, cast, get_args, get_origin
 from uuid import UUID
 
 from ..common.db_context import DbContext
@@ -30,14 +30,14 @@ class SqliteTableAdapter(Generic[TEntity]):
     __dbtype_mapper: DbTypeMapper
     __entity_spec: EntitySpec
     __transaction_state: int
-    __table_name: Optional[str]
+    __table_name: str | None
 
     def __init__(
         self,
         context: DbContext,
         *,
-        create_table: Optional[bool] = False,
-        table_name: Optional[str] = None
+        create_table: bool | None = False,
+        table_name: str | None = None
     ) -> None:
         self.__context = context if isinstance(context, (SqliteProxyConnection, SqliteTransactionContext)) else SqliteProxyConnection(context)  # type: ignore[arg-type]
         self.__create_table = create_table is True
@@ -59,7 +59,7 @@ class SqliteTableAdapter(Generic[TEntity]):
     def primary_key(self) -> tuple[str, ...]:
         return self.__entity_spec.primary_key
 
-    def __execute(self, sql: str, params: Optional[DbParams] = None) -> None:
+    def __execute(self, sql: str, params: DbParams | None = None) -> None:
         cursor = self.__context.cursor()
         cursor.execute(sql, params)
 
@@ -115,6 +115,7 @@ class SqliteTableAdapter(Generic[TEntity]):
         self.__execute(sql)
         # Generate CREATE INDEX for secondary indexes defined via field(index=...)
         self.__create_indexes(table_name)
+        self.__create_table = False
 
     def __create_indexes(self, table_name: str) -> None:
         """Build and execute ``CREATE INDEX`` statements for all secondary indexes."""
@@ -141,7 +142,7 @@ class SqliteTableAdapter(Generic[TEntity]):
     def rollback(self) -> None:
         self.__context.rollback()
 
-    def create(self, entity: Optional[TEntity] = None, **kwargs: Any) -> dict[str, Any]:
+    def create(self, entity: TEntity | None = None, **kwargs: Any) -> dict[str, Any]:
         """
         Creates a new record in the specified table with the provided attributes/values.
 
@@ -226,7 +227,7 @@ class SqliteTableAdapter(Generic[TEntity]):
             for key in entity_data.keys()
             if key not in self.__entity_spec.primary_key
         ])
-        parms = [k for k, v in entity_data.items() if k not in self.__entity_spec.primary_key]
+        parms = [v for k, v in entity_data.items() if k not in self.__entity_spec.primary_key]
         cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         cursor.execute(f'UPDATE [{table_name}] SET {_set} WHERE {where}', tuple(parms) + tuple(keys))
@@ -297,10 +298,10 @@ class SqliteTableAdapter(Generic[TEntity]):
 
     def query(
         self,
-        where: Optional[str] = None,
-        params: Optional[DbParams] = None,
-        orderby: Optional[str] = None,
-        limit: Optional[int] = None
+        where: str | None = None,
+        params: DbParams | None = None,
+        orderby: str | None = None,
+        limit: int | None = None
     ) -> Generator[TEntity, None, None]:
         self.__deferred_init()
         if params is not None:

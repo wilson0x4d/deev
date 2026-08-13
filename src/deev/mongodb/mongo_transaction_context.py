@@ -7,7 +7,7 @@ from deev.mongodb import MongoProxyCursor
 from contextvars import ContextVar
 import pymongo
 from types import TracebackType
-from typing import Any, Generator, Literal, Optional, Self, cast
+from typing import Any, Generator, Literal, Self, cast
 from uuid import UUID, uuid4
 
 from ..common.db_connection import DbConnection
@@ -22,7 +22,7 @@ class MongoTransactionContext(DbTransactionContext):
 
     _DELEGATE_TXN_CACHE: dict[tuple[str | None, int], bool] = {}
 
-    __ambient_transaction_id: ContextVar[Optional[UUID]] = ContextVar[Optional[UUID]]('ambient_transaction_id', default=None)
+    __ambient_transaction_id: ContextVar[UUID | None] = ContextVar[UUID | None]('ambient_transaction_id', default=None)
     __context: DbContext
     __cursor: DbCursor
     __database_name: str
@@ -73,9 +73,9 @@ class MongoTransactionContext(DbTransactionContext):
 
     def __exit__(
         self,
-        exc_type: Optional[type[BaseException]] = None,
-        exc_value: Optional[BaseException] = None,  # noqa: ARG001 - unused per context manager protocol
-        traceback: Optional[TracebackType] = None
+        exc_type: type[BaseException] | None = None,
+        exc_value: BaseException | None = None,  # noqa: ARG001 - unused per context manager protocol
+        traceback: TracebackType | None = None
     ) -> Literal[False]:
         if self.__delegate_mode:
             self.__transaction_state = 3
@@ -153,7 +153,7 @@ class MongoTransactionContext(DbTransactionContext):
     def cursor(self) -> DbCursor:
         return self.__cursor
 
-    def execute(self, sql: str, params: Optional[DbParams] = None) -> DbCursor:
+    def execute(self, sql: str, params: DbParams | None = None) -> DbCursor:
         """
         An `execute` method that more closely conforms to PEP 249 (to facilitate drop-in use cases.)
         :param sql: A string containing the SQL statement to execute.
@@ -167,7 +167,7 @@ class MongoTransactionContext(DbTransactionContext):
             tuple(params) if params is not None else tuple())
         return self.__cursor
 
-    def execute_nonquery(self, sql: str, params: Optional[DbParams] = None) -> None:
+    def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__cursor.execute(
@@ -175,7 +175,7 @@ class MongoTransactionContext(DbTransactionContext):
             tuple(params) if params is not None else tuple())
         self.__update_transaction_state(sql)
 
-    def execute_reader(self, sql: str, params: Optional[DbParams] = None) -> Generator[Any, None, None]:
+    def execute_reader(self, sql: str, params: DbParams | None = None) -> Generator[Any, None, None]:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
@@ -187,7 +187,7 @@ class MongoTransactionContext(DbTransactionContext):
             yield row
             row = self.__cursor.fetchone()
 
-    def execute_scalar(self, sql: str, params: Optional[DbParams] = None) -> Any:
+    def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)

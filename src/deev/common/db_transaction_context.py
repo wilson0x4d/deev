@@ -5,7 +5,6 @@ from types import TracebackType
 from typing import (
     Any,
     Generator,
-    Optional,
     Protocol,
     Self,
     runtime_checkable
@@ -14,7 +13,6 @@ from typing import (
 from .db_connection import DbConnection
 from .db_cursor import DbCursor
 from .db_params import DbParams
-
 
 @runtime_checkable
 class DbTransactionContext(Protocol):
@@ -30,9 +28,9 @@ class DbTransactionContext(Protocol):
 
     def __exit__(
         self,
-        exc_type: Optional[type[BaseException]] = None,
-        exc_value: Optional[BaseException] = None,
-        traceback: Optional[TracebackType] = None
+        exc_type: type[BaseException] | None = None,
+        exc_value: BaseException | None = None,
+        traceback: TracebackType | None = None
     ) -> bool:
         ...
 
@@ -46,19 +44,19 @@ class DbTransactionContext(Protocol):
     def commit(self) -> None:
         ...
 
-    def execute(self, sql: str, params: Optional[DbParams] = ...) -> DbCursor:
+    def execute(self, sql: str, params: DbParams | None = ...) -> DbCursor:
         ...
 
     def execute_script(self, sql: str) -> None:
         ...
 
-    def execute_nonquery(self, sql: str, params: Optional[DbParams] = ...) -> None:
+    def execute_nonquery(self, sql: str, params: DbParams | None = ...) -> None:
         ...
 
-    def execute_reader(self, sql: str, params: Optional[DbParams] = ...) -> Generator[tuple[Any, ...], None, None]:
+    def execute_reader(self, sql: str, params: DbParams | None = ...) -> Generator[tuple[Any, ...], None, None]:
         ...
 
-    def execute_scalar(self, sql: str, params: Optional[DbParams] = ...) -> Any:
+    def execute_scalar(self, sql: str, params: DbParams | None = ...) -> Any:
         ...
 
     def rollback(self) -> None:
@@ -79,6 +77,5 @@ class DbTransactionContext(Protocol):
             if not hasattr(subclass, name):
                 return False  # pragma: no cover
         return True
-
 
 __all__ = ['DbTransactionContext']

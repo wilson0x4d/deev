@@ -9,7 +9,6 @@ from deev.utils import connect, create_database
 from deev.clickhouse import ClickHouseProxyConnection, ClickHouseTableAdapter
 from uuid import UUID, uuid4
 from punit import fact, trait
-from typing import Any, Optional
 
 
 @fact
@@ -25,16 +24,16 @@ def basic_verification() -> None:
         @entity
         class BasicEntity:
             id: str = field(primary_key=True)
-            example: Optional[int] = None
-            example_text: Optional[str] = None
-            other: Optional[UUID] = None
-            another: Optional[bool] = None
-            floaty: Optional[float] = None
-            backed_value: Optional[int] = None
-            x: Optional[dict[str, str]] = None
-            y: Optional[list[int]] = None
-            z: Optional[tuple[str, int]] = None
-            dt: Optional[datetime] = None
+            example: int | None = None
+            example_text: str | None = None
+            other: UUID | None = None
+            another: bool | None = None
+            floaty: float | None = None
+            backed_value: int | None = None
+            x: dict[str, str] | None = None
+            y: list[int] | None = None
+            z: tuple[str, int] | None = None
+            dt: datetime | None = None
 
         with connect(cxnstring) as connection:
             assert isinstance(connection, ClickHouseProxyConnection)

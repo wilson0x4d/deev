@@ -32,6 +32,6 @@ def can_create_database() -> None:
     create_database(cxnstring)
     with connect(cxnstring) as connection:
         cursor = connection.cursor()
-        cursor.execute(f'DROP DATABASE {cxnstring.database};')
+        cursor.execute(f'DROP DATABASE `{cxnstring.database}`;')
         connection.commit()
         connection.close()

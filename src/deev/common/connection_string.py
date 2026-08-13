@@ -3,8 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
-from urllib.parse import parse_qs, urlparse, unquote
+import urllib.parse
 
 
 _DSN_TO_PROVIDER: dict[str, str] = {
@@ -106,17 +105,18 @@ class ConnectionString:
     ``str(connectionString)`` reconstructs the OLEDB-style format from the parsed parts.
     """
 
-    __server: Optional[str]
-    __database: Optional[str]
-    __user: Optional[str]
-    __password: Optional[str]
-    __provider: Optional[str]
-    __connect_timeout: Optional[int]
-    __command_timeout: Optional[int]
+    __server: str | None
+    __database: str | None
+    __user: str | None
+    __password: str | None
+    __provider: str | None
+    __connect_timeout: int | None
+    __command_timeout: int | None
+    __parameters: dict[str, str]
 
     def __init__(
         self,
-        connection_str: Optional[str] = None
+        connection_str: str | None = None
     ):
         self.__server = None
         self.__database = None
@@ -125,6 +125,7 @@ class ConnectionString:
         self.__provider = None
         self.__connect_timeout = None
         self.__command_timeout = None
+        self.__parameters = {}
         if connection_str is not None:
             self.parse(connection_str)
 
@@ -144,81 +145,128 @@ class ConnectionString:
             parts.append(f'Connection Timeout={self.connect_timeout}')
         if self.command_timeout is not None:
             parts.append(f'Command Timeout={self.command_timeout}')
+        for key, value in self.__parameters.items():
+            parts.append(f'{key}={value}')
         return ';'.join(parts)
 
     @property
-    def server(self) -> Optional[str]:
+    def server(self) -> str | None:
         return self.__server
 
     @server.setter
-    def server(self, value: Optional[str]):
+    def server(self, value: str | None):
         self.__server = value
 
     @property
-    def database(self) -> Optional[str]:
+    def database(self) -> str | None:
         return self.__database
 
     @database.setter
-    def database(self, value: Optional[str]):
+    def database(self, value: str | None):
         self.__database = value
 
     @property
-    def user(self) -> Optional[str]:
+    def user(self) -> str | None:
         return self.__user
 
     @user.setter
-    def user(self, value: Optional[str]):
+    def user(self, value: str | None):
         self.__user = value
 
     @property
-    def password(self) -> Optional[str]:
+    def password(self) -> str | None:
         return self.__password
 
     @password.setter
-    def password(self, value: Optional[str]):
+    def password(self, value: str | None):
         self.__password = value
 
     @property
-    def provider(self) -> Optional[str]:
+    def provider(self) -> str | None:
         return self.__provider
 
     @provider.setter
-    def provider(self, value: Optional[str]):
+    def provider(self, value: str | None):
         self.__provider = value
 
     @property
-    def connect_timeout(self) -> Optional[int]:
+    def connect_timeout(self) -> int | None:
         return self.__connect_timeout
 
     @connect_timeout.setter
-    def connect_timeout(self, value: Optional[int]):
+    def connect_timeout(self, value: int | None):
         self.__connect_timeout = value
 
     @property
-    def command_timeout(self) -> Optional[int]:
+    def command_timeout(self) -> int | None:
         return self.__command_timeout
 
     @command_timeout.setter
-    def command_timeout(self, value: Optional[int]):
+    def command_timeout(self, value: int | None):
         self.__command_timeout = value
 
-    def parse(self, connectionstring: Optional[str]) -> ConnectionString:
+    def to_parameters(self) -> dict[str, str]:
+        params: dict[str, str] = {}
+        if self.__server is not None:
+            params['server'] = str(self.__server)
+        if self.__database is not None:
+            params['database'] = str(self.__database)
+        if self.__user is not None:
+            params['user'] = str(self.__user)
+        if self.__password is not None:
+            params['password'] = str(self.__password)
+        if self.__provider is not None:
+            params['provider'] = str(self.__provider)
+        if self.__connect_timeout is not None:
+            params['connect_timeout'] = str(self.__connect_timeout)
+        if self.__command_timeout is not None:
+            params['command_timeout'] = str(self.__command_timeout)
+        params.update(self.__parameters)
+        return params
+
+    @property
+    def parameters(self) -> dict[str, str]:
+        return self.to_parameters()
+
+    @parameters.setter
+    def parameters(self, value: dict[str, str]) -> None:
+        for key, val in value.items():
+            key_lower = key.lower()
+            match key_lower:
+                case 'server' | 'data source':
+                    self.__server = val
+                case 'database' | 'catalog':
+                    self.__database = val
+                case 'uid' | 'user' | 'user id' | 'username':
+                    self.__user = val
+                case 'pwd' | 'password' | 'pass':
+                    self.__password = val
+                case 'provider':
+                    self.__provider = val
+                case 'connect_timeout':
+                    self.__connect_timeout = int(val)
+                case 'command_timeout':
+                    self.__command_timeout = int(val)
+                case _:
+                    self.__parameters[key_lower] = val
+
+    def parse(self, connectionstring: str | None) -> ConnectionString:
         if not connectionstring:
             return self
-        parsed = urlparse(connectionstring)
+        parsed: urllib.parse.ParseResult = urllib.parse.urlparse(connectionstring)
         if parsed.scheme and parsed.scheme in _DSN_TO_PROVIDER:
             self.__parse_dsn(parsed)
         else:
             self.__parse_oledb(connectionstring)
         return self
 
-    def __parse_dsn(self, parsed) -> None:
+    def __parse_dsn(self, parsed: urllib.parse.ParseResult) -> None:
         provider = _DSN_TO_PROVIDER[parsed.scheme]
         self.provider = provider
         if parsed.username is not None:
-            self.user = unquote(parsed.username)
+            self.user = urllib.parse.unquote(parsed.username)
         if parsed.password is not None:
-            self.password = unquote(parsed.password)
+            self.password = urllib.parse.unquote(parsed.password)
         host_port = parsed.hostname or ''
         if parsed.port:
             host_port = f'{host_port}:{parsed.port}'
@@ -226,19 +274,22 @@ class ConnectionString:
         if parsed.path:
             db = parsed.path.lstrip('/')
             self.database = db or None
-        params = parse_qs(parsed.query)
-        if 'connect_timeout' in params:
-            self.connect_timeout = int(params['connect_timeout'][0])
-        if 'command_timeout' in params:
-            self.command_timeout = int(params['command_timeout'][0])
+        for key, values in urllib.parse.parse_qs(parsed.query).items():
+            if key == 'connect_timeout':
+                self.connect_timeout = int(values[0])
+            elif key == 'command_timeout':
+                self.command_timeout = int(values[0])
+            else:
+                self.__parameters[key] = values[0]
 
     def __parse_oledb(self, connectionstring: str) -> None:
         parts = connectionstring.split(';')
         for part in parts:
             if not part:
                 continue
-            key, value = part.split('=')
-            match key.lower():
+            key, value = part.split('=', 1)
+            key_lower = key.lower()
+            match key_lower:
                 case 'server' | 'data source':
                     self.server = value
                 case 'database' | 'catalog':
@@ -253,6 +304,8 @@ class ConnectionString:
                     self.connect_timeout = int(value)
                 case 'command timeout':
                     self.command_timeout = int(value)
+                case _:
+                    self.__parameters[key_lower] = value
 
 
 __all__ = ['ConnectionString']

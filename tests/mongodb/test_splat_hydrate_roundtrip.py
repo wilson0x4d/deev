@@ -4,7 +4,7 @@
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from deev.entities import entity, field
@@ -83,7 +83,7 @@ def splat_to_dict_serializes_enum_to_value_for_json() -> None:
 def json_roundtrip_splat_dict_preserves_uuid() -> None:
     """splat → dict → json serialize → json deserialize → dict should preserve UUID as string."""
     import json
-    
+
     @entity
     class TestEntity:
         id: UUID = field(primary_key=True)
@@ -91,11 +91,11 @@ def json_roundtrip_splat_dict_preserves_uuid() -> None:
 
     entity1 = TestEntity(id=uuid4(), value='payload')
     original_id = entity1.id
-    
+
     d = splat(entity1, to_sql=False)
     json_str = json.dumps(d)
     d_restored = json.loads(json_str)
-    
+
     assert 'id' in d_restored
     assert d_restored['id'] == str(original_id)
     assert d_restored['value'] == 'payload'
@@ -105,7 +105,7 @@ def json_roundtrip_splat_dict_preserves_uuid() -> None:
 def json_roundtrip_splat_dict_preserves_datetime() -> None:
     """splat → dict → json serialize → json deserialize → dict should preserve datetime as ISO string."""
     import json
-    
+
     @entity
     class TestEntity:
         id: str = field(primary_key=True)
@@ -116,7 +116,7 @@ def json_roundtrip_splat_dict_preserves_datetime() -> None:
     d = splat(entity1, to_sql=False)
     json_str = json.dumps(d)
     d_restored = json.loads(json_str)
-    
+
     assert 'ts' in d_restored
     # _to_json_value format: YYYY-MM-DDTHH:MM:SSZ (with or without microseconds)
     assert d_restored['ts'].startswith('2024-06-15')
@@ -128,7 +128,7 @@ def json_roundtrip_splat_dict_preserves_datetime() -> None:
 def json_roundtrip_splat_dict_preserves_decimal() -> None:
     """splat → dict → json serialize → json deserialize → dict should preserve Decimal as string."""
     import json
-    
+
     @entity
     class TestEntity:
         id: str = field(primary_key=True)
@@ -138,7 +138,7 @@ def json_roundtrip_splat_dict_preserves_decimal() -> None:
     d = splat(entity1, to_sql=False)
     json_str = json.dumps(d)
     d_restored = json.loads(json_str)
-    
+
     assert 'amount' in d_restored
     assert d_restored['amount'] == '123.45'
 
@@ -146,7 +146,7 @@ def json_roundtrip_splat_dict_preserves_decimal() -> None:
 @fact
 def hydrate_from_dict_reconstructs_uuid_from_string() -> None:
     """hydrate should convert string UUID back to UUID object."""
-    
+
     @entity
     class TestEntity:
         id: UUID = field(primary_key=True)
@@ -155,7 +155,7 @@ def hydrate_from_dict_reconstructs_uuid_from_string() -> None:
     original_id = uuid4()
     d = {'id': str(original_id), 'value': 'payload'}
     entity2 = hydrate(TestEntity, d, from_sql=False)
-    
+
     assert isinstance(entity2.id, UUID)
     assert entity2.id == original_id
     assert entity2.value == 'payload'
@@ -164,7 +164,7 @@ def hydrate_from_dict_reconstructs_uuid_from_string() -> None:
 @fact
 def hydrate_from_dict_reconstructs_datetime_from_string() -> None:
     """hydrate should convert ISO string datetime back to datetime object."""
-    
+
     @entity
     class TestEntity:
         id: str = field(primary_key=True)
@@ -173,7 +173,7 @@ def hydrate_from_dict_reconstructs_datetime_from_string() -> None:
     ts = datetime(2024, 6, 15, 10, 30, 0, tzinfo=timezone.utc)
     d = {'id': 'test', 'ts': ts.isoformat()}
     entity2 = hydrate(TestEntity, d, from_sql=False)
-    
+
     assert isinstance(entity2.ts, datetime)
     assert entity2.ts == ts
 
@@ -181,7 +181,7 @@ def hydrate_from_dict_reconstructs_datetime_from_string() -> None:
 @fact
 def hydrate_from_dict_reconstructs_decimal_from_string() -> None:
     """hydrate should convert string Decimal back to Decimal object."""
-    
+
     @entity
     class TestEntity:
         id: str = field(primary_key=True)
@@ -189,7 +189,7 @@ def hydrate_from_dict_reconstructs_decimal_from_string() -> None:
 
     d = {'id': 'test', 'amount': '123.45'}
     entity2 = hydrate(TestEntity, d, from_sql=False)
-    
+
     assert isinstance(entity2.amount, Decimal)
     assert entity2.amount == Decimal('123.45')
 
@@ -198,7 +198,7 @@ def hydrate_from_dict_reconstructs_decimal_from_string() -> None:
 def splat_hydrate_roundtrip_entity_matches_original() -> None:
     """Full roundtrip: create entity → splat → json serialize → json deserialize → hydrate → should match."""
     import json
-    
+
     @entity
     class TestEntity:
         id: UUID = field(primary_key=True)
@@ -221,7 +221,7 @@ def splat_hydrate_roundtrip_entity_matches_original() -> None:
     json_str = json.dumps(d)
     d_restored = json.loads(json_str)
     entity2 = hydrate(TestEntity, d_restored, from_sql=False)
-    
+
     assert isinstance(entity2.id, UUID), f'id should be UUID, got {type(entity2.id)}'
     assert entity2.id == original_id
     assert entity2.name == 'test entity'
@@ -237,12 +237,12 @@ def splat_hydrate_roundtrip_entity_matches_original() -> None:
 def splat_hydrate_roundtrip_with_nullable_fields() -> None:
     """Roundtrip with nullable fields that are None should preserve None."""
     import json
-    
+
     @entity
     class TestEntity:
         id: UUID = field(primary_key=True)
-        optional_name: Optional[str] = None
-        optional_price: Optional[Decimal] = None
+        optional_name: str | None = None
+        optional_price: Decimal | None = None
 
     original_id = uuid4()
     entity1 = TestEntity(id=original_id, optional_name=None, optional_price=None)
@@ -251,7 +251,7 @@ def splat_hydrate_roundtrip_with_nullable_fields() -> None:
     json_str = json.dumps(d)
     d_restored = json.loads(json_str)
     entity2 = hydrate(TestEntity, d_restored, from_sql=False)
-    
+
     assert entity2.id == original_id
     assert entity2.optional_name is None
     assert entity2.optional_price is None
@@ -261,12 +261,12 @@ def splat_hydrate_roundtrip_with_nullable_fields() -> None:
 def splat_hydrate_roundtrip_with_non_null_nullable_fields() -> None:
     """Roundtrip with nullable fields that have values should preserve values."""
     import json
-    
+
     @entity
     class TestEntity:
         id: UUID = field(primary_key=True)
-        optional_name: Optional[str] = None
-        optional_price: Optional[Decimal] = None
+        optional_name: str | None = None
+        optional_price: Decimal | None = None
 
     original_id = uuid4()
     entity1 = TestEntity(id=original_id, optional_name='test', optional_price=Decimal('10.00'))
@@ -275,7 +275,7 @@ def splat_hydrate_roundtrip_with_non_null_nullable_fields() -> None:
     json_str = json.dumps(d)
     d_restored = json.loads(json_str)
     entity2 = hydrate(TestEntity, d_restored, from_sql=False)
-    
+
     assert entity2.id == original_id
     assert entity2.optional_name == 'test'
     assert isinstance(entity2.optional_price, Decimal)
@@ -286,7 +286,7 @@ def splat_hydrate_roundtrip_with_non_null_nullable_fields() -> None:
 def splat_hydrate_roundtrip_with_date_time_fields() -> None:
     """Roundtrip with date and time fields."""
     import json
-    
+
     @entity
     class TestEntity:
         id: str = field(primary_key=True)
@@ -301,7 +301,7 @@ def splat_hydrate_roundtrip_with_date_time_fields() -> None:
     json_str = json.dumps(d)
     d_restored = json.loads(json_str)
     entity2 = hydrate(TestEntity, d_restored, from_sql=False)
-    
+
     assert entity2.id == 'test-1'
     assert isinstance(entity2.birth_date, date)
     assert entity2.birth_date == original_date

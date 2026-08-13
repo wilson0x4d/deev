@@ -6,7 +6,7 @@ from __future__ import annotations
 from mysql.connector.abstracts import MySQLConnectionAbstract
 from mysql.connector.pooling import PooledMySQLConnection
 from types import TracebackType
-from typing import Any, Literal, Optional, Self
+from typing import Any, Literal, Self
 
 from ..common.db_connection import DbConnection
 from ..common.db_cursor import DbCursor
@@ -15,9 +15,7 @@ from .mysql_proxy_cursor import MysqlProxyCursor
 
 class MysqlProxyConnection(DbConnection):
     """
-    Normalized connection interface for MySQL Connector.
-
-    Ensures features are preserved wherever a connection or cursor is acquired via ``deev``.
+    Async DB-API 2.0 compliant connection interface for ``mysql.connector``.
     """
 
     __connection: MySQLConnectionAbstract | PooledMySQLConnection
@@ -40,9 +38,9 @@ class MysqlProxyConnection(DbConnection):
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> bool:
+    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None, /) -> Literal[False]:
         self.__connection.__exit__(exc_type, exc, tb)  # type: ignore[arg-type]
-        return exc is not None
+        return False
 
 
 __all__ = ['MysqlProxyConnection']

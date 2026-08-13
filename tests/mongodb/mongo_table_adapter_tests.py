@@ -5,7 +5,7 @@ from deev.entities import entity, field
 from deev.mongodb.mongo_table_adapter import MongoTableAdapter
 from deev.utils import connect
 from punit import fact, setup, teardown, trait
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 
@@ -27,7 +27,7 @@ def adapter_create_and_read_works() -> None:
         @entity
         class TestEntity:
             id: str = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[TestEntity](connection, create_table=True)
 
@@ -51,7 +51,7 @@ def adapter_create_kwargs_works() -> None:
         @entity
         class TestEntity:
             id: str = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[TestEntity](connection, create_table=False)
 
@@ -75,7 +75,7 @@ def adapter_update_works() -> None:
         @entity
         class TestEntity:
             id: str = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[TestEntity](connection, create_table=False)
 
@@ -100,7 +100,7 @@ def adapter_delete_works() -> None:
         @entity
         class TestEntity:
             id: str = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[TestEntity](connection, create_table=False)
 
@@ -122,7 +122,7 @@ def adapter_exists_works() -> None:
         @entity
         class TestEntity:
             id: str = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[TestEntity](connection, create_table=False)
 
@@ -144,7 +144,7 @@ def adapter_upsert_works() -> None:
         @entity
         class TestEntity:
             id: str = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[TestEntity](connection, create_table=False)
 
@@ -170,7 +170,7 @@ def adapter_upsert_inserts_if_not_exists() -> None:
         @entity
         class TestEntity:
             id: str = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[TestEntity](connection, create_table=False)
 
@@ -193,7 +193,7 @@ def adapter_query_returns_all() -> None:
         @entity
         class TestEntity:
             id: str = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[TestEntity](connection, create_table=False)
 
@@ -222,7 +222,7 @@ def adapter_query_with_where_works() -> None:
         @entity
         class TestEntity:
             id: str = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[TestEntity](connection, create_table=False)
 
@@ -248,7 +248,7 @@ def transaction_mongo_database_property_exists() -> None:
         @entity
         class TestEntity:
             id: str = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[TestEntity](connection, create_table=False)
         adapter.create_table()
@@ -393,7 +393,7 @@ def uuid_primary_key_create_and_read_roundtrip() -> None:
         @entity
         class UuidPKEntity:
             id: UUID = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[UuidPKEntity](connection, create_table=False)
 
@@ -421,7 +421,7 @@ def uuid_primary_key_update_roundtrip() -> None:
         @entity
         class UuidPKEntity:
             id: UUID = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[UuidPKEntity](connection, create_table=False)
 
@@ -448,7 +448,7 @@ def uuid_primary_key_delete_and_exists() -> None:
         @entity
         class UuidPKEntity:
             id: UUID = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[UuidPKEntity](connection, create_table=False)
 
@@ -478,7 +478,7 @@ def uuid_primary_key_upsert_roundtrip() -> None:
         @entity
         class UuidPKEntity:
             id: UUID = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[UuidPKEntity](connection, create_table=False)
 
@@ -511,7 +511,7 @@ def create_with_uuid_pk_kwargs() -> None:
         @entity
         class UuidPKEntityKwargs:
             id: UUID = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[UuidPKEntityKwargs](connection, create_table=False)
 
@@ -535,7 +535,7 @@ def nested_dict_with_uuid_stored_as_bson_binary() -> None:
         @entity
         class NestedDictEntity:
             id: str = field(primary_key=True)
-            data: Optional[dict[str, Any]] = None  # type: ignore[assignment]
+            data: dict[str, Any] | None = None  # type: ignore[assignment]
 
         adapter = MongoTableAdapter[NestedDictEntity](connection, create_table=False)
 
@@ -592,7 +592,7 @@ def nullable_uuid_field_roundtrip() -> None:
         @entity
         class NullableUuidEntity:
             id: str = field(primary_key=True)
-            optional_ref: Optional[UUID] = None
+            optional_ref: UUID | None = None
 
         adapter = MongoTableAdapter[NullableUuidEntity](connection, create_table=False)
 
@@ -671,7 +671,7 @@ def uuid_primary_key_self_hydrates_from_stored_hex() -> None:
         @entity
         class UuidPKEntity:
             id: UUID = field(primary_key=True)
-            value: Optional[str] = None
+            value: str | None = None
 
         adapter = MongoTableAdapter[UuidPKEntity](connection, create_table=False)
 

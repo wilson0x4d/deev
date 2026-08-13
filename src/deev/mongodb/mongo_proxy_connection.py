@@ -3,9 +3,10 @@
 
 from __future__ import annotations
 
-import pymongo
+from pymongo import MongoClient
+from pymongo.database import Database
 from types import TracebackType
-from typing import Any, Literal, Optional, Self
+from typing import Any, Literal, Self
 
 from ..common.db_connection import DbConnection
 from ..common.db_cursor import DbCursor
@@ -16,20 +17,20 @@ class MongoProxyConnection(DbConnection):
     """
     DB-API 2.0 compliant connection interface for MongoDB.
     """
-    __client: pymongo.MongoClient[Any]
+    __client: MongoClient[Any]
     __database_name: str
 
-    def __init__(self, provider_connection: pymongo.MongoClient[Any], database_name: str) -> None:
+    def __init__(self, provider_connection: MongoClient[Any], database_name: str) -> None:
         self.__client = provider_connection
         self.__database_name = database_name
 
     @property
-    def mongo_client(self) -> pymongo.MongoClient[Any]:
+    def mongo_client(self) -> MongoClient[Any]:
         # NOTE: this is a non-conformant property that we require for internal functionality, and it must be retained.
         return self.__client
 
     @property
-    def mongo_database(self) -> pymongo.database.Database[Any]:
+    def mongo_database(self) -> Database[Any]:
         # NOTE: this is a non-conformant property that we require for migration scripts (QOL), and must be retained.
         return self.mongo_client[self.mongo_database_name]
 
@@ -57,7 +58,7 @@ class MongoProxyConnection(DbConnection):
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> Literal[False]:
+    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None, /) -> Literal[False]:
         self.mongo_client.__exit__(exc_type, exc, tb)  # type: ignore[arg-type]
         return False
 

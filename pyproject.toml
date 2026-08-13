@@ -2,7 +2,7 @@
 name = "deev"
 version = "0.0.0"
 description = "..an entity framework for Python."
-keywords = ["DB", "database", "entity framework", "mapper"]
+keywords = ["DB", "database", "entity framework", "mapper", "sqlite", "mysql", "mongodb", "clickhouse"]
 authors = [
     { name="Shaun Wilson", email="mrshaunwilson@msn.com" }
 ]

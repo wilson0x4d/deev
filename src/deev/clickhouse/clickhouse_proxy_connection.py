@@ -6,7 +6,7 @@ from __future__ import annotations
 from clickhouse_connect.driver.client import Client
 from clickhouse_connect.dbapi.connection import Connection
 from types import TracebackType
-from typing import Any, Optional, Self
+from typing import Any, Self
 
 from ..common.db_connection import DbConnection
 from ..common.db_cursor import DbCursor
@@ -22,13 +22,18 @@ class ClickHouseProxyConnection(DbConnection):
 
     __connection: Connection
 
-    def __init__(self, provider_connection: Connection) -> None:
+    def __init__(self, provider_connection: Connection, **kwargs: Any) -> None:
         self.__connection = provider_connection
+        self.__is_replicated: bool = bool(kwargs.get('replicated', None)) is True or str(kwargs.get('engine', None)).lower().startswith('replicated')
 
     @property
     def clickhouse_client(self) -> Client:
         """The underlying clickhouse_connect.Client for direct access."""
         return self.__connection.client
+
+    @property
+    def is_replicated(self) -> bool:
+        return self.__is_replicated
 
     def cursor(self, *args: Any, **kwargs: Any) -> DbCursor:
         return ClickHouseProxyCursor(self.__connection.cursor(*args, **kwargs))  # type: ignore[arg-type]
@@ -45,7 +50,7 @@ class ClickHouseProxyConnection(DbConnection):
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType], /) -> bool:
+    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None, /) -> bool:
         try:
             self.__connection.close()
         except Exception:

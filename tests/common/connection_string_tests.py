@@ -3,7 +3,6 @@
 
 from deev.common import ConnectionString
 from punit import fact, inlinedata, theory
-from typing import Optional
 
 
 @theory
@@ -38,7 +37,7 @@ def supports_assignments() -> None:
 
 @theory
 @inlinedata('Server=127.0.0.1;Database=test;UID=test_usr;PWD=test_pwd;Provider=mysql.connector', '127.0.0.1', 'test', 'test_usr', 'test_pwd', 'mysql.connector')
-def supports_parse(connection_str: str, server: Optional[str], database: Optional[str], user: Optional[str], password: Optional[str], provider: Optional[str]) -> None:
+def supports_parse(connection_str: str, server: str | None, database: str | None, user: str | None, password: str | None, provider: str | None) -> None:
     connectionstring = ConnectionString(connection_str)
     assert connectionstring.server == server
     assert connectionstring.database == database

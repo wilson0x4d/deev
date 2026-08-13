@@ -4,7 +4,7 @@
 from deev.entities import IndexOptions, IndexOrder
 from collections import defaultdict
 import pymongo
-from typing import Any, Generator, Generic, Optional, TypeVar, cast, get_args, get_origin
+from typing import Any, Generator, Generic, TypeVar, cast, get_args, get_origin
 
 from ..common.db_context import DbContext
 from ..common.db_cursor import DbCursor
@@ -13,12 +13,10 @@ from ..common.db_params import DbParams
 from ..common.db_type_mapper import DbTypeMapper
 from ..entities import EntitySpec, get_entity_spec
 from ..translation import hydrate, splat, to_pyobject
-from .mongo_proxy_cursor import _parse_sql_where
+from .utils import parse_sql_where
 from .mongo_type_mapper import MongoTypeMapper
 
-
 TEntity = TypeVar('TEntity')
-
 
 
 class MongoTableAdapter(Generic[TEntity]):
@@ -30,15 +28,15 @@ class MongoTableAdapter(Generic[TEntity]):
     __entity_spec: EntitySpec
     __initialized: bool
     __dbtype_mapper: DbTypeMapper
-    __table_name: Optional[str]
+    __table_name: str | None
     __transaction_state: int
 
     def __init__(
         self,
         context: DbContext,
         *,
-        create_table: Optional[bool] = False,
-        table_name: Optional[str] = None
+        create_table: bool | None = False,
+        table_name: str | None = None
     ) -> None:
         self.__context = context
         self.__create_table = create_table is True
@@ -164,6 +162,7 @@ class MongoTableAdapter(Generic[TEntity]):
                     comment=index_name,
                     **(index_attrs[index_name])
                 )
+        self.__create_table = False
 
     def commit(self) -> None:
         self.__context.commit()
@@ -183,7 +182,7 @@ class MongoTableAdapter(Generic[TEntity]):
             )
         ))['autoincrement']
 
-    def create(self, entity: Optional[TEntity] = None, **kwargs: Any) -> dict[str, Any]:
+    def create(self, entity: TEntity | None = None, **kwargs: Any) -> dict[str, Any]:
         """
         Creates a new record in the specified table with the provided attributes/values.
         :returns: the primary key of the created entity.
@@ -301,16 +300,16 @@ class MongoTableAdapter(Generic[TEntity]):
 
     def query(
         self,
-        where: Optional[str] = None,
-        params: Optional[DbParams] = None,
-        orderby: Optional[str] = None,
-        limit: Optional[int] = None
+        where: str | None = None,
+        params: DbParams | None = None,
+        orderby: str | None = None,
+        limit: int | None = None
     ) -> Generator[TEntity, None, None]:
         self.__deferred_init()
         if params is None:
             params = ()
         where_clause = where
-        where_filter: dict[str, Any] = _parse_sql_where(where_clause, tuple(params)) if where_clause else {}
+        where_filter: dict[str, Any] = parse_sql_where(where_clause, tuple(params)) if where_clause else {}
         raw_orderby = orderby
         sort_spec: list[tuple[str, int]] | None = None
         if raw_orderby is not None and len(raw_orderby) > 0:

@@ -4,7 +4,7 @@
 from datetime import datetime, timezone
 from deev import entity, field
 from punit import fact
-from typing import Optional, cast
+from typing import cast
 
 
 @entity
@@ -12,8 +12,8 @@ class SimpleEntity:
     # aka "./SimpleEntity.py" from README
     id: int = field(autoincrement=True, primary_key=True)
     column1: int
-    column2: Optional[list[str]] = field(default=None)
-    column3: Optional[datetime] = field(default=lambda: datetime.now(timezone.utc))
+    column2: list[str] | None = field(default=None)
+    column3: datetime | None = field(default=lambda: datetime.now(timezone.utc))
 
 
 @fact

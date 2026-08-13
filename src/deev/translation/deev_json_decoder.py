@@ -5,7 +5,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 import json
 import base64
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 from uuid import UUID
 
 
@@ -23,10 +23,10 @@ def _parse_time_iso(value: str) -> time:
 
 class DeevJsonDecoder(json.JSONDecoder):
 
-    def decode(self, s: str, _w: Optional[Callable[..., Any]] = None) -> Any:
+    def decode(self, s: str, _w: Callable[..., Any] | None = None) -> Any:
         return self.__decode(super().decode(s), _w)
 
-    def __decode(self, obj: Any, _w: Optional[Callable[..., Any]] = None) -> Any:
+    def __decode(self, obj: Any, _w: Callable[..., Any] | None = None) -> Any:
         if isinstance(obj, str):
             tick_index = obj.find('`')
             if tick_index > 0:

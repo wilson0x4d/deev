@@ -13,8 +13,9 @@ from punit import fact, trait
 from types import ModuleType
 from typing import Any
 
-
 # Helper to create test rows with real values (punit Mock attributes don't return configured values via .returns())
+
+
 def _make_row(migration: str, row_id: int):
     """Return a simple object with real string/int attributes for dict/set/comparison use."""
     return type('_Row', (), {'migration': migration, 'id': row_id})()

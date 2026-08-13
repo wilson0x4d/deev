@@ -7,7 +7,6 @@ from deev.utils import connect, create_database
 from uuid import uuid4
 from punit import fact, trait
 
-
 @fact
 @trait('integration')
 @trait('clickhouse')
@@ -22,7 +21,6 @@ def cannot_connect_when_nonexistent_database() -> None:
         pass
     else:
         assert False, f'expected failure for non-existent database: {cxnstring.database}'
-
 
 @fact
 @trait('integration')

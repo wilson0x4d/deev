@@ -8,7 +8,6 @@ import logging
 from sqlite3 import Cursor
 from typing import (
     Any,
-    Optional,
     Sequence
 )
 
@@ -34,18 +33,18 @@ class SqliteProxyCursor(DbCursor):
         self.__sql_arg_subst = '?'
 
     @property
-    def description(self) -> Optional[Sequence[tuple[Any, ...]]]:
+    def description(self) -> Sequence[tuple[Any, ...]] | None:
         return self.__cursor.description
 
     @property
-    def lastrowid(self) -> Optional[int]:
+    def lastrowid(self) -> int | None:
         return self.__cursor.lastrowid
 
     @property
     def rowcount(self) -> int:
         return self.__cursor.rowcount
 
-    def execute(self, operation: str, params: Optional[DbParams] = None) -> None:
+    def execute(self, operation: str, params: DbParams | None = None) -> None:
         if params is not None:
             operation = operation.replace(self.__sql_arg_expect, self.__sql_arg_subst)
         self.__logger.debug(f'execute({operation!r}, {params!r})')

@@ -9,7 +9,7 @@ from deev.utils import connect, create_database
 from deev.mysql.mysql_table_adapter import MysqlTableAdapter
 from uuid import UUID, uuid4
 from punit import fact, trait
-from typing import Any, Optional
+from typing import Any
 
 
 @fact
@@ -27,17 +27,17 @@ def basic_verification() -> None:
         @entity
         class BasicEntity:
             id: int = field(autoincrement=True, primary_key=True, default=0)
-            example: Optional[int] = None
-            example_text: Optional[str] = None
-            other: Optional[UUID] = None
-            another: Optional[bool] = None
-            floaty: Optional[float] = None
-            backed_value: Optional[int] = None
-            x: Optional[dict[str, Any]] = None
-            y: Optional[list[int]] = None
-            z: Optional[tuple[str, int]] = None
-            dt: Optional[datetime] = None
-            td: Optional[timedelta] = None
+            example: int | None = None
+            example_text: str | None = None
+            other: UUID | None = None
+            another: bool | None = None
+            floaty: float | None = None
+            backed_value: int | None = None
+            x: dict[str, Any] | None = None
+            y: list[int] | None = None
+            z: tuple[str, int] | None = None
+            dt: datetime | None = None
+            td: timedelta | None = None
         with connect(cxnstring) as connection:
             #
             # ..create a table adapter _and_ create a backing table for `BasicEntity`

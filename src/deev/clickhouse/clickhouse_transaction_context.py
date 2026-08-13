@@ -6,7 +6,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 import logging
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Generator, Optional, Self, cast
+from typing import TYPE_CHECKING, Any, Generator, Literal, Self, cast
 
 import hanaro
 from uuid import uuid4, UUID
@@ -56,8 +56,8 @@ class ClickHouseTransactionContext(DbTransactionContext):
         self.begin_transaction()
         return self
 
-    def __exit__(self, exc_type: Optional[type[BaseException]] = None, exc_value: Optional[BaseException] = None, traceback: Optional[TracebackType] = None) -> bool:
-        return exc_value is not None
+    def __exit__(self, exc_type: type[BaseException] | None = None, exc_value: BaseException | None = None, traceback: TracebackType | None = None) -> Literal[False]:
+        return False
 
     def __update_transaction_state(self, sql: str) -> None:
         sql = sql.lstrip().upper()
@@ -104,7 +104,7 @@ class ClickHouseTransactionContext(DbTransactionContext):
     def cursor(self) -> DbCursor:
         return self.__context.cursor()
 
-    def execute(self, sql: str, params: Optional[DbParams] = None) -> DbCursor:
+    def execute(self, sql: str, params: DbParams | None = None) -> DbCursor:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         if self.__cursor is None:
@@ -112,7 +112,7 @@ class ClickHouseTransactionContext(DbTransactionContext):
         self.__cursor.execute(sql, params)
         return cast(DbCursor, self.__cursor)
 
-    def execute_nonquery(self, sql: str, params: Optional[DbParams] = None) -> None:
+    def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         if self.__cursor is None:
@@ -120,7 +120,7 @@ class ClickHouseTransactionContext(DbTransactionContext):
         self.__cursor.execute(sql, params)
         self.__update_transaction_state(sql)
 
-    def execute_reader(self, sql: str, params: Optional[DbParams] = None) -> Generator[Any, None, None]:
+    def execute_reader(self, sql: str, params: DbParams | None = None) -> Generator[Any, None, None]:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
@@ -133,7 +133,7 @@ class ClickHouseTransactionContext(DbTransactionContext):
             yield row
             row = self.__cursor.fetchone()
 
-    def execute_scalar(self, sql: str, params: Optional[DbParams] = None) -> Any:
+    def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
