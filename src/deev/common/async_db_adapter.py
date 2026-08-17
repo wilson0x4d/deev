@@ -116,7 +116,7 @@ class AsyncDbAdapter(AsyncDbConnection, ABC):
                     cls.__adapter_map[entity_type.__name__] = (entity_type, cache_attr)
                     break
 
-    async def __create_adapter(self, entity_type: type[TEntity]) -> AsyncDbTableAdapter[TEntity]:
+    def __create_adapter(self, entity_type: type[TEntity]) -> AsyncDbTableAdapter[TEntity]:
         if self.__connection is not None:
             match type(self.__connection).__name__:
                 case 'mysql_proxy_connection/impl' | 'MySQLConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection':
@@ -133,7 +133,7 @@ class AsyncDbAdapter(AsyncDbConnection, ABC):
                     return AsyncClickHouseTableAdapter[entity_type](self.__connection)  # type: ignore[arg-type, valid-type]
         raise ValueError('No connection established and no provider detected.')
 
-    async def __create_transaction_context(self) -> AsyncDbTransactionContext:
+    def __create_transaction_context(self) -> AsyncDbTransactionContext:
         if self.__connection is not None:
             match type(self.__connection).__name__:
                 case 'MongoProxyConnection':
@@ -148,11 +148,11 @@ class AsyncDbAdapter(AsyncDbConnection, ABC):
                 case 'ClickHouseProxyConnection':
                     from ..clickhouse import AsyncClickHouseTransactionContext
                     return AsyncClickHouseTransactionContext(self.__connection)
-        raise ValueError(f'No connection established and no provider detected.')
+        raise ValueError('No connection established and no provider detected.')
 
-    async def begin_transaction(self) -> AsyncDbTransactionContext:
+    def begin_transaction(self) -> AsyncDbTransactionContext:
         assert self.__connection is not None, 'not connected'
-        return await self.__create_transaction_context()
+        return self.__create_transaction_context()
 
     async def close(self) -> None:
         if self.__connection is not None:
@@ -179,7 +179,7 @@ class AsyncDbAdapter(AsyncDbConnection, ABC):
         assert self.__connection is not None, 'not connected'
         return await self.__connection.cursor(*args, **kwargs)  # type: ignore[return-value]
 
-    async def get_table_adapter(self, entity_type: type[TEntity]) -> AsyncDbTableAdapter[TEntity]:
+    def get_table_adapter(self, entity_type: type[TEntity]) -> AsyncDbTableAdapter[TEntity]:
         key = entity_type.__name__
         registered = self.__adapter_map.get(key)
         if registered is None:
@@ -189,7 +189,7 @@ class AsyncDbAdapter(AsyncDbConnection, ABC):
 
         adapter = self.__dict__.get(cache_attr)
         if adapter is None:
-            adapter = await self.__create_adapter(entity_type)
+            adapter = self.__create_adapter(entity_type)
             object.__setattr__(self, cache_attr, adapter)  # type: ignore[arg-type]
         return cast(AsyncDbTableAdapter[TEntity], adapter)
 
