@@ -49,7 +49,7 @@ class AsyncDbAdapter(AsyncDbConnection, ABC):
                 super().__init__(connection_string)
 
             @property
-            def documents(self) -> MongoTableAdapter[Document]:
+            def documents(self) -> AsyncMongoTableAdapter[Document]:
                 return self.get_table_adapter(Document)
     """
 
@@ -149,6 +149,11 @@ class AsyncDbAdapter(AsyncDbConnection, ABC):
                     from ..clickhouse import AsyncClickHouseTransactionContext
                     return AsyncClickHouseTransactionContext(self.__connection)
         raise ValueError('No connection established and no provider detected.')
+
+    @property
+    def connection(self) -> AsyncDbConnection:
+        assert self.__connection is not None, 'not connected'
+        return self.__connection
 
     def begin_transaction(self) -> AsyncDbTransactionContext:
         assert self.__connection is not None, 'not connected'

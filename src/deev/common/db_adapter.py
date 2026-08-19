@@ -143,6 +143,11 @@ class DbAdapter(DbConnection, ABC):
                     return ClickHouseTransactionContext(self.__connection)
         raise ValueError(f'No connection established and no provider detected.')
 
+    @property
+    def connection(self) -> DbConnection:
+        assert self.__connection is not None, 'not connected'
+        return self.__connection
+
     def begin_transaction(self) -> DbTransactionContext:
         assert self.__connection is not None, 'not connected'
         return self.__create_transaction_context()
