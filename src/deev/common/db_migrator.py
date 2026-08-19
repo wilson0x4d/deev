@@ -39,7 +39,7 @@ class DbMigrator:
     def __get_or_create_migrations_table(self) -> DbTableAdapter[Any]:
         from ..utils import connect, create_table_adapter
         connection = connect(self.__connectionstring)
-        table_adapter = create_table_adapter(self.__migrationdata_t, connection, sync_replicas=True)
+        table_adapter = create_table_adapter(self.__migrationdata_t, connection)
         table_adapter.create_table()
         return table_adapter
 

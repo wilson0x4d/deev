@@ -141,7 +141,7 @@ class DbAdapter(DbConnection, ABC):
                 case 'ClickHouseProxyConnection':
                     from ..clickhouse import ClickHouseTransactionContext
                     return ClickHouseTransactionContext(self.__connection)
-        raise ValueError(f'No connection established and no provider detected.')
+        raise ValueError('No connection established and no provider detected.')
 
     @property
     def connection(self) -> DbConnection:

@@ -408,6 +408,7 @@ def create_table_adapter(
             return deev.mongodb.MongoTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
         case 'ClickHouseProxyConnection' | 'ClickHouseTransactionContext':
             import deev.clickhouse
+            kwargs['sync_replicas'] = True
             return deev.clickhouse.ClickHouseTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
         case _:
             raise DbError(f'Unsupported object: {dbcontext}')
