@@ -122,13 +122,13 @@ class AsyncDbAdapter(AsyncDbConnection, ABC):
                 case 'mysql_proxy_connection/impl' | 'MySQLConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection':
                     from ..mysql import AsyncMysqlTableAdapter
                     return AsyncMysqlTableAdapter[entity_type](self.__connection)  # type: ignore[arg-type, valid-type]
-                case 'SqliteProxyConnection':
+                case 'AsyncSqliteProxyConnection':
                     from ..sqlite import AsyncSqliteTableAdapter
                     return AsyncSqliteTableAdapter[entity_type](self.__connection)  # type: ignore[arg-type, valid-type]
-                case 'MongoProxyConnection':
+                case 'AsyncMongoProxyConnection':
                     from ..mongodb import AsyncMongoTableAdapter
                     return AsyncMongoTableAdapter[entity_type](self.__connection)  # type: ignore[arg-type, valid-type]
-                case 'ClickHouseProxyConnection':
+                case 'AsyncClickHouseProxyConnection':
                     from ..clickhouse import AsyncClickHouseTableAdapter
                     return AsyncClickHouseTableAdapter[entity_type](self.__connection)  # type: ignore[arg-type, valid-type]
         raise ValueError('No connection established and no provider detected.')
@@ -173,12 +173,12 @@ class AsyncDbAdapter(AsyncDbConnection, ABC):
         Establish a connection and initialize the adapter cache.
         Subclasses may override to add custom logic *after* calling ``super().connect()``.
         """
-        from ..utils import connect as _connect
+        from ..utils import connect_async
         for _entity_type, cache_attr in self.__adapter_map.values():
             if cache_attr not in self.__dict__:
                 object.__setattr__(self, cache_attr, None)
         if self.__connection is None:
-            object.__setattr__(self, '_AsyncDbAdapter__connection', _connect(self.__connection_string))
+            self.__connection = await connect_async(self.__connection_string)
 
     async def cursor(self, *args: Any, **kwargs: Any) -> AsyncDbCursor:
         assert self.__connection is not None, 'not connected'

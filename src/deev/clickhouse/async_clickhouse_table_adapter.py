@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from clickhouse_connect.driver.client import Client
+from clickhouse_connect.driver import AsyncClient
 import hanaro
 import logging
 import re
@@ -75,14 +75,14 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
             if self.__create_table is True:                
                 await self.create_table()
 
-    def sync_replicas(self) -> None:
+    async def sync_replicas(self) -> None:
         """Force all ClickHouse replicas to sync for the current table."""
         if self.__is_sync_replicas_enabled:
             table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
-            self.clickhouse_client.command(f'SYSTEM SYNC REPLICA `{table_name}` IF EXISTS')  # type: ignore[attr-defined]
+            await self.clickhouse_client.command(f'SYSTEM SYNC REPLICA `{table_name}` IF EXISTS')  # type: ignore[attr-defined]
 
     @property
-    def clickhouse_client(self) -> Client:
+    def clickhouse_client(self) -> AsyncClient:
         return getattr(self.__context, 'clickhouse_client')
 
     @property
@@ -263,7 +263,7 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
                 data=rows,
                 column_names=column_names
             )
-            self.sync_replicas()
+            await self.sync_replicas()
         except Exception as e:
             raise DbError(f'ClickHouse insert failed: {e}') from e
 
@@ -280,7 +280,7 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
         pyformat_sql, pyformat_params = self.__hex_and_to_pyformat(sql, keys)
         client = self.clickhouse_client
         try:
-            result = client.query(pyformat_sql, parameters=pyformat_params)  # type: ignore[attr-defined]
+            result = await client.query(pyformat_sql, parameters=pyformat_params)  # type: ignore[attr-defined]
             rows = list(result.named_results())  # type: ignore[attr-defined]
             if rows:
                 raw: dict[str, Any] = {}
@@ -323,7 +323,7 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'ALTER TABLE `{table_name}` UPDATE {set_clause} WHERE {where_clause}'
         await self.__execute(sql, tuple(params))
-        self.sync_replicas()
+        await self.sync_replicas()
 
     async def delete(self, **kwargs: Any) -> None:
         """
@@ -350,7 +350,7 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
         pyformat_sql, pyformat_params = self.__hex_and_to_pyformat(sql, keys)
         client = self.clickhouse_client
         try:
-            result = client.query(pyformat_sql, parameters=pyformat_params)  # type: ignore[attr-defined]
+            result = await client.query(pyformat_sql, parameters=pyformat_params)  # type: ignore[attr-defined]
             rows = list(result.named_results())  # type: ignore[attr-defined]
             return len(rows) > 0
         except Exception as e:
@@ -370,16 +370,17 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
         entity_data = splat(entity, to_sql=True)
         if self.__entity_spec.has_autoincrement and entity_data.get(self.__entity_spec.primary_key[0], None) is None:
             return await self.create(entity)
-        primary_key = {
+        if await self.exists(
+            **{k: v for k, v in entity_data.items() if k in self.__entity_spec.primary_key}
+        ):
+            await self.update(entity)
+        else:
+            await self.create(entity)
+        return {
             k: (v.hex if type(v) is UUID else v)
             for k, v in entity_data.items()
             if k in self.__entity_spec.primary_key
         }
-        if await self.exists(**primary_key):
-            await self.update(entity)
-        else:
-            await self.create(entity)
-        return primary_key
 
     async def bulk_create(self, entities: Sequence[TEntity]) -> list[dict[str, Any]]:
         """
@@ -412,7 +413,7 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
                 data=all_rows,
                 column_names=column_names
             )
-            self.sync_replicas()
+            await self.sync_replicas()
         except Exception as e:
             raise DbError(f'ClickHouse bulk insert failed: {e}') from e
 
@@ -440,8 +441,8 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
             pyformat_sql, pyformat_params = sql, {}
         client = self.clickhouse_client
         try:
-            result = client.query(pyformat_sql, parameters=pyformat_params or None)  # type: ignore[attr-defined]
-            for row in result.named_results():  # type: ignore[attr-defined]
+            result = await client.query(pyformat_sql, parameters=pyformat_params or None)  # type: ignore[attr-defined]
+            for row in result.named_results():
                 raw: dict[str, Any] = {}
                 for key, value in row.items():
                     if value is not None:
