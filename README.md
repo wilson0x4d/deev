@@ -132,6 +132,7 @@ Utility for applying, undoing, or generating migrations.
 positional arguments:
   <COMMAND>   Action to perform.
     apply     Apply migrations.
+    generate  Generate DDL.
     undo      Undo migrations.
 
 options:
@@ -151,6 +152,10 @@ options:
   --stop-at name    Stop processing at the named migration (use "all" to process all).
 
 ```
+
+:::note
+The `generate` subcommand is **alpha-quality** and subject to change without notice. Do not rely on its interface for production tooling.
+:::
 
 A migration script is a Python file which defines two functions `apply(...)` and `undo(...)`, each receiving a `DbTransactionContext` you can use to modify the database transactionally.
 

@@ -6,6 +6,7 @@ try:
     from .async_mysql_proxy_cursor import AsyncMysqlProxyCursor
     from .async_mysql_table_adapter import AsyncMysqlTableAdapter
     from .async_mysql_transaction_context import AsyncMysqlTransactionContext
+    from .mysql_ddl_generator import MysqlDDLGenerator
     from .mysql_proxy_connection import MysqlProxyConnection
     from .mysql_proxy_cursor import MysqlProxyCursor
     from .mysql_table_adapter import MysqlTableAdapter
@@ -21,6 +22,7 @@ __all__ = [
     'AsyncMysqlProxyCursor',
     'AsyncMysqlTableAdapter',
     'AsyncMysqlTransactionContext',
+    'MysqlDDLGenerator',
     'MysqlProxyConnection',
     'MysqlProxyCursor',
     'MysqlTableAdapter',

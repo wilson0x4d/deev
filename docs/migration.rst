@@ -44,7 +44,10 @@ CLI Syntax
     positional arguments:
         <COMMAND>   Action to perform.
             apply     Apply migrations.
+            generate  Generate DDL.
             undo      Undo migrations.
+
+.. note:: The ``generate`` subcommand is **alpha-quality** and subject to change without notice. Do not rely on its interface for production tooling.
 
 
 .. code-block:: bash

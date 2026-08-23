@@ -8,7 +8,6 @@ import hanaro
 import logging
 import re
 from typing import (
-    TYPE_CHECKING,
     Any,
     Generator,
     Generic,
@@ -24,13 +23,10 @@ from ..common.db_connection import DbConnection
 from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_params import DbParams
-from ..common.db_type_mapper import DbTypeMapper
-from ..entities import EntitySpec, IndexOptions, get_entity_spec
+from ..entities import EntitySpec, get_entity_spec
 from ..translation import hydrate, splat, to_pyobject
 from .clickhouse_proxy_connection import ClickHouseProxyConnection
 from .clickhouse_transaction_context import ClickHouseTransactionContext
-from .clickhouse_type_mapper import ClickHouseTypeMapper
-from .utils import CLICKHOUSE_SKIP_INDEX_TYPES
 
 
 TEntity = TypeVar('TEntity')
@@ -44,7 +40,6 @@ class ClickHouseTableAdapter(Generic[TEntity]):
     __entity_spec: EntitySpec
     __initialized: bool
     __logger: logging.Logger
-    __dbtype_mapper: DbTypeMapper
     __table_name: str | None
     __transaction_state: int
 
@@ -69,7 +64,6 @@ class ClickHouseTableAdapter(Generic[TEntity]):
             entity_type = self.__get_typearg(self)
             self.__entity_spec = get_entity_spec(entity_type)
             self.__column_names = ', '.join([f'`{k}`' for k in self.__entity_spec.fields.keys()])
-            self.__dbtype_mapper = ClickHouseTypeMapper(self.__entity_spec)
             self.__initialized = True
             if self.__create_table is True:
                 self.create_table()
@@ -173,53 +167,18 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         Create the target table if it does not exist.
         """
         self.__deferred_init()
-        table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
-        primary_key = self.__entity_spec.primary_key
-        columns = ', '.join([
-            f'`{k}` {self.__dbtype_mapper.get_provider_type(k)}'
-            for k in self.__entity_spec.attrs.keys()
-        ])
 
-        skip_indexes: list[str] = []
-        seen_index_names: set[str] = set()
-        for field_name, field_spec in self.__entity_spec.fields.items():
-            idx_opts: IndexOptions | None = field_spec.index
-            if idx_opts is None:
-                continue
-            if idx_opts.type is None or idx_opts.type not in CLICKHOUSE_SKIP_INDEX_TYPES:
-                self.__logger.warning(
-                    f'Field `{field_name}` has index `{idx_opts.name}` but type is {"not set" if idx_opts.type is None else f"unrecognized: `{idx_opts.type}`"}' +
-                    f'. Allowed skip index types: {", ".join(sorted(CLICKHOUSE_SKIP_INDEX_TYPES))}'
-                )
-                continue
-            if idx_opts.name in seen_index_names:
-                continue
-            seen_index_names.add(idx_opts.name)
-            skip_indexes.append(
-                f'INDEX `{idx_opts.name}` {field_name} TYPE {idx_opts.type}'
-            )
-
-        all_definitions = columns
-        if skip_indexes:
-            all_definitions = columns + ', ' + ', '.join(skip_indexes)
-
-        if engine is None:
-            engine = 'ReplicatedMergeTree()'
-
-        if order_by:
-            order_clause = f' ORDER BY ({order_by})'
-        else:
-            order_columns: list[str] = [f'`{k}`' for k in primary_key]
-
-            if order_columns:
-                order_clause = f' ORDER BY ({", ".join(order_columns)})'
-            else:
-                order_clause = ''
-
-        partition_clause = f' PARTITION BY ({partition_by})' if partition_by else ''
-
-        sql = f'CREATE TABLE IF NOT EXISTS `{table_name}` ({all_definitions}) ENGINE = {engine}{order_clause}{partition_clause}'
-        self.__execute(sql)
+        from .clickhouse_ddl_generator import ClickHouseDDLGenerator
+        ddl_generator = ClickHouseDDLGenerator()
+        ddl = ddl_generator.generate_table_ddl(
+            table_name=self.__table_name,
+            entity_spec=self.__entity_spec,
+            engine=engine,
+            order_by=order_by,
+            partition_by=partition_by
+        )
+        for stmt in ddl:
+            self.__execute(stmt)
         self.__create_table = False
 
     def commit(self) -> None:

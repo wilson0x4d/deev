@@ -9,11 +9,10 @@ from typing import Any, Generator, Generic, TypeVar, cast, get_args, get_origin
 from uuid import UUID
 
 from ..common.db_context import DbContext
-from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_params import DbParams
 from ..common.db_type_mapper import DbTypeMapper
-from ..entities import EntitySpec, IndexOrder, get_entity_spec
+from ..entities import EntitySpec, get_entity_spec
 from ..translation import hydrate, to_pyobject, splat
 from .mysql_proxy_connection import MysqlProxyConnection
 from .mysql_transaction_context import MysqlTransactionContext
@@ -86,52 +85,14 @@ class MysqlTableAdapter(Generic[TEntity]):
             'Instantiate via the generic alias, e.g. MysqlTableAdapter[MyEntity]().'
         )
 
-    def __create_indexes(self, table_name: str) -> None:
-        """Build and execute ``CREATE INDEX`` statements for all secondary indexes."""
-        direction_map = {IndexOrder.ASCENDING: 'ASC', IndexOrder.DESCENDING: 'DESC'}
-        groups: dict[str, list[tuple[str, IndexOrder]]] = {}
-        for field_name, spec in self.__entity_spec.fields.items():
-            if spec.index is None:
-                continue
-            idx_name = spec.index.name
-            direction = spec.index.direction or IndexOrder.ASCENDING
-            groups.setdefault(idx_name, []).append((field_name, direction))
-
-        for idx_name, col_specs in sorted(groups.items()):
-            col_specs.sort(key=lambda cs: cs[0])
-            cols = ', '.join(f'`{name}` {direction_map[direction]}' for name, direction in col_specs)
-            self.__context.cursor().execute(f'CREATE INDEX `{idx_name}` ON `{table_name}` ({cols})')
-
     def create_table(self) -> None:
         """Utility method for creating the target table."""
         self.__deferred_init()
-        sql: str = ''
-        table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
-        if len(self.__entity_spec.primary_key) == 1:
-            # handling a single-column PK, will apply an auto-increment if the dbtype is BIGINT
-            primary_key = self.__entity_spec.primary_key[0]
-            id_dbtype = self.__dbtype_mapper.get_provider_type(primary_key)
-            columns = ', '.join([
-                f'`{k}` {self.__dbtype_mapper.get_provider_type(k)}'
-                for k in self.__entity_spec.attrs.keys()
-                if k != primary_key
-            ])
-            sql = f'CREATE TABLE IF NOT EXISTS `{table_name}` ({primary_key} {id_dbtype}{" AUTO_INCREMENT" if id_dbtype == "BIGINT" else ""}, {columns}, PRIMARY KEY ({primary_key}))'
-        else:
-            # special handling of multi-column PK
-            columns = ', '.join([
-                f'`{k}` {self.__dbtype_mapper.get_provider_type(k)}'
-                for k in self.__entity_spec.attrs.keys()
-            ])
-            primary_key = (
-                f", PRIMARY KEY ({','.join(self.__entity_spec.primary_key)})"
-                if len(self.__entity_spec.primary_key) > 0
-                else ''
-            )
-            sql = f'CREATE TABLE IF NOT EXISTS `{table_name}` ({columns}{primary_key})'
-        self.__execute(sql)
-        # Generate CREATE INDEX for secondary indexes defined via field(index=...)
-        self.__create_indexes(table_name)
+        from .mysql_ddl_generator import MysqlDDLGenerator
+        ddl_generator = MysqlDDLGenerator()
+        ddl = ddl_generator.generate_table_ddl(entity_spec=self.__entity_spec, table_name=self.__table_name)
+        for stmt in ddl:
+            self.__execute(stmt)
         self.__create_table = False
 
     def commit(self) -> None:

@@ -3,12 +3,13 @@
 
 import appsettings2
 import argparse
+from datetime import datetime
 import hanaro
-import os
+import platform
 import sys
 
 from .common.connection_string import ConnectionString
-from .utils import apply_migrations, undo_migrations
+from .utils import apply_migrations, generate_entity_ddl, undo_migrations
 
 
 def __parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -74,32 +75,26 @@ def __parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help='Directory containing migration scripts (optional). If omitted, a path is calculated from the connection argument, ie. `./migrations/database_name/`.',
     )
 
-    # # # generate_parser = subparsers.add_parser(
-    # # #     'generate',
-    # # #     help='Generate a new migration script.',
-    # # # )
-    # # # generate_parser.add_argument(
-    # # #     'path',
-    # # #     metavar='path',
-    # # #     help='Directory where the new migration will be created.',
-    # # # )
-    # # # generate_parser.add_argument(
-    # # #     'name',
-    # # #     metavar='name',
-    # # #     help='Name of the new migration.',
-    # # # )
-    # # # generate_parser.add_argument(
-    # # #     'connectionstring',
-    # # #     metavar='connectionstring',
-    # # #     help='Database connection string.',
-    # # # )
-    # # # generate_parser.add_argument(
-    # # #     'path',
-    # # #     nargs='?',
-    # # #     default=None,
-    # # #     metavar='path',
-    # # #     help='Directory containing migration scripts (optional). If omitted, a path is calculated from the connectionstring argument, ie. `./migrations/database_name/`.',
-    # # # )
+    generate_parser = subparsers.add_parser(
+        'generate',
+        help='Generate DDL.',
+    )
+    generate_parser.add_argument(
+        'type',
+        metavar='type',
+        choices=['entity', 'database'],
+        help='The type of object to generate DDL for (entity or database).',
+    )
+    generate_parser.add_argument(
+        'fqn',
+        metavar='fqn',
+        help='The fully-qualified type name, ie. `my_project.my_entities.my_entity.MyEntity`.',
+    )
+    generate_parser.add_argument(
+        'connection',
+        metavar='connection',
+        help='Database connection string (name from config or literal `key=value` format).',
+    )
 
     return parser.parse_args(argv)
 
@@ -142,6 +137,23 @@ def main() -> None:
                 apply_migrations(args.migration_name, connection, args.path)
             case 'undo':
                 undo_migrations(args.migration_name, connection, args.path)
+            case 'generate':
+                ddl: list[str]
+                match args.type:
+                    case 'entity':
+                        from deev.utils import generate_entity_ddl
+                        ddl = generate_entity_ddl(connection, args.fqn)
+                    case 'database':
+                        from deev.utils import generate_dbadapter_ddl
+                        ddl = generate_dbadapter_ddl(connection, args.fqn)
+                ddl_ident = f'-- Generated {datetime.now()} on {platform.node()} --'
+                ddl_sep = '-' * len(ddl_ident)
+                print(f'{ddl_sep}\n{ddl_ident}\n{ddl_sep}\n')
+                print(f'USE {connection.database};\n')
+                for stmt in ddl:
+                    print(f'{stmt};\n')
+                if connection.provider == 'clickhouse' and connection.parameters.get('engine', 'Replicate').startswith('Replicate'):
+                    print(f'SYSTEM SYNC DATABASE REPLICA {connection.database};\n')
     except Exception as ex:
         hanaro.get_logger().exception(ex)
     finally:

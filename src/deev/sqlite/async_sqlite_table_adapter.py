@@ -3,24 +3,18 @@
 
 from __future__ import annotations
 
-import asyncio
-from typing import Any, AsyncGenerator, Generator, Generic, TypeVar, cast, get_args, get_origin
-from uuid import UUID
+from typing import Any, AsyncGenerator, TypeVar, cast, get_args, get_origin
 
-from ..common.async_db_connection import AsyncDbConnection
 from ..common.async_db_table_adapter import AsyncDbTableAdapter
-from ..common.async_db_transaction_context import AsyncDbTransactionContext
 from ..common.db_context import AsyncDbContext
-from ..common.db_error import DbError
 from ..common.db_params import DbParams
-from ..entities import EntitySpec, IndexOptions, IndexOrder, get_entity_spec
-from ..translation import hydrate, to_pyobject, splat
+from ..entities import get_entity_spec
 from .async_sqlite_proxy_connection import AsyncSqliteProxyConnection
 from .async_sqlite_transaction_context import AsyncSqliteTransactionContext
-from .sqlite_proxy_cursor import SqliteProxyCursor
 from .sqlite_proxy_connection import SqliteProxyConnection
 from .sqlite_table_adapter import SqliteTableAdapter
 from .sqlite_type_mapper import SqliteTypeMapper
+
 TEntity = TypeVar('TEntity')
 
 
@@ -97,35 +91,34 @@ class AsyncSqliteTableAdapter(AsyncDbTableAdapter[TEntity]):
             return cast(AsyncSqliteProxyConnection, self.__context.connection).sqlite_connection
         raise RuntimeError(f'unsupported context type: {self.__context}')
 
-
     async def create_table(self) -> None:
         await self.__deferred_init()
-        await asyncio.to_thread(self.__sync_adapter.create_table)
+        self.__sync_adapter.create_table()
         self.__create_table = False
 
     async def create(self, entity: TEntity | None = None, **kwargs: Any) -> dict[str, Any]:
         await self.__deferred_init()
-        return await asyncio.get_event_loop().run_in_executor(None, lambda: self.__sync_adapter.create(entity, **kwargs))
+        return self.__sync_adapter.create(entity, **kwargs)
 
     async def read(self, **kwargs: Any) -> TEntity | None:
         await self.__deferred_init()
-        return await asyncio.get_event_loop().run_in_executor(None, lambda: self.__sync_adapter.read(**kwargs))
+        return self.__sync_adapter.read(**kwargs)
 
     async def update(self, entity: TEntity) -> None:
         await self.__deferred_init()
-        await asyncio.to_thread(self.__sync_adapter.update, entity)
+        self.__sync_adapter.update(entity)
 
     async def delete(self, **kwargs: Any) -> None:
         await self.__deferred_init()
-        await asyncio.get_event_loop().run_in_executor(None, lambda: self.__sync_adapter.delete(**kwargs))
+        self.__sync_adapter.delete(**kwargs)
 
     async def exists(self, **kwargs: Any) -> bool:
         await self.__deferred_init()
-        return await asyncio.get_event_loop().run_in_executor(None, lambda: self.__sync_adapter.exists(**kwargs))
+        return self.__sync_adapter.exists(**kwargs)
 
     async def upsert(self, entity: TEntity) -> dict[str, Any]:
         await self.__deferred_init()
-        return await asyncio.get_event_loop().run_in_executor(None, lambda: self.__sync_adapter.upsert(entity))
+        return self.__sync_adapter.upsert(entity)
 
     async def query(  # type: ignore[override]
         self,
@@ -136,20 +129,16 @@ class AsyncSqliteTableAdapter(AsyncDbTableAdapter[TEntity]):
     ) -> AsyncGenerator[TEntity, None]:
         await self.__deferred_init()
         sync_gen = self.__sync_adapter.query(where, params, orderby, limit)
-        SENTINEL = object()
-        while True:
-            result = await asyncio.to_thread(next, sync_gen, SENTINEL)
-            if result is SENTINEL:
-                break
-            yield cast(TEntity, result)
+        for e in sync_gen:
+            yield e
 
     async def commit(self) -> None:
         await self.__deferred_init()
-        await asyncio.to_thread(self.__sync_adapter.commit)
+        self.__sync_adapter.commit()
 
     async def rollback(self) -> None:
         await self.__deferred_init()
-        await asyncio.to_thread(self.__sync_adapter.rollback)
+        self.__sync_adapter.rollback()
 
 
 __all__ = ['AsyncSqliteTableAdapter']

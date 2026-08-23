@@ -135,11 +135,14 @@ The ``db-migrate`` tool can be used to apply a migration script or undo a previo
     positional arguments:
     <COMMAND>   Action to perform.
         apply     Apply migrations.
+        generate  Generate DDL.
         undo      Undo migrations.
 
     options:
     -h, --help  show this help message and exit
     --verbose   Enable verbose logging.
+
+.. note:: The ``generate`` subcommand is **alpha-quality** and subject to change without notice. Do not rely on its interface for production tooling.
 
     $ db-migrate apply -h
     usage: db-migrate apply [-h] [--stop-at name] connectionstring [path]

@@ -150,7 +150,10 @@ class ClickHouseTransactionContext(DbTransactionContext):
         self.__update_transaction_state("INSERT")
         if self.__cursor is None:
             self.__cursor = self.__context.cursor()
-        self.__cursor.execute(sql)
+        stmts = [e.strip() for e in sql.split(';\n')]
+        for stmt in stmts:
+            if len(stmt) > 0:
+                self.__cursor.execute(stmt)
 
     def rollback(self) -> None:
         try:

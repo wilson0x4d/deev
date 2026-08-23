@@ -172,7 +172,10 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
         if self.__cursor is None:
             self.__cursor = await self.__context.cursor()
         assert self.__cursor is not None
-        await self.__cursor.execute(sql)
+        stmts = [e.strip() for e in sql.split(';\n')]
+        for stmt in stmts:
+            if len(stmt) > 0:
+                await self.__cursor.execute(stmt)
 
     async def rollback(self) -> None:
         try:

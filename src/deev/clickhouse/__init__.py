@@ -6,6 +6,7 @@ try:
     from .async_clickhouse_proxy_cursor import AsyncClickHouseProxyCursor
     from .async_clickhouse_table_adapter import AsyncClickHouseTableAdapter
     from .async_clickhouse_transaction_context import AsyncClickHouseTransactionContext
+    from .clickhouse_ddl_generator import ClickHouseDDLGenerator
     from .clickhouse_proxy_connection import ClickHouseProxyConnection
     from .clickhouse_proxy_cursor import ClickHouseProxyCursor
     from .clickhouse_table_adapter import ClickHouseTableAdapter
@@ -21,6 +22,7 @@ __all__ = [
     'AsyncClickHouseProxyCursor',
     'AsyncClickHouseTableAdapter',
     'AsyncClickHouseTransactionContext',
+    'ClickHouseDDLGenerator',
     'ClickHouseProxyConnection',
     'ClickHouseProxyCursor',
     'ClickHouseTableAdapter',

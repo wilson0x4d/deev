@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 from deev.sqlite import AsyncSqliteProxyConnection
+import importlib
 import os
+import sys
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, get_args, get_origin, get_type_hints
 
 from .common.async_db_connection import AsyncDbConnection
 from .common.async_db_transaction_context import AsyncDbTransactionContext
@@ -381,6 +383,100 @@ def undo_migrations(
         updater.undo(migrations_path, migration_name)
     else:
         raise ValueError('A value for `migrations_path` must be provided.')
+
+
+def generate_entity_ddl(
+    dbcontext_or_connectionstring: DbContext | ConnectionString,
+    entity_fqn: str
+) -> list[str]:
+    entity_type: type | None = None
+    if '.' in entity_fqn:
+        module_path, _, class_name = entity_fqn.rpartition('.')
+        try:
+            module = importlib.import_module(module_path)
+            entity_type = getattr(module, class_name, None)
+        except ModuleNotFoundError:
+            pass
+    else:
+        entity_type = globals().get(entity_fqn) or locals().get(entity_fqn)
+    if entity_type is not None:
+        from deev.entities import get_entity_spec
+        entity_spec = get_entity_spec(entity_type)
+        dbcontext = (
+            connect(dbcontext_or_connectionstring)
+            if isinstance(dbcontext_or_connectionstring, (ConnectionString, str))
+            else dbcontext_or_connectionstring
+        )
+        match type(dbcontext).__name__:
+            case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MysqlTransactionContext':
+                import deev.mysql
+                mysql_ddl_generator = deev.mysql.MysqlDDLGenerator()
+                return mysql_ddl_generator.generate_table_ddl(
+                    entity_spec=entity_spec
+                )
+            case 'SqliteProxyConnection' | 'SqliteTransactionContext':
+                import deev.sqlite
+                sqlite_ddl_generator = deev.sqlite.SqliteDDLGenerator()
+                return sqlite_ddl_generator.generate_table_ddl(
+                    entity_spec=entity_spec
+                )
+            case 'MongoProxyConnection' | 'MongoTransactionContext':
+                raise NotImplementedError('alpha feature, still not mongodb support.')
+            case 'ClickHouseProxyConnection' | 'ClickHouseTransactionContext':
+                import deev.clickhouse
+                clickhouse_ddl_generator = deev.clickhouse.ClickHouseDDLGenerator()
+                return clickhouse_ddl_generator.generate_table_ddl(
+                    entity_spec=entity_spec
+                )
+            case _:
+                raise DbError(f'Unsupported object: {dbcontext}')
+    else:
+        raise ValueError(f'Cannot determine type information for `{entity_fqn}`.')
+
+
+def generate_dbadapter_ddl(
+    dbcontext_or_connectionstring: DbContext | ConnectionString,
+    dbadapter_fqn: str
+) -> list[str]:
+    dbadapter_type: type | None = None
+    if '.' in dbadapter_fqn:
+        module_path, _, class_name = dbadapter_fqn.rpartition('.')
+        try:
+            module = importlib.import_module(module_path)
+            dbadapter_type = getattr(module, class_name, None)
+        except ModuleNotFoundError:
+            pass
+    if dbadapter_type is None:
+        raise ValueError(f'Cannot determine type information for `{dbadapter_fqn}`.')
+    ddl: list[str] = []
+    for name, attr in dbadapter_type.__dict__.items():
+        if name.startswith('_'):
+            continue
+        if not isinstance(attr, property):
+            continue
+        fget = attr.fget
+        if fget is None:
+            continue
+        try:
+            mod = sys.modules[dbadapter_type.__module__]
+            mod_globals = vars(mod)
+            hints = get_type_hints(fget, globalns=mod_globals)
+        except Exception:
+            continue
+        for hint in hints.values():
+            origin = get_origin(hint)
+            type_args = get_args(hint)
+            if origin is not None and len(type_args) == 1:
+                entity_type = type_args[0]
+                if isinstance(entity_type, type) and issubclass(origin, DbTableAdapter):  # type: ignore[arg-type]
+                    entity_ddl = generate_entity_ddl(
+                        dbcontext_or_connectionstring,
+                        f'{entity_type.__module__}.{entity_type.__name__}'
+                    )
+                    for stmt in entity_ddl:
+                        ddl.append(stmt)
+            break
+    return ddl
 
 
 def create_table_adapter(
