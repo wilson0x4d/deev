@@ -87,6 +87,7 @@ class SqliteTableAdapter(Generic[TEntity]):
 
     def create_table(self) -> None:
         """Utility method for creating the target table."""
+        self.__deferred_init()
         from .sqlite_ddl_generator import SqliteDDLGenerator
         ddl_generator = SqliteDDLGenerator()
         ddl = ddl_generator.generate_table_ddl(entity_spec=self.__entity_spec, table_name=self.__table_name)
