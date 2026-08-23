@@ -110,6 +110,10 @@ def to_pyobject(value: Any, hint: type) -> Any:
         if dt.tzinfo is not None:
             return dt.replace(tzinfo=timezone.utc)
         return dt
+    elif hint == datetime and isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
     elif hint == date and isinstance(value, str):
         return date.fromisoformat(value)
     elif hint == time and isinstance(value, str):
@@ -210,10 +214,9 @@ def to_sqlobject(value: Any, hint: type) -> Any:
         return value.hex
     elif hint == datetime:
         if value.tzinfo is not None:
-            return _utc_z(value)
+            return value.astimezone(timezone.utc)
         else:
-            u = value.replace(tzinfo=timezone.utc)
-            return _utc_z(u)
+            return value.replace(tzinfo=timezone.utc)
     elif hint == date:
         return value.isoformat()
     elif hint == time:
