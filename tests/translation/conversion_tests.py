@@ -125,7 +125,7 @@ def to_pyobject_non_class_hint_no_crash() -> None:
 @inlinedata(('foo', 'bar'), tuple[str, ...], '"t`[\\"foo\\",\\"bar\\"]"')
 @inlinedata(['foo', 'bar'], list[str], '["foo","bar"]')
 @inlinedata({'foo', 'bar'}, set[str], '"s`[\\"foo\\",\\"bar\\"]"')
-@inlinedata(datetime(2023, 5, 19, 21, 43, 46, 539436, tzinfo=timezone.utc), datetime, '2023-05-19T21:43:46.539436Z')
+@inlinedata(datetime(2023, 5, 19, 21, 43, 46, 539436, tzinfo=timezone.utc), datetime, datetime(2023, 5, 19, 21, 43, 46, 539436, tzinfo=timezone.utc))
 @inlinedata(time(21, 43, 46, 539436, tzinfo=timezone.utc), time, '21:43:46.539436Z')
 @inlinedata(timedelta(days=3, seconds=7383, microseconds=321), timedelta, 266583000321)
 @inlinedata(date(2023, 5, 19), date, '2023-05-19')
