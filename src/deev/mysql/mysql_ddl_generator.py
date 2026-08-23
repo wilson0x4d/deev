@@ -67,7 +67,7 @@ class MysqlDDLGenerator():
             )
             ddl.append(f'CREATE TABLE IF NOT EXISTS `{table_name}` ({columns}{primary_key})')
         # Generate CREATE INDEX for secondary indexes defined via field(index=...)
-        [ddl.append(e) for e in self.__generate_table_indexes_ddl(table_name)]  # type: ignore
+        [ddl.append(e) for e in self.__generate_table_indexes_ddl(entity_spec, table_name)]  # type: ignore
         return ddl
 
 
