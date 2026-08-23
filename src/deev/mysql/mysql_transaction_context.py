@@ -98,7 +98,14 @@ class MysqlTransactionContext(DbTransactionContext):
         if MysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
             self.__context.commit()
         else:
-            self.__cursor.execute(f'RELEASE SAVEPOINT TID_{self.__transaction_id.hex}')
+            try:
+                self.__cursor.execute(f'RELEASE SAVEPOINT TID_{self.__transaction_id.hex}')
+            except mysql.connector.Error as e:
+                if 'does not exist' in str(e):
+                    # DDL implicitly released all savepoints (MySQL behavior)
+                    pass
+                else:
+                    raise
         self.__update_transaction_state('COMMIT')
 
     def cursor(self) -> DbCursor:
