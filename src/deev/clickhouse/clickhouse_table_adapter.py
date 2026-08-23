@@ -179,6 +179,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         )
         for stmt in ddl:
             self.__execute(stmt)
+        self.sync_replicas()
         self.__create_table = False
 
     def commit(self) -> None:

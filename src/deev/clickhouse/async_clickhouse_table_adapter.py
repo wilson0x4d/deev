@@ -182,6 +182,7 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
         )
         for stmt in ddl:
             await self.__execute(stmt)
+        await self.sync_replicas()
         self.__create_table = False
 
     async def commit(self) -> None:
