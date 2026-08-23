@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: © 2026 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
-import asyncio
 import appsettings2
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from deev import entity, field
 from deev.common import ConnectionString
 from deev.utils import (
@@ -14,7 +13,7 @@ from deev.utils import (
 )
 from deev.mysql.async_mysql_table_adapter import AsyncMysqlTableAdapter
 from uuid import UUID, uuid4
-from punit import fact, trait
+from punit import fact, trait, sequential
 
 
 def get_mysql_connectionstring() -> ConnectionString:
@@ -26,6 +25,7 @@ def get_mysql_connectionstring() -> ConnectionString:
 @fact
 @trait('mysql')
 @trait('integration')
+@sequential
 async def async_adapter_basic_crud() -> None:
     cxnstring = get_mysql_connectionstring()
     cxnstring.database = f'deev_test_{uuid4().hex}'
@@ -79,6 +79,7 @@ async def async_adapter_basic_crud() -> None:
 @fact
 @trait('mysql')
 @trait('integration')
+@sequential
 async def async_adapter_create_kwargs() -> None:
     cxnstring = get_mysql_connectionstring()
     cxnstring.database = f'deev_test_{uuid4().hex}'
@@ -116,6 +117,7 @@ async def async_adapter_create_kwargs() -> None:
 @fact
 @trait('mysql')
 @trait('integration')
+@sequential
 async def async_adapter_query_and_delete() -> None:
     cxnstring = get_mysql_connectionstring()
     cxnstring.database = f'deev_test_{uuid4().hex}'
@@ -161,6 +163,7 @@ async def async_adapter_query_and_delete() -> None:
 @fact
 @trait('mysql')
 @trait('integration')
+@sequential
 async def async_adapter_upsert() -> None:
     cxnstring = get_mysql_connectionstring()
     cxnstring.database = f'deev_test_{uuid4().hex}'
@@ -206,6 +209,7 @@ async def async_adapter_upsert() -> None:
 @fact
 @trait('mysql')
 @trait('integration')
+@sequential
 async def async_adapter_primary_key_property() -> None:
     cxnstring = get_mysql_connectionstring()
     cxnstring.database = f'deev_test_{uuid4().hex}'
@@ -236,6 +240,7 @@ async def async_adapter_primary_key_property() -> None:
 @fact
 @trait('mysql')
 @trait('integration')
+@sequential
 async def async_adapter_uuid_field_roundtrip() -> None:
     cxnstring = get_mysql_connectionstring()
     cxnstring.database = f'deev_test_{uuid4().hex}'
@@ -274,6 +279,7 @@ async def async_adapter_uuid_field_roundtrip() -> None:
 @fact
 @trait('mysql')
 @trait('integration')
+@sequential
 async def async_adapter_datetime_roundtrip() -> None:
     cxnstring = get_mysql_connectionstring()
     cxnstring.database = f'deev_test_{uuid4().hex}'

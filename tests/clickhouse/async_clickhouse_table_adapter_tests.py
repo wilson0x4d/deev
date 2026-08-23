@@ -10,7 +10,7 @@ from deev.utils import connect, create_database, connect_async
 from deev.clickhouse import AsyncClickHouseTableAdapter
 from deev.clickhouse.async_clickhouse_proxy_connection import AsyncClickHouseProxyConnection
 from uuid import UUID, uuid4
-from punit import fact, trait
+from punit import fact, trait, sequential
 from clickhouse_connect.driver.exceptions import DatabaseError
 import types
 import clickhouse_connect
@@ -54,6 +54,7 @@ async def _connect_async_with_retry(
 @fact
 @trait('clickhouse')
 @trait('integration')
+@sequential
 async def async_adapter_basic_crud() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.clickhouse_test)
@@ -105,6 +106,7 @@ async def async_adapter_basic_crud() -> None:
 @fact
 @trait('clickhouse')
 @trait('integration')
+@sequential
 async def async_adapter_create_kwargs() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.clickhouse_test)
@@ -140,6 +142,7 @@ async def async_adapter_create_kwargs() -> None:
 @fact
 @trait('clickhouse')
 @trait('integration')
+@sequential
 async def async_adapter_query_and_delete() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.clickhouse_test)
@@ -177,6 +180,7 @@ async def async_adapter_query_and_delete() -> None:
 @fact
 @trait('clickhouse')
 @trait('integration')
+@sequential
 async def async_adapter_upsert() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.clickhouse_test)
@@ -214,6 +218,7 @@ async def async_adapter_upsert() -> None:
 @fact
 @trait('clickhouse')
 @trait('integration')
+@sequential
 async def async_adapter_primary_key_property() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.clickhouse_test)
@@ -242,6 +247,7 @@ async def async_adapter_primary_key_property() -> None:
 @fact
 @trait('clickhouse')
 @trait('integration')
+@sequential
 async def async_adapter_exists_works() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.clickhouse_test)
@@ -278,6 +284,7 @@ async def async_adapter_exists_works() -> None:
 @fact
 @trait('clickhouse')
 @trait('integration')
+@sequential
 async def async_adapter_bulk_create() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.clickhouse_test)
@@ -319,6 +326,7 @@ async def async_adapter_bulk_create() -> None:
 @fact
 @trait('clickhouse')
 @trait('integration')
+@sequential
 async def async_adapter_delete_works() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.clickhouse_test)
@@ -363,6 +371,7 @@ async def async_adapter_delete_works() -> None:
 @fact
 @trait('clickhouse')
 @trait('integration')
+@sequential
 async def async_adapter_uuid_field_roundtrip() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.clickhouse_test)
@@ -401,6 +410,7 @@ async def async_adapter_uuid_field_roundtrip() -> None:
 @fact
 @trait('clickhouse')
 @trait('integration')
+@sequential
 async def async_adapter_query_with_orderby_limit() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.clickhouse_test)

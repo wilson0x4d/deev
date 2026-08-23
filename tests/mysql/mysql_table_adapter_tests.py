@@ -8,13 +8,14 @@ from deev.common import ConnectionString
 from deev.utils import connect, create_database
 from deev.mysql.mysql_table_adapter import MysqlTableAdapter
 from uuid import UUID, uuid4
-from punit import fact, trait
+from punit import fact, trait, sequential
 from typing import Any
 
 
 @fact
 @trait('mysql')
 @trait('integration')
+@sequential
 def basic_verification() -> None:
     #
     # mutate configuration to generate a unique database

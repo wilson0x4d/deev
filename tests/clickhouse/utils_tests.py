@@ -5,11 +5,12 @@ import appsettings2
 from deev.common import ConnectionString
 from deev.utils import connect, create_database
 from uuid import uuid4
-from punit import fact, trait
+from punit import fact, trait, sequential
 
 @fact
-@trait('integration')
 @trait('clickhouse')
+@trait('integration')
+@sequential
 def cannot_connect_when_nonexistent_database() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.clickhouse_test)
@@ -23,8 +24,9 @@ def cannot_connect_when_nonexistent_database() -> None:
         assert False, f'expected failure for non-existent database: {cxnstring.database}'
 
 @fact
-@trait('integration')
 @trait('clickhouse')
+@trait('integration')
+@sequential
 def can_create_database() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.clickhouse_test)
