@@ -39,6 +39,11 @@ class DbAdapter(DbConnection, ABC):
     and ``get_table_adapter`` lazily creates and caches adapters based
     on the connection string provider.
 
+    The ``get_table_adapter`` method delegates to ``utils.create_table_adapter``
+    and accepts the same keyword arguments (``create_table``, ``table_name``,
+    ``**kwargs``). Callers can pass provider-specific options such as
+    ``sync_replicas=True`` for ClickHouse adapters.
+
     Usage
     -----
 
@@ -54,6 +59,7 @@ class DbAdapter(DbConnection, ABC):
     """
 
     __adapter_map = dict[str, tuple[type, str]]()
+    __adapter_cache: dict[tuple[str, bool, str | None, frozenset[tuple[str, Any]]], object]
     __connection: DbConnection | None
     __connection_string: ConnectionString | str
     __logger: logging.Logger
@@ -62,6 +68,7 @@ class DbAdapter(DbConnection, ABC):
         self.__connection = None
         self.__logger = hanaro.get_queued_logger()
         self.__connection_string = connection_string
+        self.__adapter_cache = {}
 
     def __del__(self) -> None:
         try:
@@ -109,48 +116,15 @@ class DbAdapter(DbConnection, ABC):
                     cls.__adapter_map[entity_type.__name__] = (entity_type, cache_attr)
                     break
 
-    def __create_adapter(self, entity_type: type[TEntity]) -> DbTableAdapter[TEntity]:
-        if self.__connection is not None:
-            match type(self.__connection).__name__:
-                case 'mysql_proxy_connection/impl' | 'MySQLConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection':
-                    from ..mysql import MysqlTableAdapter
-                    return MysqlTableAdapter[entity_type](self.__connection)  # type: ignore[arg-type, valid-type]
-                case 'SqliteProxyConnection':
-                    from ..sqlite import SqliteTableAdapter
-                    return SqliteTableAdapter[entity_type](self.__connection)  # type: ignore[arg-type, valid-type]
-                case 'MongoProxyConnection':
-                    from ..mongodb import MongoTableAdapter
-                    return MongoTableAdapter[entity_type](self.__connection)  # type: ignore[arg-type, valid-type]
-                case 'ClickHouseProxyConnection':
-                    from ..clickhouse import ClickHouseTableAdapter
-                    return ClickHouseTableAdapter[entity_type](self.__connection)  # type: ignore[arg-type, valid-type]
-        raise ValueError('No connection established and no provider detected.')
-
-    def __create_transaction_context(self) -> DbTransactionContext:
-        if self.__connection is not None:
-            match type(self.__connection).__name__:
-                case 'MongoProxyConnection':
-                    from ..mongodb import MongoTransactionContext
-                    return MongoTransactionContext(self.__connection)
-                case 'mysql_proxy_connection/impl' | 'MySQLConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection':
-                    from ..mysql import MysqlTransactionContext
-                    return MysqlTransactionContext(self.__connection)
-                case 'SqliteProxyConnection':
-                    from ..sqlite import SqliteTransactionContext
-                    return SqliteTransactionContext(self.__connection)
-                case 'ClickHouseProxyConnection':
-                    from ..clickhouse import ClickHouseTransactionContext
-                    return ClickHouseTransactionContext(self.__connection)
-        raise ValueError('No connection established and no provider detected.')
-
     @property
     def connection(self) -> DbConnection:
         assert self.__connection is not None, 'not connected'
         return self.__connection
 
-    def begin_transaction(self) -> DbTransactionContext:
+    def begin_transaction(self, **kwargs: Any) -> DbTransactionContext:
         assert self.__connection is not None, 'not connected'
-        return self.__create_transaction_context()
+        from ..utils import begin_transaction
+        return begin_transaction(self.__connection, **kwargs)
 
     def close(self) -> None:
         if self.__connection is not None:
@@ -177,7 +151,14 @@ class DbAdapter(DbConnection, ABC):
         assert self.__connection is not None, 'not connected'
         return self.__connection.cursor(*args, **kwargs)  # type: ignore[return-value]
 
-    def get_table_adapter(self, entity_type: type[TEntity]) -> DbTableAdapter[TEntity]:
+    def get_table_adapter(
+        self,
+        entity_type: type[TEntity],
+        *,
+        create_table: bool = False,
+        table_name: str | None = None,
+        **kwargs: Any
+    ) -> DbTableAdapter[TEntity]:
         key = entity_type.__name__
         registered = self.__adapter_map.get(key)
         if registered is None:
@@ -185,10 +166,20 @@ class DbAdapter(DbConnection, ABC):
 
         _entity_type, cache_attr = registered
 
-        adapter = self.__dict__.get(cache_attr)
+        assert self.__connection is not None, 'not connected'
+
+        cache_key = (cache_attr, create_table, table_name, frozenset(kwargs.items()))
+        adapter = self.__adapter_cache.get(cache_key)
         if adapter is None:
-            adapter = self.__create_adapter(entity_type)
-            object.__setattr__(self, cache_attr, adapter)  # type: ignore[arg-type]
+            from ..utils import create_table_adapter
+            adapter = create_table_adapter(
+                entity_type,
+                self.__connection,
+                create_table=create_table,
+                table_name=table_name,
+                **kwargs
+            )  # type: ignore[return-value]
+            self.__adapter_cache[cache_key] = adapter  # type: ignore[literal-required]
         return cast(DbTableAdapter[TEntity], adapter)
 
     def rollback(self) -> None:
