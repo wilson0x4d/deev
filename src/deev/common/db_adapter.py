@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2023 Shaun Wilson
+# SPDX-FileCopyrightText: © 2026 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
 from __future__ import annotations
@@ -171,14 +171,14 @@ class DbAdapter(DbConnection, ABC):
         cache_key = (cache_attr, create_table, table_name, frozenset(kwargs.items()))
         adapter = self.__adapter_cache.get(cache_key)
         if adapter is None:
-            from ..utils import create_table_adapter
-            adapter = create_table_adapter(
+            from ..utils import db_table_adapter_factory
+            adapter = db_table_adapter_factory(
                 entity_type,
                 self.__connection,
                 create_table=create_table,
                 table_name=table_name,
                 **kwargs
-            )  # type: ignore[return-value]
+            )  # type: ignore[arg-type]
             self.__adapter_cache[cache_key] = adapter  # type: ignore[literal-required]
         return cast(DbTableAdapter[TEntity], adapter)
 

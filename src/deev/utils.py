@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, get_args, get_origin, get_type_hints
 
 from .common.async_db_connection import AsyncDbConnection
+from .common.async_db_table_adapter import AsyncDbTableAdapter
 from .common.async_db_transaction_context import AsyncDbTransactionContext
 from .common.connection_string import ConnectionString
 from .common.db_connection import DbConnection
@@ -522,6 +523,90 @@ def generate_dbadapter_ddl(
     return ddl
 
 
+def db_table_adapter_factory(
+    entity_type: type,
+    db_context: DbContext,
+    *,
+    create_table: bool | None = False,
+    table_name: str | None = None,
+    **kwargs: Any,
+) -> DbTableAdapter[Any]:
+    """
+    Synchronous factory that creates the appropriate sync ``DbTableAdapter``
+    for the given entity type and already-connected ``DbContext``.
+
+    Provider detection is performed via ``type(db_context).__name__`` matching.
+    This function does NOT call ``connect()`` — the caller must pass an
+    already-established connection or transaction context.
+
+    :param entity_type: The entity class.
+    :param db_context: An already-connected :class:`DbContext`.
+    :param create_table: Whether to create the table if it does not exist.
+    :param table_name: Optional table name override.
+    :param kwargs: Provider-specific options (e.g. ``sync_replicas=True`` for ClickHouse).
+    :return: A :class:`DbTableAdapter[TEntity]`.
+    :raises DbError: If the provider is unsupported.
+    """
+    match type(db_context).__name__:
+        case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MysqlTransactionContext':
+            import deev.mysql
+            return deev.mysql.MysqlTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+        case 'SqliteProxyConnection' | 'SqliteTransactionContext':
+            import deev.sqlite
+            return deev.sqlite.SqliteTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+        case 'MongoProxyConnection' | 'MongoTransactionContext':
+            import deev.mongodb
+            return deev.mongodb.MongoTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+        case 'ClickHouseProxyConnection' | 'ClickHouseTransactionContext':
+            import deev.clickhouse
+            kwargs['sync_replicas'] = True
+            return deev.clickhouse.ClickHouseTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+        case _:
+            raise DbError(f'Unsupported object: {db_context}')
+
+
+def async_db_table_adapter_factory(
+    entity_type: type,
+    async_db_context: AsyncDbContext,
+    *,
+    create_table: bool | None = False,
+    table_name: str | None = None,
+    **kwargs: Any,
+) -> AsyncDbTableAdapter[Any]:
+    """
+    Synchronous factory that creates the appropriate async ``AsyncDbTableAdapter``
+    for the given entity type and already-connected ``AsyncDbContext``.
+
+    The adapter **constructors** are synchronous — only the methods on them are async.
+    Provider detection is performed via ``type(async_db_context).__name__`` matching.
+    This function does NOT call ``connect_async()`` — the caller must pass an
+    already-established connection or transaction context.
+
+    :param entity_type: The entity class.
+    :param async_db_context: An already-connected :class:`AsyncDbContext`.
+    :param create_table: Whether to create the table if it does not exist.
+    :param table_name: Optional table name override.
+    :param kwargs: Provider-specific options.
+    :return: A :class:`AsyncDbTableAdapter[TEntity]`.
+    :raises DbError: If the provider is unsupported.
+    """
+    match type(async_db_context).__name__:
+        case 'AsyncMysqlProxyConnection' | 'AsyncMysqlTransactionContext':
+            import deev.mysql
+            return deev.mysql.AsyncMysqlTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+        case 'AsyncSqliteProxyConnection' | 'AsyncSqliteTransactionContext':
+            import deev.sqlite
+            return deev.sqlite.AsyncSqliteTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+        case 'AsyncMongoProxyConnection' | 'AsyncMongoTransactionContext':
+            import deev.mongodb
+            return deev.mongodb.AsyncMongoTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+        case 'AsyncClickHouseProxyConnection' | 'AsyncClickHouseTransactionContext':
+            import deev.clickhouse
+            return deev.clickhouse.AsyncClickHouseTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+        case _:
+            raise DbError(f'Unsupported object: {async_db_context}')
+
+
 def create_table_adapter(
     entity_type: type,
     dbcontext_or_connectionstring: DbContext | ConnectionString,
@@ -549,22 +634,13 @@ def create_table_adapter(
         if isinstance(dbcontext_or_connectionstring, (ConnectionString, str))
         else dbcontext_or_connectionstring
     )
-    match type(dbcontext).__name__:
-        case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MysqlTransactionContext':
-            import deev.mysql
-            return deev.mysql.MysqlTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case 'SqliteProxyConnection' | 'SqliteTransactionContext':
-            import deev.sqlite
-            return deev.sqlite.SqliteTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case 'MongoProxyConnection' | 'MongoTransactionContext':
-            import deev.mongodb
-            return deev.mongodb.MongoTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case 'ClickHouseProxyConnection' | 'ClickHouseTransactionContext':
-            import deev.clickhouse
-            kwargs['sync_replicas'] = True
-            return deev.clickhouse.ClickHouseTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case _:
-            raise DbError(f'Unsupported object: {dbcontext}')
+    return db_table_adapter_factory(  # type: ignore[return-value]
+        entity_type,
+        dbcontext,
+        create_table=create_table,
+        table_name=table_name,
+        **kwargs
+    )
 
 
 async def create_table_adapter_async(
@@ -574,9 +650,9 @@ async def create_table_adapter_async(
     create_table: bool | None = False,
     table_name: str | None = None,
     **kwargs: Any
-) -> DbTableAdapter[Any]:
+) -> AsyncDbTableAdapter[Any]:
     """
-    Async factory to create a :class:`DbTableAdapter` for the given entity type.
+    Async factory to create a :class:`AsyncDbTableAdapter` for the given entity type.
 
     Auto-detects the provider from the async connection context or connection string and returns
     the appropriate provider-specific ``AsyncTableAdapter``.
@@ -586,29 +662,21 @@ async def create_table_adapter_async(
     :param create_table: Whether to create the table if it does not exist.
     :param table_name: Optional table name override.
     :param kwargs: Provider-specific options.
-    :return: A :class:`DbTableAdapter[TEntity]`.
+    :return: A :class:`AsyncDbTableAdapter[TEntity]`.
     :raises DbError: If the provider is unsupported.
     """
     dbcontext = (
-        connect_async(dbcontext_or_connectionstring)
+        await connect_async(dbcontext_or_connectionstring)
         if isinstance(dbcontext_or_connectionstring, (ConnectionString, str))
         else dbcontext_or_connectionstring
     )
-    match type(dbcontext).__name__:
-        case 'AsyncMysqlProxyConnection' | 'AsyncMysqlTransactionContext':
-            import deev.mysql
-            return deev.mysql.AsyncMysqlTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case 'AsyncSqliteProxyConnection' | 'AsyncSqliteTransactionContext':
-            import deev.sqlite
-            return deev.sqlite.AsyncSqliteTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case 'AsyncMongoProxyConnection' | 'AsyncMongoTransactionContext':
-            import deev.mongodb
-            return deev.mongodb.AsyncMongoTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case 'AsyncClickHouseProxyConnection' | 'AsyncClickHouseTransactionContext':
-            import deev.clickhouse
-            return deev.clickhouse.AsyncClickHouseTableAdapter[entity_type](dbcontext, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case _:
-            raise DbError(f'Unsupported object: {dbcontext}')
+    return async_db_table_adapter_factory(  # type: ignore[return-value]
+        entity_type,
+        dbcontext,
+        create_table=create_table,
+        table_name=table_name,
+        **kwargs
+    )
 
 
 def begin_transaction(dbcontext_or_connectionstring: DbContext | ConnectionString) -> DbTransactionContext:
@@ -672,6 +740,7 @@ async def begin_transaction_async(dbcontext_or_connectionstring: AsyncDbContext 
 
 __all__ = [
     'apply_migrations',
+    'async_db_table_adapter_factory',
     'begin_transaction',
     'begin_transaction_async',
     'connect',
@@ -679,6 +748,7 @@ __all__ = [
     'create_database',
     'create_table_adapter',
     'create_table_adapter_async',
+    'db_table_adapter_factory',
     'generate_dbadapter_ddl',
     'generate_entity_ddl',
     'resolve_mongodb_auth_source',

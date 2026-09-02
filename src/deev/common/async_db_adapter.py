@@ -178,14 +178,14 @@ class AsyncDbAdapter(AsyncDbConnection, ABC):
         cache_key = (cache_attr, create_table, table_name, frozenset(kwargs.items()))
         adapter = self.__adapter_cache.get(cache_key)
         if adapter is None:
-            from ..utils import create_table_adapter_async
-            adapter = create_table_adapter_async(
+            from ..utils import async_db_table_adapter_factory
+            adapter = async_db_table_adapter_factory(
                 entity_type,
                 self.__connection,
                 create_table=create_table,
                 table_name=table_name,
                 **kwargs
-            )  # type: ignore[return-value]
+            )  # type: ignore[arg-type]
             self.__adapter_cache[cache_key] = adapter  # type: ignore[literal-required]
         return cast(AsyncDbTableAdapter[TEntity], adapter)
 
