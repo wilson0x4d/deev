@@ -62,19 +62,25 @@ class ClickHouseDDLGenerator():
         if engine is None:
             engine = 'ReplicatedMergeTree()'
 
-        if order_by:
-            order_clause = f' ORDER BY ({order_by})'
-        else:
-            order_columns: list[str] = [f'`{k}`' for k in primary_key]
+        pk_clause = (
+            f' PRIMARY KEY ({", ".join(primary_key)})'
+            if primary_key
+            else ''
+        )
 
-            if order_columns:
-                order_clause = f' ORDER BY ({", ".join(order_columns)})'
-            else:
-                order_clause = ''
+        order_clause = (
+            f' ORDER BY ({order_by})'
+            if order_by is not None
+            else (
+                f' ORDER BY ({", ".join(primary_key)})'
+                if primary_key
+                else ''
+            )
+        )
 
         partition_clause = f' PARTITION BY ({partition_by})' if partition_by else ''
 
-        ddl.append(f'CREATE TABLE IF NOT EXISTS `{table_name}` ({all_definitions}) ENGINE = {engine}{order_clause}{partition_clause}')
+        ddl.append(f'CREATE TABLE IF NOT EXISTS `{table_name}` ({all_definitions}) ENGINE = {engine}{pk_clause}{order_clause}{partition_clause}')
         return ddl
 
 
