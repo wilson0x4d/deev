@@ -32,6 +32,7 @@ __NOTSET__ = object()
 
 
 def snake_case_name(s: str) -> str:
+    """Convert a string to snake_case."""
     s = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1_\2', s)
     s = re.sub(r'([a-z\d])([A-Z])', r'\1_\2', s)
     return s.lower().strip('_')
@@ -39,9 +40,13 @@ def snake_case_name(s: str) -> str:
 
 def pluralize(name: str, snake_case: bool = False) -> str:
     """
-    Derive an plural form of *name* using simple rules (English).
+    Derive a plural form of *name* using simple English rules.
 
     If the name already appears plural (ends with 's'), it is returned unchanged.
+
+    :param name: The singular name to pluralize.
+    :param snake_case: If ``True``, convert to snake_case before pluralizing.
+    :return: The pluralized name.
     """
     if not name:
         return name
@@ -64,6 +69,21 @@ def define_entity_spec(
     snake_case: bool = False,
     **kwargs: Any
 ) -> EntitySpec:
+    """
+    Define or retrieve the entity spec for a class.
+
+    If the spec already exists on the class (via :func:`entity` decorator), returns it.
+    Otherwise, creates a new :class:`EntitySpec` by introspecting the class type hints
+    and field values, then caches it on the class.
+
+    :param entity_type: The entity class.
+    :param table_name: Optional explicit table name override.
+    :param no_pluralization: If ``True``, use the class name directly without pluralization.
+    :param snake_case: If ``True``, convert class name to snake_case before pluralizing.
+    :param kwargs: Additional spec options stored in :attr:`EntitySpec.extra_args`.
+    :return: The :class:`EntitySpec` for the class (cached on the class).
+    :raises DbError: If the class has complex Union types not supported.
+    """
     entity_spec = getattr(entity_type, '__deev_entity__', None)
     if entity_spec is None:
         has_autoincrement = False
@@ -122,7 +142,14 @@ def define_entity_spec(
 
 
 def get_entity_spec(entity_type: type) -> EntitySpec:
-    """Get the entity spec for *entity_type*."""
+    """
+    Get the entity spec for *entity_type*.
+
+    If not yet defined, it will be created by calling :func:`define_entity_spec`.
+
+    :param entity_type: The entity class.
+    :return: The :class:`EntitySpec` for the class.
+    """
     entity_spec = getattr(entity_type, '__deev_entity__', None)
     if entity_spec is None:
         return define_entity_spec(entity_type)
@@ -133,18 +160,38 @@ def get_entity_spec(entity_type: type) -> EntitySpec:
 def field(
     *,
     autoincrement: bool | None = None,
-    default: Callable[..., Any] | Any | None = __NOTSET__,  # the field should have a default value applied on creation. may be a value or a function.
-    index: str | IndexOptions | None = None,  # the field is part of an index definition, this is the index name or an IndexField descriptor object defining the index field in more detail
+    default: Callable[..., Any] | Any | None = __NOTSET__,
+    index: str | IndexOptions | None = None,
     mapped: bool | None = None,
-    max: int | float | Decimal | None = None,  # string maximum length <= value (validation)
-    min: int | float | Decimal | None = None,  # string minimum length >= value (validation)
-    nullable: bool | None = None,  # the db should support NULL values for this field, default is NOT NULLABLE unless field hint is `... | None` or `Union[...,None]`, etc.
-    primary_key: bool | None = None,  # the field is part of a primary key definition
-    dbtype: str | None = None,  # dbtype override
-    unique: bool | None = None,  # the field should be unique in the table
-    validator: Callable[[Any], Any] | None = None,  # a custom validator function
+    max: int | float | Decimal | None = None,
+    min: int | float | Decimal | None = None,
+    nullable: bool | None = None,
+    primary_key: bool | None = None,
+    dbtype: str | None = None,
+    unique: bool | None = None,
+    validator: Callable[[Any], Any] | None = None,
     init: bool = True
 ) -> Any:
+    """
+    Create an :class:`EntityFieldSpec` for use as a class attribute.
+
+    The returned spec is used by :func:`entity` decorator to define the database
+    column mapping, constraints, and indexing for the field.
+
+    :param autoincrement: Whether the primary key field should auto-increment.
+    :param default: Default value or zero-argument callable. Uses sentinel to distinguish "not set" from ``None``.
+    :param index: Index name or :class:`IndexOptions` defining the index field.
+    :param mapped: If ``False``, the field is excluded from SQL translation.
+    :param max: Maximum value or maximum string length (for validation).
+    :param min: Minimum value or minimum string length (for validation).
+    :param nullable: Whether the database column allows NULL values. Auto-inferred from ``Optional[...]``.
+    :param primary_key: Whether this field is part of the primary key.
+    :param dbtype: Override the auto-detected database column type.
+    :param unique: Whether values in this column must be unique.
+    :param validator: Custom validator function that returns ``ValidationError | None``.
+    :param init: If ``True``, the field participates in ``__init__``. Default ``True``.
+    :return: An :class:`EntityFieldSpec` instance.
+    """
     # TODO: validation, ie min >= max, autoincrement only valid for integer+pk fields, etc/etc
     if isinstance(index, str):
         index = IndexOptions(name=index, direction=IndexOrder.ASCENDING, rank=0)
@@ -186,9 +233,16 @@ def entity(
     """
     Transform a "simple" class definition into an "Entity" class.
 
-    When *defer_init* is True, the original class ``__init__`` is called
-    *before* field defaults are applied, allowing mixin base classes
-    that set up backing stores in ``__init__`` to do so first.
+    Applies field defaults, hides :class:`EntityFieldSpec` attributes from attribute access,
+    and generates an ``__init__`` that applies default values before calling the original ``__init__``.
+
+    :param cls: The class to decorate.
+    :param table_name: Optional explicit table name override.
+    :param no_pluralization: If ``True``, do not pluralize the class name for the table name.
+    :param defer_init: If ``True``, call original ``__init__`` before applying field defaults (useful for mixin base classes).
+    :param snake_case: If ``True``, convert class name to snake_case before pluralizing for table name.
+    :param kwargs: Additional options stored in :attr:`EntitySpec.extra_args`.
+    :return: The decorated class with entity capabilities.
     """
     if cls is None:
         def __entity(_cls: Type[T]) -> Type[T]:

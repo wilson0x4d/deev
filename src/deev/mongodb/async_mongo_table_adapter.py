@@ -22,6 +22,15 @@ TEntity = TypeVar('TEntity')
 
 
 class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
+    """
+    Async MongoDB implementation of :class:`AsyncDbTableAdapter`.
+
+    Uses native async PyMongo driver. Collections are created implicitly on first insert.
+
+    :param context: An :class:`AsyncMongoProxyConnection` or :class:`AsyncMongoTransactionContext`.
+    :param create_table: Whether to create indexes on first operation.
+    :param table_name: Optional collection name override.
+    """
 
     __column_names: str
     __context: AsyncDbConnection | AsyncDbTransactionContext
@@ -41,6 +50,7 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         create_table: bool | None = False,
         table_name: str | None = None
     ) -> None:
+        """Initialize the async MongoDB table adapter."""
         self.__context = context
         self.__create_table = create_table is True
         self.__initialized = False

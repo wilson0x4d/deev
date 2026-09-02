@@ -20,7 +20,13 @@ class DbMigrator:
     """
     Performs database changes from a set of "migration scripts."
 
-    Migration scripts are scanned from a filesystem directory.
+    Migration scripts are scanned from a filesystem directory, loaded as modules,
+    and their ``apply(tx)`` or ``undo(tx)`` functions are executed within transactions.
+
+    For MongoDB and ClickHouse, uses ``_MigrationData2`` with UUID-based IDs;
+    for other providers, uses ``_MigrationData`` with integer auto-increment IDs.
+
+    :param connectionstring: Connection string for the target database.
     """
 
     __connectionstring: ConnectionString
@@ -54,6 +60,15 @@ class DbMigrator:
         return module
 
     def apply(self, migrations_path: Path | str, stop_at: str | None = None) -> None:
+        """
+        Apply migrations from a directory.
+
+        Scans the directory for ``.py`` files, loads them as modules, and executes
+        the ``apply(tx)`` function in each. Skips already-applied migrations.
+
+        :param migrations_path: Directory containing migration scripts.
+        :param stop_at: Migration name to stop at, or ``'all'``/``'*'``.
+        """
         from ..utils import begin_transaction, create_database
         create_database(self.__connectionstring)
         if isinstance(migrations_path, str):
@@ -103,6 +118,15 @@ class DbMigrator:
         self.__logger.info(f'Migrations applied {applied_migration_count}, skipped {skipped_migration_count}, available {len(available_migrations)}.')
 
     def undo(self, migrations_path: Path | str, stop_at: str | None = None) -> None:
+        """
+        Undo migrations from a directory in reverse order.
+
+        Scans the directory for ``.py`` files in reverse, loads them as modules,
+        and executes the ``undo(tx)`` function in each.
+
+        :param migrations_path: Directory containing migration scripts.
+        :param stop_at: Migration name to stop at, or ``'all'``/``'*'``.
+        """
         from ..utils import begin_transaction, create_database
         create_database(self.__connectionstring)
         if isinstance(migrations_path, str):

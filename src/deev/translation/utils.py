@@ -55,17 +55,18 @@ def configure_serialization(  # pragma: no cover
     deserializer: Callable[[str], Any] | None = None
 ) -> None:
     """
-    Set json encoders/decoders used for sql translations.
+    Configure JSON encoders/decoders used for value serialization.
 
-    This because complex types such as lists, tuples, dicts, Decimals, etc/etc being stored to db get serialized (stored as a string.)
+    Complex types (lists, tuples, dicts, Decimals, UUIDs, etc.) are serialized
+    to JSON strings when stored to the database. This function allows customization
+    of the serialization behavior.
 
-    When the default serializer encounters an unsupported type the serialization fails.
-
-    This provides you a mechanism to customize serialization.
-
-    If you wish to extend the default behavior without re-implementing it all, you can inherit from the exposed DeevJsonEncoder and DeevJsonDecoder, then pass your subclassed versions in.  If your work is not proprietary, consider submitting an issue on github to have the support formally added.
-
-    Alternatively, if you want to wholesale swap the serializer (something other than json, or a json impl you prefer) you can provide `serializer` and `deserializer` callbacks instead.  If you set new serializer/deserializer callbacks the encoders will not be used (and, detecting that serializer/deserializer are custom will throw on any attempt to set new encoders.)
+    :param encoder: Custom JSON encoder class.
+    :param decoder: Custom JSON decoder class.
+    :param serializer: Custom serializer callable (``obj -> str``). Overrides encoder/decoder.
+    :param deserializer: Custom deserializer callable (``str -> obj``). Overrides encoder/decoder.
+    :raises RuntimeError: If encoder/decoder are set after a custom serializer/deserializer.
+    .. note:: If custom ``serializer``/``deserializer`` are provided, ``encoder``/``decoder`` cannot be used.
     """
     global __json_encoder
     global __json_decoder
@@ -88,12 +89,29 @@ def configure_serialization(  # pragma: no cover
 
 
 def deunionize(t: type) -> type:
+    """
+    Extract the non-None type from a ``Union``/``Optional`` type hint.
+
+    :param t: A type hint (e.g. ``Optional[str]``).
+    :return: The non-None type argument, or the type unchanged if not a Union.
+    """
     if get_origin(t) in (Union, UnionType):
         t = [e for e in get_args(t) if e is not NoneType][0]
     return t
 
 
 def to_pyobject(value: Any, hint: type) -> Any:
+    """
+    Convert a database-stored value back to its Python type.
+
+    Handles type coercion for ``int``, ``float``, ``bool``, ``UUID``, ``datetime``,
+    ``date``, ``time``, ``timedelta``, ``Decimal``, ``Enum``, and complex types
+    (``dict``, ``list``, ``set``, ``tuple``) deserialized from JSON.
+
+    :param value: The raw value from the database.
+    :param hint: The type hint for the field (e.g. ``Optional[str]``).
+    :return: The value converted to the appropriate Python type.
+    """
     if value in (None, NoneType, 'null', 'NULL'):
         return None
     hint = deunionize(hint)
@@ -173,10 +191,17 @@ def _to_json_value(value: Any) -> Any:
 
 
 def to_bsonobject(value: Any) -> Any:
-    """Convert a value for MongoDB BSON storage — UUIDs are left as objects for PyMongo natively.
+    """
+    Convert a value for MongoDB BSON storage.
 
-    This is identical to _to_json_value except UUIDs are NOT converted to strings.
-    PyMongo handles UUID objects as BSON binary subtype 0x04 when uuidrepresentation='standard'.
+    Similar to :func:`_to_json_value` but with these differences:
+    - UUIDs are left as Python ``UUID`` objects (PyMongo handles native BSON binary)
+    - ``set`` values are converted to ``list`` (BSON arrays)
+    - ``Enum`` values are converted to their ``.value`` attribute
+    - ``Enum`` is not present in ``_to_json_value``
+
+    :param value: The Python value to convert.
+    :return: A BSON-compatible value.
     """
     if value in (None, NoneType, 'null', 'NULL'):
         return None
@@ -204,6 +229,17 @@ def to_bsonobject(value: Any) -> Any:
 
 
 def to_sqlobject(value: Any, hint: type) -> Any:
+    """
+    Convert a Python value to a SQL-compatible representation.
+
+    Handles conversion of ``datetime`` to UTC ISO strings, ``UUID`` to hex,
+    ``dict``/``list``/``set``/``tuple`` to JSON, ``bool`` to int, ``timedelta`` to microseconds,
+    ``Enum`` to value, and ``Decimal`` to string.
+
+    :param value: The Python value to convert.
+    :param hint: The type hint for the field.
+    :return: A SQL-compatible value (e.g. datetime -> ISO string, dict -> JSON).
+    """
     if value in (None, NoneType, 'null', 'NULL'):
         return None
     hint = deunionize(hint)

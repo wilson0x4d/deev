@@ -5,7 +5,12 @@ from typing import Any
 
 
 class _ImmutableMixin:
-    """Mixin that adds a ``freeze`` operation."""
+    """
+    Mixin that adds a ``__freeze__`` operation to make instances immutable.
+
+    Once ``__freeze__()`` is called, any attempt to set or delete attributes
+    will raise :exc:`AttributeError`.
+    """
     __frozen__: bool = False
 
     def __setattr__(self, name: str, value: Any) -> None:

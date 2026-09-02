@@ -13,10 +13,12 @@ from ..translation import deunionize
 
 
 class MongoTypeMapper(DbTypeMapper):
+    """Maps Python types to MongoDB BSON type identifiers."""
     __entity_spec: EntitySpec
     __pytype_map: dict[Any, str]
 
     def __init__(self, entity_spec: EntitySpec) -> None:
+        """Initialize the type mapper with an entity specification."""
         self.__entity_spec = entity_spec
         self.__pytype_map = {
             int: 'int32',
@@ -40,8 +42,10 @@ class MongoTypeMapper(DbTypeMapper):
         """
         Get the provider type string (e.g., BSON type identifier) needed to represent
         an entity field in the underlying collection.
-        :param field_spec: The "Entity Field Spec".
+
+        :param field_name: The name of the entity field.
         :return: The provider type string.
+        :raises DbError: If the field does not exist or has an unsupported type.
         """
         field_spec = self.__entity_spec.fields.get(field_name, None)
         if field_spec is not None:

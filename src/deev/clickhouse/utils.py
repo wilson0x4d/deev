@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: © 2026 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
+"""ClickHouse utility constants and helpers."""
+
 CLICKHOUSE_SKIP_INDEX_TYPES: frozenset[str] = frozenset({
     'minmax',
     'set',

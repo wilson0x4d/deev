@@ -22,6 +22,29 @@ def _parse_time_iso(value: str) -> time:
 
 
 class DeevJsonDecoder(json.JSONDecoder):
+    """
+    Custom JSON decoder that deserializes type-prefixed values back to Python objects.
+
+    Recognizes markers written by :class:`DeevJsonEncoder`:
+    - ``dt`{...}`` -> ``datetime``
+    - ``date`{...}`` -> ``date``
+    - ``time`{...}`` -> ``time``
+    - ``r`{...}`` -> ``Decimal``
+    - ``u`{...}`` -> ``UUID``
+    - ``s`{...}`` -> ``set``
+    - ``t`{...}`` -> ``tuple``
+    - ``b`{...}`` -> ``bytes``
+
+    Usage
+    -----
+
+    .. code-block:: python
+
+        import json
+        from deev.translation import DeevJsonDecoder
+
+        json.loads(json_string, cls=DeevJsonDecoder)
+    """
 
     def decode(self, s: str, _w: Callable[..., Any] | None = None) -> Any:
         return self.__decode(super().decode(s), _w)

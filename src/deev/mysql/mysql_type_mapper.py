@@ -13,11 +13,13 @@ from ..translation import deunionize
 
 
 class MysqlTypeMapper(DbTypeMapper):
+    """Maps Python types to MySQL column types."""
 
     __entity_spec: EntitySpec
     __pytype_map: dict[Any, str]
 
     def __init__(self, entity_spec: EntitySpec) -> None:
+        """Initialize the type mapper with an entity specification."""
         self.__entity_spec = entity_spec
         self.__pytype_map = {
             int: 'BIGINT',
@@ -41,8 +43,11 @@ class MysqlTypeMapper(DbTypeMapper):
         """
         Get the SQL type (string) needed to represent an entity field in the underlying table.
 
-        :param field_spec: The "Entity Field Spec".
+        Applies ``VARCHAR(n)`` sizing based on ``field_spec.max`` for ``str`` fields.
+
+        :param field_name: The name of the entity field.
         :return: The SQL type string.
+        :raises DbError: If the field does not exist or has an unsupported type.
         """
         # check field spec for an override
         field_spec = self.__entity_spec.fields.get(field_name, None)

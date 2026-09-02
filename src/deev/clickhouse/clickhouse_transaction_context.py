@@ -39,6 +39,15 @@ class ClickHouseTransactionContext(DbTransactionContext):
     __transaction_state: int
 
     def __init__(self, context: DbContext) -> None:
+        """
+        Initialize the ClickHouse transaction context.
+
+        ClickHouse does not support traditional ACID transactions; all transaction methods
+        are no-ops. This context enables using ClickHouse with code that expects
+        transactional semantics.
+
+        :param context: A :class:`ClickHouseProxyConnection` or related context.
+        """
         self.__context = context if isinstance(context, (ClickHouseProxyConnection, ClickHouseTransactionContext)) else ClickHouseProxyConnection(context)  # type: ignore[arg-type]
         self.__logger = hanaro.get_logger()
         self.__transaction_id = uuid4()

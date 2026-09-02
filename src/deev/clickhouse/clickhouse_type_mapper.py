@@ -26,6 +26,15 @@ class ClickHouseNativeMapError(Exception):
 
 
 class ClickHouseTypeMapper(DbTypeMapper):
+    """
+    Maps Python types to ClickHouse column types.
+
+    Supports native types (``Array``, ``Map``, ``Tuple``) for generic collections.
+    Raises :exc:`ClickHouseNativeMapError` when ``Any`` is used in a position
+    requiring a concrete ClickHouse type.
+
+    :param entity_spec: The entity specification.
+    """
     __entity_spec: EntitySpec
     __pytype_map: dict[Any, str]
 
@@ -43,6 +52,7 @@ class ClickHouseTypeMapper(DbTypeMapper):
     __fallback_to_string_origins: set[Any] = {list, set, dict, Mapping, AbcMapping, tuple}
 
     def __init__(self, entity_spec: EntitySpec) -> None:
+        """Initialize the type mapper with an entity specification."""
         self.__entity_spec = entity_spec
         self.__pytype_map = {
             int: 'Int64',
@@ -136,6 +146,17 @@ class ClickHouseTypeMapper(DbTypeMapper):
         return 'String'
 
     def get_provider_type(self, field_name: str) -> str:
+        """
+        Get the ClickHouse column type for an entity field.
+
+        Uses the field's ``dbtype`` override if present, otherwise resolves from
+        the type hint and entity spec. Wraps non-nullable types in ``Nullable()``
+        as appropriate.
+
+        :param field_name: The name of the entity field.
+        :return: The ClickHouse type string, possibly wrapped in ``Nullable()``.
+        :raises DbError: If the field does not exist in the entity spec.
+        """
         field_spec: EntityFieldSpec | None = self.__entity_spec.fields.get(field_name, None)
         if field_spec is not None:
             if field_spec.dbtype is not None:

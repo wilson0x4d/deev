@@ -1,6 +1,14 @@
 # SPDX-FileCopyrightText: © 2023 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
+"""
+Common module — base protocols, connection strings, and shared types.
+
+Provides ``DbConnection``, ``DbCursor``, ``DbTableAdapter``,
+``DbTransactionContext``, ``ConnectionString``, ``DbError``,
+and their async counterparts.
+"""
+
 from .async_db_adapter import AsyncDbAdapter
 from .async_db_connection import AsyncDbConnection
 from .async_db_cursor import AsyncDbCursor

@@ -20,6 +20,17 @@ TEntity = TypeVar('TEntity')
 
 
 class MongoTableAdapter(Generic[TEntity]):
+    """
+    MongoDB implementation of :class:`DbTableAdapter`.
+
+    Provides typed CRUD operations with MongoDB-native document operations.
+    Collections are created implicitly on first insert. ``create_table()`` creates indexes.
+    Uses ``%?`` placeholder syntax in ``query()`` translated via :func:`parse_sql_where`.
+
+    :param context: A :class:`MongoProxyConnection` or :class:`MongoTransactionContext`.
+    :param create_table: Whether to create indexes on first operation.
+    :param table_name: Optional collection name override.
+    """
     __column_names: str
     __context: DbContext
     __create_table: bool
@@ -38,6 +49,7 @@ class MongoTableAdapter(Generic[TEntity]):
         create_table: bool | None = False,
         table_name: str | None = None
     ) -> None:
+        """Initialize the MongoDB table adapter."""
         self.__context = context
         self.__create_table = create_table is True
         self.__initialized = False
@@ -305,6 +317,15 @@ class MongoTableAdapter(Generic[TEntity]):
         orderby: str | None = None,
         limit: int | None = None
     ) -> Generator[TEntity, None, None]:
+        """
+        Query documents from the collection using SQL-style WHERE parsing.
+
+        :param where: SQL-style WHERE clause (translated to MongoDB filter via :func:`parse_sql_where`).
+        :param params: Parameters for ``%?`` placeholders in ``where``.
+        :param orderby: Optional comma-separated field list with optional ``ASC``/``DESC`` suffixes.
+        :param limit: Optional maximum number of results.
+        :yields: Hydrated entity instances.
+        """
         self.__deferred_init()
         if params is None:
             params = ()

@@ -22,6 +22,15 @@ TEntity = TypeVar('TEntity')
 
 
 class AsyncMysqlTableAdapter(AsyncDbTableAdapter[TEntity]):
+    """
+    Async MySQL implementation of :class:`AsyncDbTableAdapter`.
+
+    Uses native async MySQL driver with ``ON DUPLICATE KEY UPDATE`` for upserts.
+
+    :param context: An :class:`AsyncMysqlProxyConnection` or :class:`AsyncMysqlTransactionContext`.
+    :param create_table: Whether to auto-create the table on first operation.
+    :param table_name: Optional table name override.
+    """
 
     __column_names: str
     __context: AsyncDbContext
@@ -38,6 +47,7 @@ class AsyncMysqlTableAdapter(AsyncDbTableAdapter[TEntity]):
         create_table: bool | None = False,
         table_name: str | None = None
     ) -> None:
+        """Initialize the async MySQL table adapter."""
         self.__context = context if isinstance(context, (AsyncMysqlProxyConnection, AsyncMysqlTransactionContext)) else AsyncMysqlProxyConnection(context)  # type: ignore[arg-type]
         self.__create_table = create_table is True
         self.__initialized = False

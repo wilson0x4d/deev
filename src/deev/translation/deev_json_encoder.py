@@ -23,6 +23,29 @@ def _utc_z_time(t: time) -> str:
 
 
 class DeevJsonEncoder(json.JSONEncoder):
+    """
+    Custom JSON encoder that serializes complex types with type-prefixed markers.
+
+    Supported types with markers:
+    - ``datetime``: ``dt`{iso_string}``
+    - ``date``: ``date`{iso_string}``
+    - ``time``: ``time`{iso_string}``
+    - ``Decimal``: ``r`{string}``
+    - ``UUID``: ``u`{hex_string}``
+    - ``set``: ``s`{encoded_list}``
+    - ``tuple``: ``t`{encoded_list}``
+    - ``bytes``: ``b`{base64_string}``
+
+    Usage
+    -----
+
+    .. code-block:: python
+
+        import json
+        from deev.translation import DeevJsonEncoder
+
+        json.dumps(my_data, cls=DeevJsonEncoder)
+    """
 
     def __process(self, obj: Any) -> Any:
         if isinstance(obj, datetime):

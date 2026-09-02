@@ -8,7 +8,34 @@ from .index_options import IndexOptions
 
 
 class EntityFieldSpec(_ImmutableMixin):
-    """Entity Field Specification"""
+    """
+    Specification for an entity field, including type, constraints, and indexing options.
+
+    Instances are made immutable via ``__freeze__()`` after construction.
+
+    Usage
+    -----
+
+    .. code-block:: python
+
+        from deev import field
+
+        class User:
+            id: int = field(autoincrement=True, primary_key=True)
+            email: str = field(unique=True, validator=validate_email)
+
+    :param autoincrement: Whether the field should auto-increment (PK only).
+    :param default: Default value or callable (zero-arg). Set via ``hasattr`` check.
+    :param index: Index definition: a name string or :class:`IndexOptions`.
+    :param mapped: Whether the field is mapped to a database column (default ``True``).
+    :param max: Maximum value or string length (for validation).
+    :param min: Minimum value or string length (for validation).
+    :param nullable: Whether the database column allows NULL values.
+    :param primary_key: Whether the field is part of the primary key.
+    :param dbtype: Override the auto-detected database column type.
+    :param unique: Whether values in this column must be unique.
+    :param validator: Custom validator function returning ``ValidationError | None``.
+    """
 
     autoincrement: bool | None  # if the field should be configured for autoincrement (applies to PK only)
     default: Callable[..., Any] | Any | None  # the field should have a default value applied on creation. may be a value or a function.
@@ -23,6 +50,14 @@ class EntityFieldSpec(_ImmutableMixin):
     validator: Callable[[Any], Any] | None  # a custom validator function
 
     def __init__(self, **kwargs: Any) -> None:
+        """
+        Initialize field specification from keyword arguments.
+
+        Note: ``default`` is only set if explicitly provided (``None`` is a valid default
+        value and is distinguished from "not set" via ``hasattr``).
+
+        :param kwargs: Field options matching the class attribute names.
+        """
         self.autoincrement = None
         # NOTE: we do not populate, since `None` may be the default value we are looking to set
         #       therefore, we never "enforce" a value for `default` and instead always check `hasattr`
@@ -42,7 +77,9 @@ class EntityFieldSpec(_ImmutableMixin):
 
     @property
     def sqltype(self) -> str | None:  # pragma: nocover
-        # DEPRECATED: compatibility stub, remove in next major release
+        """
+        DEPRECATED: Use :attr:`dbtype` instead.
+        """
         return self.dbtype
 
 

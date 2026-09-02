@@ -31,6 +31,11 @@ class MongoTransactionContext(DbTransactionContext):
     __delegate_mode: bool | None
 
     def __init__(self, context: DbContext):
+        """
+        Initialize the MongoDB transaction context.
+
+        :param context: A :class:`MongoProxyConnection` or related context.
+        """
         self.__context = context
         self.__transaction_id = uuid4()
         self.__transaction_state = 0

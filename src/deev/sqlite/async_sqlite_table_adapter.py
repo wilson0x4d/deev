@@ -38,6 +38,7 @@ class AsyncSqliteTableAdapter(AsyncDbTableAdapter[TEntity]):
         create_table: bool = False,
         table_name: str | None = None
     ) -> None:
+        """Initialize the async SQLite table adapter (delegates to sync via ``asyncio.to_thread``)."""
         self.__context = context if isinstance(context, (AsyncSqliteProxyConnection, AsyncSqliteTransactionContext)) else AsyncSqliteProxyConnection(context)  # type: ignore[arg-type]
         self.__create_table = create_table is True
         self.__table_name = table_name

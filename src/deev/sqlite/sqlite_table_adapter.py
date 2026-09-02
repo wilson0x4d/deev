@@ -21,6 +21,16 @@ TEntity = TypeVar('TEntity')
 
 
 class SqliteTableAdapter(Generic[TEntity]):
+    """
+    SQLite implementation of :class:`DbTableAdapter`.
+
+    Provides typed CRUD operations with SQL parameter binding using ``%?`` placeholders
+    (translated to ``?`` at runtime).
+
+    :param context: A :class:`SqliteProxyConnection` or :class:`SqliteTransactionContext`.
+    :param create_table: Whether to auto-create the table on first operation.
+    :param table_name: Optional table name override.
+    """
 
     __column_names: str  # NOTE: just an optimization so we don't have to concat over and over
     __context: DbContext
@@ -39,6 +49,7 @@ class SqliteTableAdapter(Generic[TEntity]):
         create_table: bool | None = False,
         table_name: str | None = None
     ) -> None:
+        """Initialize the SQLite table adapter."""
         self.__context = context if isinstance(context, (SqliteProxyConnection, SqliteTransactionContext)) else SqliteProxyConnection(context)  # type: ignore[arg-type]
         self.__create_table = create_table is True
         self.__initialized = False
@@ -262,6 +273,15 @@ class SqliteTableAdapter(Generic[TEntity]):
         orderby: str | None = None,
         limit: int | None = None
     ) -> Generator[TEntity, None, None]:
+        """
+        Query records from the table.
+
+        :param where: Optional WHERE clause (without the ``WHERE`` keyword).
+        :param params: Query parameters for placeholders in ``where``.
+        :param orderby: Optional ORDER BY clause (without the ``ORDER BY`` keyword).
+        :param limit: Optional LIMIT value.
+        :yields: Hydrated entity instances.
+        """
         self.__deferred_init()
         if params is not None:
             params = [

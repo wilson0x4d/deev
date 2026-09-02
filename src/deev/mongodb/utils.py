@@ -121,13 +121,15 @@ def parse_sql_where(where_clause: str | None, params: tuple[Any, ...]) -> dict[s
 
 
 def infer_description_fields(value: Any) -> tuple[Any, int | None, int | None, int | None, int | None]:
-    """Infer DB-API 2.0 description fields from a Python value.
+    """
+    Infer DB-API 2.0 description fields from a Python value.
 
-    Per PEP 249, only name and type_code are mandatory; the remaining five
-    are optional and should be None when no meaningful values can be provided.
-    We return None for everything except display_size/internal_size (which we
-    can derive from string byte length) and precision/scale (which we know
-    for integer/float types).
+    Per PEP 249, only ``name`` and ``type_code`` are mandatory; the remaining five
+    are optional and should be ``None`` when no meaningful values can be provided.
+    Returns a 5-tuple of ``(type_code, display_size, internal_size, precision, scale)``.
+
+    :param value: The Python value to analyze.
+    :return: A 5-tuple of ``(type_code, display_size, internal_size, precision, scale)``.
     """
     if value is None:
         return None, None, None, None, None

@@ -100,6 +100,12 @@ def __parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main() -> None:
+    """
+    Main entry point for the ``db-migrate`` CLI tool.
+
+    Parses arguments, loads configuration from ``appsettings2``, resolves
+    the connection string, and dispatches to ``apply``, ``undo``, or ``generate`` commands.
+    """
     configuration = appsettings2.get_configuration()
     if not configuration.has_key('logging'):
         configuration['logging'] = {

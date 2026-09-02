@@ -11,10 +11,18 @@ from .utils import CLICKHOUSE_SKIP_INDEX_TYPES
 
 
 class ClickHouseDDLGenerator():
+    """
+    Generates DDL statements for ClickHouse tables from entity specifications.
+
+    Generates ``CREATE TABLE`` statements with the specified ``ENGINE``,
+    ``PRIMARY KEY``, ``ORDER BY``, ``PARTITION BY`` clauses, and skip indexes
+    defined via :class:`IndexOptions`.
+    """
 
     def __init__(
         self,
     ) -> None:
+        """Initialize the DDL generator."""
         self.__logger = hanaro.get_logger()
 
     def generate_table_ddl(
@@ -26,7 +34,21 @@ class ClickHouseDDLGenerator():
         order_by: str | None = None,
         partition_by: str | None = None
     ) -> list[str]:
-        """Generate DDL to create the table."""
+        """
+        Generate DDL to create the ClickHouse table.
+
+        Produces a ``CREATE TABLE IF NOT EXISTS`` statement with column definitions,
+        skip indexes (from ``IndexOptions.type``), an ``ENGINE`` clause (default
+        ``ReplicatedMergeTree()``), ``PRIMARY KEY``, ``ORDER BY``, and optional
+        ``PARTITION BY``.
+
+        :param entity_spec: The entity specification.
+        :param table_name: Optional table name override.
+        :param engine: ENGINE clause value (default ``ReplicatedMergeTree()``).
+        :param order_by: ORDER BY clause value. Defaults to primary key fields.
+        :param partition_by: PARTITION BY clause value.
+        :return: List containing a single ``CREATE TABLE`` DDL statement.
+        """
         #
         ddl = list[str]()
         db_type_mapper = ClickHouseTypeMapper(entity_spec)

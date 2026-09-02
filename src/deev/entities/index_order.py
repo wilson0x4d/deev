@@ -5,6 +5,9 @@ from enum import StrEnum
 
 
 class IndexOrder(StrEnum):
+    """
+    Enumeration of index sort directions.
+    """
     ASCENDING = 'ascending'
     DESCENDING = 'descending'
 

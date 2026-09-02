@@ -10,10 +10,17 @@ from .sqlite_type_mapper import SqliteTypeMapper
 
 
 class SqliteDDLGenerator():
+    """
+    Generates DDL statements for SQLite tables from entity specifications.
+
+    Produces ``CREATE TABLE IF NOT EXISTS`` statements with column definitions,
+    auto-increment for integer PKs, and ``CREATE INDEX`` for secondary indexes.
+    """
 
     def __init__(
         self,
     ) -> None:
+        """Initialize the DDL generator."""
         self.__logger = hanaro.get_logger()
 
     def __generate_table_indexes_ddl(self, entity_spec: EntitySpec, table_name: str) -> list[str]:
@@ -43,7 +50,17 @@ class SqliteDDLGenerator():
         entity_spec: EntitySpec,
         table_name: str | None = None
     ) -> list[str]:
-        """Generate DDL to create the table."""
+        """
+        Generate DDL to create the SQLite table.
+
+        Produces a ``CREATE TABLE`` statement with column definitions,
+        primary key constraints, and ``CREATE INDEX`` statements for
+        secondary indexes.
+
+        :param entity_spec: The entity specification.
+        :param table_name: Optional table name override.
+        :return: List of DDL statements including ``CREATE TABLE`` and ``CREATE INDEX``.
+        """
         db_type_mapper = SqliteTypeMapper(entity_spec)
         ddl = list[str]()
         table_name = entity_spec.table_name if table_name is None else table_name

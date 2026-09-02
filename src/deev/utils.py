@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: © 2023 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
+from __future__ import annotations
+
 from deev.sqlite import AsyncSqliteProxyConnection
 import importlib
 import os
@@ -27,16 +29,15 @@ def connect(
     **kwargs: Any
 ) -> DbConnection:
     """
-    Create a PEP 249 Connection to a database, given *connectionstring*.
+    Create a PEP 249 :class:`DbConnection` to a database.
 
-    Args:
-        connectionstring: A DSN string or :class:`ConnectionString` object.
-        connect_timeout: Connection timeout in seconds (if the provider supports it).
-                            Only used when *connectionstring* does not specify
-                            ``Connection Timeout``.
-        command_timeout: Command/operation timeout in seconds (if the provider supports it).
-                         Only used when *connectionstring* does not specify
-                         ``Command Timeout``.
+    Supported providers: ``sqlite3``, ``sqlite``, ``mysql.connector``, ``mongodb``, ``clickhouse``.
+
+    :param connectionstring: A DSN string or :class:`ConnectionString` object.
+    :param connect_timeout: Connection timeout in seconds. Only used when *connectionstring* does not specify ``Connection Timeout``.
+    :param command_timeout: Command/operation timeout in seconds. Only used when *connectionstring* does not specify ``Command Timeout``.
+    :return: A :class:`DbConnection` implementing PEP 249.
+    :raises DbError: If the provider is unsupported or connection fails.
     """
     if isinstance(connectionstring, str):
         connectionstring = ConnectionString(connectionstring)
@@ -127,16 +128,15 @@ async def connect_async(
     **kwargs: Any
 ) -> AsyncDbConnection:
     """
-    Create a PEP 249 Connection to a database, given *connectionstring*.
+    Create a PEP 249 :class:`AsyncDbConnection` to a database.
 
-    Args:
-        connectionstring: A DSN string or :class:`ConnectionString` object.
-        connect_timeout: Connection timeout in seconds (if the provider supports it).
-                            Only used when *connectionstring* does not specify
-                            ``Connection Timeout``.
-        command_timeout: Command/operation timeout in seconds (if the provider supports it).
-                         Only used when *connectionstring* does not specify
-                         ``Command Timeout``.
+    Supported providers: ``mongodb``, ``mysql.connector``, ``sqlite3``, ``sqlite``, ``clickhouse``.
+
+    :param connectionstring: A DSN string or :class:`ConnectionString` object.
+    :param connect_timeout: Connection timeout in seconds. Only used when *connectionstring* does not specify ``Connection Timeout``.
+    :param command_timeout: Command/operation timeout in seconds. Only used when *connectionstring* does not specify ``Command Timeout``.
+    :return: An :class:`AsyncDbConnection` implementing PEP 249.
+    :raises DbError: If the provider is unsupported or connection fails.
     """
     if isinstance(connectionstring, str):
         connectionstring = ConnectionString(connectionstring)
@@ -280,7 +280,10 @@ def resolve_mongodb_auth_source(connectionstring: ConnectionString) -> str:
 
 def create_database(connectionstring: ConnectionString | str) -> None:
     """
-    Create a database if it does not yet exist.
+    Create a database if it does not yet exist, and initialize migration tracking structures for supported providers.
+
+    :param connectionstring: A DSN string or :class:`ConnectionString` object.
+    :raises DbError: If the connection string is missing required components (database, server) or the provider is unsupported.
     """
     if isinstance(connectionstring, str):
         connectionstring = ConnectionString(connectionstring)
@@ -362,6 +365,14 @@ def create_database(connectionstring: ConnectionString | str) -> None:
 
 
 def apply_migrations(migration_name: str, connectionstring: ConnectionString, migrations_path: Path | str | None) -> None:
+    """
+    Apply database migrations from a directory.
+
+    :param migration_name: Name of migration to stop at, or ``'all'``.
+    :param connectionstring: Connection string for the target database.
+    :param migrations_path: Path to migrations directory. Defaults to ``./migrations/{database_name}/``.
+    :raises ValueError: If *migrations_path* is ``None`` and not derivable from *connectionstring*.
+    """
     if migrations_path is None and connectionstring.database is not None:
         migrations_path = os.path.join('.', 'migrations', connectionstring.database.lower())
     if migrations_path is not None:
@@ -376,6 +387,14 @@ def undo_migrations(
     connectionstring: ConnectionString,
     migrations_path: Path | str | None
 ) -> None:
+    """
+    Undo database migrations in reverse order.
+
+    :param migration_name: Name of migration to stop at (undo up to and including this migration), or ``'all'``.
+    :param connectionstring: Connection string for the target database.
+    :param migrations_path: Path to migrations directory. Defaults to ``./migrations/{database_name}/``.
+    :raises ValueError: If *migrations_path* is ``None`` and not derivable from *connectionstring*.
+    """
     if migrations_path is None and connectionstring.database is not None:
         migrations_path = os.path.join('.', 'migrations', connectionstring.database.lower())
     if migrations_path is not None:
@@ -389,6 +408,19 @@ def generate_entity_ddl(
     dbcontext_or_connectionstring: DbContext | ConnectionString,
     entity_fqn: str
 ) -> list[str]:
+    """
+    Generate DDL statements for a given entity class.
+
+    Resolves the entity type from the fully-qualified name, creates a connection,
+    and generates DDL using the provider's DDL generator.
+
+    :param dbcontext_or_connectionstring: A :class:`DbContext`, :class:`AsyncDbContext`, or :class:`ConnectionString`.
+    :param entity_fqn: Fully-qualified entity class name (e.g. ``'myapp.entities.User'``).
+    :return: List of DDL statement strings.
+    :raises ValueError: If the entity type cannot be determined.
+    :raises NotImplementedError: If the provider is MongoDB (not yet supported).
+    :raises DbError: If the provider is unsupported.
+    """
     entity_type: type | None = None
     if '.' in entity_fqn:
         module_path, _, class_name = entity_fqn.rpartition('.')
@@ -438,6 +470,17 @@ def generate_dbadapter_ddl(
     dbcontext_or_connectionstring: DbContext | ConnectionString,
     dbadapter_fqn: str
 ) -> list[str]:
+    """
+    Generate DDL statements for all entities referenced by a :class:`DbAdapter` subclass.
+
+    Inspects the adapter class properties for ``DbTableAdapter[T]`` types and
+    generates DDL for each entity type.
+
+    :param dbcontext_or_connectionstring: A :class:`DbContext` or :class:`ConnectionString`.
+    :param dbadapter_fqn: Fully-qualified ``DbAdapter`` subclass name.
+    :return: List of DDL statement strings for all discovered entity types.
+    :raises ValueError: If the adapter type cannot be determined.
+    """
     dbadapter_type: type | None = None
     if '.' in dbadapter_fqn:
         module_path, _, class_name = dbadapter_fqn.rpartition('.')
@@ -487,6 +530,20 @@ def create_table_adapter(
     table_name: str | None = None,
     **kwargs: Any
 ) -> DbTableAdapter[Any]:
+    """
+    Factory to create a :class:`DbTableAdapter` for the given entity type.
+
+    Auto-detects the provider from the connection string or context and returns
+    the appropriate provider-specific ``TableAdapter``.
+
+    :param entity_type: The entity class.
+    :param dbcontext_or_connectionstring: A :class:`DbContext` or :class:`ConnectionString`.
+    :param create_table: Whether to create the table if it does not exist.
+    :param table_name: Optional table name override.
+    :param kwargs: Provider-specific options (e.g. ``sync_replicas=True`` for ClickHouse).
+    :return: A :class:`DbTableAdapter[TEntity]`.
+    :raises DbError: If the provider is unsupported.
+    """
     dbcontext = (
         connect(dbcontext_or_connectionstring)
         if isinstance(dbcontext_or_connectionstring, (ConnectionString, str))
@@ -518,6 +575,20 @@ async def create_table_adapter_async(
     table_name: str | None = None,
     **kwargs: Any
 ) -> DbTableAdapter[Any]:
+    """
+    Async factory to create a :class:`DbTableAdapter` for the given entity type.
+
+    Auto-detects the provider from the async connection context or connection string and returns
+    the appropriate provider-specific ``AsyncTableAdapter``.
+
+    :param entity_type: The entity class.
+    :param dbcontext_or_connectionstring: An :class:`AsyncDbContext` or :class:`ConnectionString`.
+    :param create_table: Whether to create the table if it does not exist.
+    :param table_name: Optional table name override.
+    :param kwargs: Provider-specific options.
+    :return: A :class:`DbTableAdapter[TEntity]`.
+    :raises DbError: If the provider is unsupported.
+    """
     dbcontext = (
         connect_async(dbcontext_or_connectionstring)
         if isinstance(dbcontext_or_connectionstring, (ConnectionString, str))
@@ -541,6 +612,13 @@ async def create_table_adapter_async(
 
 
 def begin_transaction(dbcontext_or_connectionstring: DbContext | ConnectionString) -> DbTransactionContext:
+    """
+    Begin a transaction on the given connection or context.
+
+    :param dbcontext_or_connectionstring: A :class:`DbContext` or :class:`ConnectionString`.
+    :return: A :class:`DbTransactionContext`.
+    :raises DbError: If the provider is unsupported.
+    """
     dbcontext = (
         connect(dbcontext_or_connectionstring)
         if isinstance(dbcontext_or_connectionstring, (ConnectionString, str))
@@ -564,6 +642,13 @@ def begin_transaction(dbcontext_or_connectionstring: DbContext | ConnectionStrin
 
 
 async def begin_transaction_async(dbcontext_or_connectionstring: AsyncDbContext | ConnectionString) -> AsyncDbTransactionContext:
+    """
+    Begin an async transaction on the given connection or context.
+
+    :param dbcontext_or_connectionstring: An :class:`AsyncDbContext` or :class:`ConnectionString`.
+    :return: An :class:`AsyncDbTransactionContext`.
+    :raises DbError: If the provider is unsupported.
+    """
     dbcontext = (
         (await connect_async(dbcontext_or_connectionstring))
         if isinstance(dbcontext_or_connectionstring, (ConnectionString, str))
@@ -586,6 +671,7 @@ async def begin_transaction_async(dbcontext_or_connectionstring: AsyncDbContext 
             raise DbError(f'Unsupported object: {dbcontext}')
 
 __all__ = [
+    'apply_migrations',
     'begin_transaction',
     'begin_transaction_async',
     'connect',
@@ -593,6 +679,8 @@ __all__ = [
     'create_database',
     'create_table_adapter',
     'create_table_adapter_async',
-    'apply_migrations',
-    'undo_migrations'
+    'generate_dbadapter_ddl',
+    'generate_entity_ddl',
+    'resolve_mongodb_auth_source',
+    'undo_migrations',
 ]

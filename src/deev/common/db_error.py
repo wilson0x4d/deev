@@ -9,6 +9,11 @@ class DbError(Exception):
     """Exception raised when a DB operation fails."""
 
     def __init__(self, reason: str) -> None:
+        """
+        Initialize with an error reason.
+
+        :param reason: A string describing the error.
+        """
         self.reason = reason
         super().__init__(reason)
 

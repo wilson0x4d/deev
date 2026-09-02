@@ -22,6 +22,16 @@ TEntity = TypeVar('TEntity')
 
 
 class MysqlTableAdapter(Generic[TEntity]):
+    """
+    MySQL implementation of :class:`DbTableAdapter`.
+
+    Provides typed CRUD operations with SQL parameter binding using ``%?`` placeholders
+    (translated to ``%s`` at runtime). Supports ``ON DUPLICATE KEY UPDATE`` for upserts.
+
+    :param context: A :class:`MysqlProxyConnection` or :class:`MysqlTransactionContext`.
+    :param create_table: Whether to auto-create the table on first operation.
+    :param table_name: Optional table name override.
+    """
 
     __column_names: str  # NOTE: just an optimization so we don't have to concat over and over
     __context: DbContext
@@ -39,6 +49,7 @@ class MysqlTableAdapter(Generic[TEntity]):
         create_table: bool | None = False,
         table_name: str | None = None
     ) -> None:
+        """Initialize the MySQL table adapter."""
         self.__context = context if isinstance(context, (MysqlProxyConnection, MysqlTransactionContext)) else MysqlProxyConnection(context)  # type: ignore[arg-type]
         self.__create_table = create_table is True
         self.__initialized = False
@@ -260,6 +271,15 @@ class MysqlTableAdapter(Generic[TEntity]):
         orderby: str | None = None,
         limit: int | None = None
     ) -> Generator[TEntity, None, None]:
+        """
+        Query records from the table.
+
+        :param where: Optional WHERE clause (without the ``WHERE`` keyword).
+        :param params: Query parameters for placeholders in ``where``.
+        :param orderby: Optional ORDER BY clause (without the ``ORDER BY`` keyword).
+        :param limit: Optional LIMIT value.
+        :yields: Hydrated entity instances.
+        """
         self.__deferred_init()
         if params is not None:
             params = [

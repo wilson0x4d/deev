@@ -8,6 +8,26 @@ from .index_order import IndexOrder
 
 @dataclass(frozen=True)
 class IndexOptions:
+    """
+    Configuration for a database index on an entity field.
+
+    Usage
+    -----
+
+    .. code-block:: python
+
+        IndexOptions(
+            name="idx_users_email",
+            direction=IndexOrder.ASCENDING,
+            rank=0,
+            type=None
+        )
+
+    :param name: Unique name for the index.
+    :param direction: Sort direction (``ASCENDING`` or ``DESCENDING``).
+    :param rank: Ordering rank when multiple fields share the same index name.
+    :param type: Index type for skip indexes (ClickHouse).
+    """
 
     name: str
     direction: IndexOrder = dc_field(default=IndexOrder.ASCENDING)
