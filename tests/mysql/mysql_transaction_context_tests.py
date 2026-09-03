@@ -6,13 +6,12 @@ from deev.common import ConnectionString
 from deev.utils import connect, create_database
 from deev.mysql import MysqlTransactionContext
 from uuid import uuid4
-from punit import fact, trait, sequential
+from punit import fact, trait
 
 
 @fact
 @trait('mysql')
 @trait('integration')
-@sequential
 def basic_verification() -> None:
     guid = uuid4().hex
     val = uuid4().hex

@@ -23,24 +23,21 @@ from .mysql_proxy_connection import MysqlProxyConnection
 class MysqlTransactionContext(DbTransactionContext):
 
     __ambient_transaction_id: ContextVar = ContextVar('ambient_transacton_id', default=None)
-    __context: DbContext
-    __cursor: DbCursor
+    __context: DbContext | None
+    __cursor: DbCursor | None
     __logger: logging.Logger
     __transaction_id: UUID
     __transaction_state: int
 
     def __init__(self, context: DbContext):
-        self.__context = context if isinstance(context, (MysqlProxyConnection, MysqlTransactionContext)) else MysqlProxyConnection(context)  # type: ignore[arg-type]
+        self.__owns_context = False if isinstance(context, (MysqlProxyConnection, MysqlTransactionContext)) else True
+        self.__context = context if not self.__owns_context else MysqlProxyConnection(context)  # type: ignore[arg-type]
         self.__logger = hanaro.get_logger()
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
 
     def __del__(self):
-        try:
-            if self.__cursor is not None:
-                self.__cursor.close()
-        except Exception:
-            pass
+        self.close()
 
     def __enter__(self) -> Self:
         self.begin_transaction()
@@ -52,11 +49,14 @@ class MysqlTransactionContext(DbTransactionContext):
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None
     ) -> Literal[False]:
-        if exc_type is not None and self.__transaction_state == 2:
-            self.rollback()
-        elif self.__transaction_state == 2:
-            self.rollback()
-            raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
+        try:
+            if exc_type is not None and self.__transaction_state == 2:
+                self.rollback()
+            elif self.__transaction_state == 2:
+                self.rollback()
+                raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
+        finally:
+            self.close()
         return False
 
     def __update_transaction_state(self, sql: str) -> None:
@@ -79,6 +79,7 @@ class MysqlTransactionContext(DbTransactionContext):
             return cast(DbConnection, self.__context)
 
     def begin_transaction(self) -> DbTransactionContext:
+        assert self.__context is not None, 'context expected'
         if self.__transaction_state != 0:
             raise DbError(f'A transaction was already started in this context, cannot begin a new transaction. ({self.__transaction_state})')
         self.__transaction_state = 1
@@ -91,13 +92,25 @@ class MysqlTransactionContext(DbTransactionContext):
         return self
 
     def close(self) -> None:
-        # only defined for cross-compat with `DbConnection`
-        pass
+        try:
+            if self.__cursor is not None:
+                self.__cursor.close()
+                self.__cursor = None
+        except Exception:
+            pass
+        try:
+            if self.__context is not None and self.__owns_context and hasattr(self.__context, 'close'):
+                self.__context.close()
+                self.__context = None
+        except Exception:
+            pass
 
     def commit(self) -> None:
         if MysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
+            assert self.__context is not None, 'context expected'
             self.__context.commit()
         else:
+            assert self.__cursor is not None, 'cursor expected'
             try:
                 self.__cursor.execute(f'RELEASE SAVEPOINT TID_{self.__transaction_id.hex}')
             except mysql.connector.Error as e:
@@ -109,6 +122,7 @@ class MysqlTransactionContext(DbTransactionContext):
         self.__update_transaction_state('COMMIT')
 
     def cursor(self) -> DbCursor:
+        assert self.__context is not None, 'context expected'
         return self.__context.cursor()
 
     def execute(self, sql: str, params: DbParams | None = None) -> DbCursor:
@@ -119,6 +133,7 @@ class MysqlTransactionContext(DbTransactionContext):
         :param params: A tuple containing the params to substitute into the SQL statement.
         :return: The cursor object the caller can use to retrieve results.
         """
+        assert self.__cursor is not None, 'cursor expected'
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__cursor.execute(
@@ -127,6 +142,7 @@ class MysqlTransactionContext(DbTransactionContext):
         return cast(DbCursor, self.__cursor)
 
     def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
+        assert self.__cursor is not None, 'cursor expected'
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__cursor.execute(
@@ -135,6 +151,7 @@ class MysqlTransactionContext(DbTransactionContext):
         self.__update_transaction_state(sql)
 
     def execute_reader(self, sql: str, params: DbParams | None = None) -> Generator[Any, None, None]:
+        assert self.__cursor is not None, 'cursor expected'
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
@@ -147,6 +164,7 @@ class MysqlTransactionContext(DbTransactionContext):
             row = self.__cursor.fetchone()
 
     def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
+        assert self.__cursor is not None, 'cursor expected'
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
@@ -159,12 +177,14 @@ class MysqlTransactionContext(DbTransactionContext):
         return None if row is None else row[0]
 
     def execute_script(self, sql: str) -> None:
+        assert self.__cursor is not None, 'cursor expected'
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state("INSERT")
         self.__cursor.execute(sql)
 
     def rollback(self) -> None:
+        assert self.__cursor is not None, 'cursor expected'
         if MysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
             try:
                 self.__cursor.execute('ROLLBACK')

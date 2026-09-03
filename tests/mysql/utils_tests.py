@@ -3,14 +3,13 @@
 
 import appsettings2
 from deev.common import ConnectionString
-from deev.utils import connect, create_database
+from deev.utils import connect, create_database, drop_database
 from uuid import uuid4
-from punit import fact, trait, sequential
+from punit import fact, trait
 
 
 @fact
 @trait('integration')
-@sequential
 def cannot_connect_when_nonexistent_database() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.mysql_test)
@@ -26,14 +25,9 @@ def cannot_connect_when_nonexistent_database() -> None:
 
 @fact
 @trait('integration')
-@sequential
 def can_create_database() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.mysql_test)
     cxnstring.database = uuid4().hex
     create_database(cxnstring)
-    with connect(cxnstring) as connection:
-        cursor = connection.cursor()
-        cursor.execute(f'DROP DATABASE `{cxnstring.database}`;')
-        connection.commit()
-        connection.close()
+    drop_database(cxnstring)
