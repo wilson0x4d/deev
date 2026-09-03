@@ -242,7 +242,23 @@ def entity(
     :param defer_init: If ``True``, call original ``__init__`` before applying field defaults (useful for mixin base classes).
     :param snake_case: If ``True``, convert class name to snake_case before pluralizing for table name.
     :param kwargs: Additional options stored in :attr:`EntitySpec.extra_args`.
-    :return: The decorated class with entity capabilities.
+
+    **Provider-specific options**
+
+    The following options are consumed by specific database providers and affect DDL generation.
+    Options not recognized by the active provider are silently stored in :attr:`EntitySpec.extra_args`
+    and have no effect unless the relevant provider implementation reads them.
+
+    **ClickHouse**
+
+    ===========   ========================================================================
+    Key           Value
+    ===========   ========================================================================
+    ``engine``    A valid ClickHouse table engine specification string (e.g. ``'MergeTree'``,
+                  ``'ReplacingMergeTree'``, or ``'ReplacingMergeTree()'``). When provided,
+                  this is used as the table ``ENGINE`` clause in generated DDL instead of
+                  the database-level engine derived from ``system.databases``.
+    ===========   ========================================================================
     """
     if cls is None:
         def __entity(_cls: Type[T]) -> Type[T]:

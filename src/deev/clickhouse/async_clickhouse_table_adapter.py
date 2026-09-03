@@ -167,16 +167,31 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
                 options[key.strip()] = value.strip()
         return options
 
-    async def create_table(self, *, engine: str | None = None, order_by: str | None = None, partition_by: str | None = None) -> None:
-        """
-        Create the target table if it does not exist.
-        """
+    async def create_table(
+        self,
+        *,
+        engine: str | None = None,
+        order_by: str | None = None,
+        partition_by: str | None = None,
+    ) -> None:
+        """Create the target table if it does not exist."""
         from .clickhouse_ddl_generator import ClickHouseDDLGenerator
+        from .utils import resolve_clickhouse_table_engine
+
+        resolved_engine = engine
+        if resolved_engine is None:
+            resolved_engine = self.__entity_spec.extra_args.get('engine')
+        if resolved_engine is None:
+            db_engine = await self.clickhouse_client.command(
+                'SELECT engine_full FROM system.databases WHERE name = currentDatabase()'
+            )
+            resolved_engine = resolve_clickhouse_table_engine(str(db_engine).strip()) if db_engine else 'MergeTree'
+
         ddl_generator = ClickHouseDDLGenerator()
         ddl = ddl_generator.generate_table_ddl(
             table_name=self.__table_name,
             entity_spec=self.__entity_spec,
-            engine=engine,
+            engine=resolved_engine,
             order_by=order_by,
             partition_by=partition_by
         )

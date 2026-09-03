@@ -19,3 +19,4 @@ tmp/
 uv.lock
 .python-version
 *.db
+!tests/test_data

@@ -14,7 +14,7 @@ def oledb_unknown_params_in_parameters() -> None:
     assert params['server'] == 'localhost'
     assert params['database'] == 'foo'
     assert params['cluster'] == 'default'
-    assert params['engine'] == "Replicated('/clickhouse/databases/marketdata', '{shard}', '{replica}')"
+    assert params['ENGINE'] == "Replicated('/clickhouse/databases/marketdata', '{shard}', '{replica}')"
     assert params['provider'] == 'clickhouse'
 
 
@@ -56,7 +56,7 @@ def oledb_round_trip_unknown_params() -> None:
     )
     s = str(cs)
     assert 'cluster=default' in s
-    assert "engine=Replicated('/data')" in s
+    assert "ENGINE=Replicated('/data')" in s
 
 
 @fact

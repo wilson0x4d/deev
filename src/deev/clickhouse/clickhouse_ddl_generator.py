@@ -39,12 +39,12 @@ class ClickHouseDDLGenerator():
 
         Produces a ``CREATE TABLE IF NOT EXISTS`` statement with column definitions,
         skip indexes (from ``IndexOptions.type``), an ``ENGINE`` clause (default
-        ``ReplicatedMergeTree()``), ``PRIMARY KEY``, ``ORDER BY``, and optional
+        ``MergeTree``), ``PRIMARY KEY``, ``ORDER BY``, and optional
         ``PARTITION BY``.
 
         :param entity_spec: The entity specification.
         :param table_name: Optional table name override.
-        :param engine: ENGINE clause value (default ``ReplicatedMergeTree()``).
+        :param engine: ENGINE clause value (default ``MergeTree``).
         :param order_by: ORDER BY clause value. Defaults to primary key fields.
         :param partition_by: PARTITION BY clause value.
         :return: List containing a single ``CREATE TABLE`` DDL statement.
@@ -82,7 +82,7 @@ class ClickHouseDDLGenerator():
             all_definitions = columns + ', ' + ', '.join(skip_indexes)
 
         if engine is None:
-            engine = 'ReplicatedMergeTree()'
+            engine = 'MergeTree'
 
         pk_clause = (
             f' PRIMARY KEY ({", ".join(primary_key)})'

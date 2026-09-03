@@ -365,6 +365,96 @@ def create_database(connectionstring: ConnectionString | str) -> None:
             raise DbError(f'Unsupported database provider: {connectionstring.provider}')
 
 
+def drop_database(
+    connectionstring: ConnectionString | str,
+    cluster: str | None = None,
+    *,
+    connect_timeout: int = 15,
+) -> None:
+    """
+    Drop a database if it exists. Safe to call multiple times.
+
+    :param connectionstring: A DSN string or :class:`ConnectionString` object.
+    :param cluster: ClickHouse cluster name.
+    :param connect_timeout: Connection timeout in seconds.
+                            Only used when *connectionstring* does not specify
+                            ``Connection Timeout``.
+    """
+    if isinstance(connectionstring, str):
+        connectionstring = ConnectionString(connectionstring)
+    if connectionstring.database is None:
+        raise DbError(f'ConnectionString is missing `database` component: {connectionstring}')
+    cluster = connectionstring.parameters.get('cluster', None) if cluster is None else cluster
+    effective_connect_timeout = connectionstring.connect_timeout if connectionstring.connect_timeout is not None else connect_timeout
+    match connectionstring.provider:
+        case 'mysql.connector' | 'mysql':
+            if connectionstring.server is None:
+                raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
+            import mysql.connector
+            parts = connectionstring.server.split(':')
+            host_name, port_number = (parts[0], int(parts[1])) if len(parts) == 2 else (parts[0], 3306)
+            connection = mysql.connector.connect(
+                host=host_name,
+                port=port_number,
+                user=connectionstring.user,
+                password=connectionstring.password,
+                use_pure=True,
+                connection_timeout=effective_connect_timeout
+            )
+            try:
+                cursor = connection.cursor()
+                cursor.execute(f'DROP DATABASE IF EXISTS `{connectionstring.database}`;')
+                cursor.close()
+            finally:
+                connection.close()
+        case 'mongodb':
+            if connectionstring.server is None:
+                raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
+            auth_source = resolve_mongodb_auth_source(connectionstring)
+            import pymongo
+            mongo_client = pymongo.MongoClient(
+                f'mongodb://{connectionstring.user}:{connectionstring.password}@{connectionstring.server}/',
+                authSource=auth_source,
+                uuidrepresentation='standard'
+            )  # type: ignore[var-annotated]
+            try:
+                mongo_client.drop_database(connectionstring.database)
+            finally:
+                mongo_client.close()
+        case 'sqlite3' | 'sqlite':
+            if connectionstring.database is None:
+                raise DbError(f'ConnectionString is missing `database` component: {connectionstring}')
+            path = connectionstring.database if connectionstring.server is None else os.path.join(connectionstring.server, connectionstring.database)
+            if os.path.exists(path):
+                os.remove(path)
+            wal_path = path + '-wal'
+            shm_path = path + '-shm'
+            for p in (wal_path, shm_path):
+                if os.path.exists(p):
+                    os.remove(p)
+        case 'clickhouse':
+            if connectionstring.server is None:
+                raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
+            from clickhouse_connect.driver import create_client
+            parts = connectionstring.server.split(':')
+            host_name, port_number = (parts[0], int(parts[1])) if len(parts) == 2 else (parts[0], 8123)
+            clickhouse_client = create_client(
+                host=host_name,
+                username=connectionstring.user or 'default',
+                password=connectionstring.password or '',
+                port=port_number,
+                compress=bool(connectionstring.parameters.get('compress', True)) is True,
+                access_token=connectionstring.parameters.get('access_token', None),
+            )
+            try:
+                cluster_clause = f' ON CLUSTER `{cluster}` SYNC' if cluster else ''
+                clickhouse_client.command(f'DROP DATABASE IF EXISTS {connectionstring.database} {cluster_clause}')
+            finally:
+                clickhouse_client.close()
+        case _:
+            raise DbError(f'Unsupported database provider for drop: {connectionstring.provider}')
+
+
 def apply_migrations(migration_name: str, connectionstring: ConnectionString, migrations_path: Path | str | None) -> None:
     """
     Apply database migrations from a directory.
@@ -457,9 +547,19 @@ def generate_entity_ddl(
                 raise NotImplementedError('alpha feature, still not mongodb support.')
             case 'ClickHouseProxyConnection' | 'ClickHouseTransactionContext':
                 import deev.clickhouse
+                from deev.clickhouse.utils import resolve_clickhouse_table_engine
+                
+                engine = entity_spec.extra_args.get('engine')
+                if engine is None:
+                    db_engine = dbcontext.clickhouse_client.command(  # type: ignore[union-attr]
+                        'SELECT engine_full FROM system.databases WHERE name = currentDatabase()'
+                    )
+                    engine = resolve_clickhouse_table_engine(str(db_engine).strip()) if db_engine else 'MergeTree'
+                
                 clickhouse_ddl_generator = deev.clickhouse.ClickHouseDDLGenerator()
                 return clickhouse_ddl_generator.generate_table_ddl(
-                    entity_spec=entity_spec
+                    entity_spec=entity_spec,
+                    engine=engine
                 )
             case _:
                 raise DbError(f'Unsupported object: {dbcontext}')
@@ -548,19 +648,19 @@ def db_table_adapter_factory(
     :raises DbError: If the provider is unsupported.
     """
     match type(db_context).__name__:
+        case 'ClickHouseProxyConnection' | 'ClickHouseTransactionContext':
+            import deev.clickhouse
+            kwargs['sync_replicas'] = True
+            return deev.clickhouse.ClickHouseTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+        case 'MongoProxyConnection' | 'MongoTransactionContext':
+            import deev.mongodb
+            return deev.mongodb.MongoTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
         case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MysqlTransactionContext':
             import deev.mysql
             return deev.mysql.MysqlTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
         case 'SqliteProxyConnection' | 'SqliteTransactionContext':
             import deev.sqlite
             return deev.sqlite.SqliteTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case 'MongoProxyConnection' | 'MongoTransactionContext':
-            import deev.mongodb
-            return deev.mongodb.MongoTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case 'ClickHouseProxyConnection' | 'ClickHouseTransactionContext':
-            import deev.clickhouse
-            kwargs['sync_replicas'] = True
-            return deev.clickhouse.ClickHouseTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
         case _:
             raise DbError(f'Unsupported object: {db_context}')
 
@@ -591,18 +691,18 @@ def async_db_table_adapter_factory(
     :raises DbError: If the provider is unsupported.
     """
     match type(async_db_context).__name__:
+        case 'AsyncClickHouseProxyConnection' | 'AsyncClickHouseTransactionContext':
+            import deev.clickhouse
+            return deev.clickhouse.AsyncClickHouseTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+        case 'AsyncMongoProxyConnection' | 'AsyncMongoTransactionContext':
+            import deev.mongodb
+            return deev.mongodb.AsyncMongoTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
         case 'AsyncMysqlProxyConnection' | 'AsyncMysqlTransactionContext':
             import deev.mysql
             return deev.mysql.AsyncMysqlTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
         case 'AsyncSqliteProxyConnection' | 'AsyncSqliteTransactionContext':
             import deev.sqlite
             return deev.sqlite.AsyncSqliteTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case 'AsyncMongoProxyConnection' | 'AsyncMongoTransactionContext':
-            import deev.mongodb
-            return deev.mongodb.AsyncMongoTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case 'AsyncClickHouseProxyConnection' | 'AsyncClickHouseTransactionContext':
-            import deev.clickhouse
-            return deev.clickhouse.AsyncClickHouseTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
         case _:
             raise DbError(f'Unsupported object: {async_db_context}')
 

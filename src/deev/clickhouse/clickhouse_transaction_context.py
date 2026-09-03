@@ -48,18 +48,15 @@ class ClickHouseTransactionContext(DbTransactionContext):
 
         :param context: A :class:`ClickHouseProxyConnection` or related context.
         """
-        self.__context = context if isinstance(context, (ClickHouseProxyConnection, ClickHouseTransactionContext)) else ClickHouseProxyConnection(context)  # type: ignore[arg-type]
+        self.__owns_context = not isinstance(context, (ClickHouseProxyConnection, ClickHouseTransactionContext))
+        self.__context = context if not self.__owns_context else ClickHouseProxyConnection(context)  # type: ignore[arg-type]
         self.__logger = hanaro.get_logger()
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
         self.__cursor = None
 
     def __del__(self) -> None:
-        try:
-            if self.__cursor is not None:
-                self.__cursor.close()
-        except Exception:
-            pass
+        self.close()
 
     def __enter__(self) -> Self:
         self.begin_transaction()
@@ -101,7 +98,16 @@ class ClickHouseTransactionContext(DbTransactionContext):
         return self
 
     def close(self) -> None:
-        pass
+        try:
+            if self.__cursor is not None:
+                self.__cursor.close()
+        except Exception:
+            pass
+        try:
+            if self.__context is not None and self.__owns_context and hasattr(self.__context, 'close'):
+                self.__context.close()
+        except Exception:
+            pass
 
     def commit(self) -> None:
         try:

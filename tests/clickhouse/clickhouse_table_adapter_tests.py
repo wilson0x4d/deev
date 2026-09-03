@@ -8,13 +8,12 @@ from deev.common import ConnectionString
 from deev.utils import connect, create_database
 from deev.clickhouse import ClickHouseProxyConnection, ClickHouseTableAdapter
 from uuid import UUID, uuid4
-from punit import fact, trait, sequential
+from punit import fact, trait
 
 
 @fact
 @trait('clickhouse')
 @trait('integration')
-@sequential
 def basic_verification() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.clickhouse_test)

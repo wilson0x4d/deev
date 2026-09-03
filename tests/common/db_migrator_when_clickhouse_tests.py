@@ -7,7 +7,7 @@ from typing import Any, cast
 
 import appsettings2
 from deev.common.db_migrator import DbMigrator
-from punit import fact, trait, sequential
+from punit import fact, trait
 
 
 def _get_connection(name: str) -> str:
@@ -22,7 +22,6 @@ _MIGRATIONS_DIR = os.path.join(os.path.dirname(__file__), '..', 'test_data', 'mi
 @fact
 @trait('clickhouse')
 @trait('integration')
-@sequential
 def bvt_clickhouse_applies_all_migrations_and_records_them() -> None:
     """Full apply on live ClickHouse, 3 rows in _migrationdata."""
     cs = _get_connection('clickhouse_test')
@@ -60,7 +59,6 @@ def bvt_clickhouse_applies_all_migrations_and_records_them() -> None:
 @fact
 @trait('clickhouse')
 @trait('integration')
-@sequential
 def bvt_clickhouse_re_applies_idempotently() -> None:
     """Re-apply on already applied ClickHouse migrations should be no-op (idempotency)."""
     cs = _get_connection('clickhouse_test')
@@ -101,7 +99,6 @@ def bvt_clickhouse_re_applies_idempotently() -> None:
 @fact
 @trait('clickhouse')
 @trait('integration')
-@sequential
 def bvt_clickhouse_undoes_all_migrations() -> None:
     """Full undo on ClickHouse, _migrationdata should be empty."""
     cs = _get_connection('clickhouse_test')
@@ -141,7 +138,6 @@ def bvt_clickhouse_undoes_all_migrations() -> None:
 @fact
 @trait('clickhouse')
 @trait('integration')
-@sequential
 def bvt_clickhouse_verify_users_table_structure() -> None:
     """Verify the users table has the expected structure after migrations."""
     cs = _get_connection('clickhouse_test')

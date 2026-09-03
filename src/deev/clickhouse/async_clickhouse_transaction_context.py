@@ -31,17 +31,15 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
     """
 
     __ambient_transaction_id: ContextVar = ContextVar('ambient_transaction_id', default=None)
-    __context: AsyncDbContext
-    __cursor: Any
+    __context: AsyncDbContext | None
+    __cursor: Any | None
     __logger: logging.Logger
     __transaction_id: UUID
     __transaction_state: int
 
     def __init__(self, context: AsyncDbContext) -> None:
-        has_cursor_method = hasattr(context, 'cursor') and callable(getattr(context, 'cursor'))
-        has_client_prop = hasattr(context, 'clickhouse_client') and hasattr(context, 'commit')
-        is_same = has_cursor_method and has_client_prop
-        self.__context = context if is_same else AsyncClickHouseProxyConnection(context)  # type: ignore[arg-type]
+        self.__owns_context = not isinstance(context, (AsyncClickHouseProxyConnection, AsyncClickHouseTransactionContext))
+        self.__context = context if not self.__owns_context else AsyncClickHouseProxyConnection(context)  # type: ignore[arg-type]
         self.__logger = hanaro.get_logger()
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
@@ -49,15 +47,14 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
 
     def __del__(self) -> None:
         try:
-            if self.__cursor is not None:
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-                if loop and loop.is_running():
-                    loop.create_task(self.__cursor.close())
-                else:
-                    asyncio.run(self.__cursor.close())
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if loop and loop.is_running():
+                loop.create_task(self.close())
+            else:
+                asyncio.run(self.close())
         except Exception:
             pass
 
@@ -71,6 +68,7 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None
     ) -> Literal[False]:
+        await self.close()
         return False
 
     def __update_transaction_state(self, sql: str) -> None:
@@ -94,14 +92,15 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
 
     @property
     def clickhouse_client(self) -> Any:
-        ctx = self.__context
-        if hasattr(ctx, 'clickhouse_client'):
-            return ctx.clickhouse_client  # type: ignore[return-value]
+        assert self.__context is not None, 'no context'
+        if hasattr(self.__context, 'clickhouse_client'):
+            return self.__context.clickhouse_client  # type: ignore[return-value]
         return None
 
     async def begin_transaction(self) -> AsyncDbTransactionContext:
         if self.__transaction_state != 0:
             raise DbError(f'A transaction was already started in this context, cannot begin a new transaction. ({self.__transaction_state})')
+        assert self.__context is not None, 'no context'
         self.__transaction_state = 1
         self.__cursor = await self.__context.cursor()
         if AsyncClickHouseTransactionContext.__ambient_transaction_id.get(None) is None:
@@ -109,9 +108,21 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
         return self
 
     async def close(self) -> None:
-        pass
+        try:
+            if self.__cursor is not None:
+                await self.__cursor.close()
+                self.__cursor = None
+        except Exception:
+            pass
+        try:
+            if self.__context is not None and self.__owns_context and hasattr(self.__context, 'close'):
+                await self.__context.close()
+                self.__context = None
+        except Exception:
+            pass
 
     async def commit(self) -> None:
+        assert self.__context is not None, 'no context'
         try:
             await self.__context.commit()
         except Exception:
@@ -119,11 +130,13 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
         self.__update_transaction_state('COMMIT')
 
     async def cursor(self) -> AsyncDbCursor:
+        assert self.__context is not None, 'no context'
         return await self.__context.cursor()
 
     async def execute(self, sql: str, params: DbParams | None = None) -> AsyncDbCursor:  # type: ignore[override]
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__context is not None, 'no context'
         if self.__cursor is None:
             self.__cursor = await self.__context.cursor()
         assert self.__cursor is not None
@@ -133,6 +146,7 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
     async def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__context is not None, 'no context'
         if self.__cursor is None:
             self.__cursor = await self.__context.cursor()
         assert self.__cursor is not None
@@ -142,6 +156,7 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
     async def execute_reader(self, sql: str, params: DbParams | None = None) -> AsyncGenerator[tuple[Any, ...], None]:  # type: ignore[override]
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__context is not None, 'no context'
         self.__update_transaction_state(sql)
         if self.__cursor is None:
             self.__cursor = await self.__context.cursor()
@@ -157,6 +172,7 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
+        assert self.__context is not None, 'no context'
         if self.__cursor is None:
             self.__cursor = await self.__context.cursor()
         assert self.__cursor is not None
@@ -169,6 +185,7 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state("INSERT")
+        assert self.__context is not None, 'no context'
         if self.__cursor is None:
             self.__cursor = await self.__context.cursor()
         assert self.__cursor is not None
@@ -178,6 +195,7 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
                 await self.__cursor.execute(stmt)
 
     async def rollback(self) -> None:
+        assert self.__context is not None, 'no context'
         try:
             await self.__context.rollback()
         except Exception:
