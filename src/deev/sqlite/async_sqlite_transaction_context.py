@@ -28,28 +28,27 @@ class AsyncSqliteTransactionContext(AsyncDbTransactionContext):
     using ``asyncio.to_thread`` for underlying sqlite3 operations.
     """
 
-    __context: AsyncDbContext
+    __context: AsyncDbContext | None
     __sync_ctx: SqliteTransactionContext
 
     def __init__(self, context: AsyncDbContext) -> None:
-        self.__context = context
+        from .async_sqlite_proxy_connection import AsyncSqliteProxyConnection
+        self.__owns_context = not isinstance(context, (AsyncSqliteProxyConnection, AsyncSqliteTransactionContext))
+        self.__context = context if not self.__owns_context else AsyncSqliteProxyConnection(context)  # type: ignore[arg-type]
         self.__sync_ctx = SqliteTransactionContext(
             context=cast(AsyncSqliteProxyConnection, self.connection).sqlite_connection
         )
 
     def __del__(self) -> None:
         try:
-            cursor = self.__sync_ctx._SqliteTransactionContext__cursor  # type: ignore[attr-defined]
-            if cursor is not None:
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-                sync_cursor = cursor._SqliteProxyCursor__cursor  # type: ignore[attr-defined]
-                if loop and loop.is_running():
-                    loop.create_task(asyncio.to_thread(sync_cursor.close))
-                else:
-                    asyncio.run(asyncio.to_thread(sync_cursor.close))
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if loop and loop.is_running():
+                loop.create_task(self.close())
+            else:
+                asyncio.run(self.close())
         except Exception:
             pass
 
@@ -63,17 +62,20 @@ class AsyncSqliteTransactionContext(AsyncDbTransactionContext):
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None
     ) -> Literal[False]:
-        if exc_type is not None and self.__sync_ctx._SqliteTransactionContext__transaction_state == 2:  # type: ignore[attr-defined]
-            await self.rollback()
-        elif self.__sync_ctx._SqliteTransactionContext__transaction_state == 2:  # type: ignore[attr-defined]
-            await self.rollback()
-            raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
-        elif self.__sync_ctx._SqliteTransactionContext__transaction_state <= 1:  # type: ignore[attr-defined]
-            if exc_type is not None:
+        try:
+            if exc_type is not None and self.__sync_ctx._SqliteTransactionContext__transaction_state == 2:  # type: ignore[attr-defined]
                 await self.rollback()
-            else:
-                await self.commit()
-        return False
+            elif self.__sync_ctx._SqliteTransactionContext__transaction_state == 2:  # type: ignore[attr-defined]
+                await self.rollback()
+                raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
+            elif self.__sync_ctx._SqliteTransactionContext__transaction_state <= 1:  # type: ignore[attr-defined]
+                if exc_type is not None:
+                    await self.rollback()
+                else:
+                    await self.commit()
+            return False
+        finally:
+            await self.close()
 
     @property
     def connection(self) -> AsyncDbConnection:
@@ -87,7 +89,19 @@ class AsyncSqliteTransactionContext(AsyncDbTransactionContext):
         return self
 
     async def close(self) -> None:
-        pass
+        try:
+            cursor = self.__sync_ctx._SqliteTransactionContext__cursor  # type: ignore[attr-defined]
+            if cursor is not None:
+                sync_cursor = cursor._SqliteProxyCursor__cursor  # type: ignore[attr-defined]
+                await asyncio.to_thread(sync_cursor.close)
+        except Exception:
+            pass
+        try:
+            if self.__context is not None and self.__owns_context and hasattr(self.__context, 'close'):
+                await self.__context.close()
+                self.__context = None
+        except Exception:
+            pass
 
     async def commit(self) -> None:
         await asyncio.to_thread(self.__sync_ctx.commit)

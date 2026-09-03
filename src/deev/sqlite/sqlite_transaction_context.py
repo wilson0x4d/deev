@@ -22,25 +22,23 @@ class SqliteTransactionContext(DbTransactionContext):
 
     __ambient_transaction_id: ContextVar = ContextVar('ambient_transacton_id', default=None)
     __transaction_id: UUID
-    __context: DbContext
-    __cursor: DbCursor
+    __context: DbContext | None
+    __cursor: DbCursor | None
     __sql_arg_expect: str
     __sql_arg_subst: str
     __transaction_state: int
 
     def __init__(self, context: DbContext):
-        self.__context = context if isinstance(context, (SqliteProxyConnection, SqliteTransactionContext)) else SqliteProxyConnection(context)  # type: ignore[arg-type]
+        self.__owns_context = not isinstance(context, (SqliteProxyConnection, SqliteTransactionContext))
+        self.__context = context if not self.__owns_context else SqliteProxyConnection(context)  # type: ignore[arg-type]
         self.__sql_arg_expect = '%?'
         self.__sql_arg_subst = '?'
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
+        self.__cursor = None
 
     def __del__(self):
-        try:
-            if self.__cursor is not None:
-                self.__cursor.close()
-        except Exception:
-            pass
+        self.close()
 
     def __enter__(self) -> Self:
         self.begin_transaction()
@@ -52,16 +50,19 @@ class SqliteTransactionContext(DbTransactionContext):
         exc_value: BaseException | None = None,  # noqa: ARG001 - unused per context manager protocol
         traceback: TracebackType | None = None
     ) -> Literal[False]:
-        if exc_type is not None and self.__transaction_state == 2:
-            self.rollback()
-        elif self.__transaction_state == 2:
-            self.rollback()
-            raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
-        elif self.__transaction_state <= 1:
-            if exc_type is not None:
+        try:
+            if exc_type is not None and self.__transaction_state == 2:
                 self.rollback()
-            else:
-                self.commit()
+            elif self.__transaction_state == 2:
+                self.rollback()
+                raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
+            elif self.__transaction_state <= 1:
+                if exc_type is not None:
+                    self.rollback()
+                else:
+                    self.commit()
+        finally:
+            self.close()
         return False
 
     def __update_transaction_state(self, sql: str) -> None:
@@ -87,6 +88,7 @@ class SqliteTransactionContext(DbTransactionContext):
         if self.__transaction_state != 0:
             raise DbError(f'A transaction was already started in this context, cannot begin a new transaction. ({self.__transaction_state})')
         self.__transaction_state = 1
+        assert self.__context is not None, 'no context'
         self.__cursor = self.__context.cursor()
         if SqliteTransactionContext.__ambient_transaction_id.get() is None:
             SqliteTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
@@ -96,10 +98,21 @@ class SqliteTransactionContext(DbTransactionContext):
         return self
 
     def close(self) -> None:
-        # only defined for cross-compat with `DbConnection`
-        pass
+        try:
+            if self.__cursor is not None:
+                self.__cursor.close()
+                self.__cursor = None
+        except Exception:
+            pass
+        try:
+            if self.__context is not None and self.__owns_context and hasattr(self.__context, 'close'):
+                self.__context.close()
+                self.__context = None
+        except Exception:
+            pass
 
     def commit(self) -> None:
+        assert self.__cursor is not None, 'no cursor'
         if SqliteTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
             try:
                 self.__cursor.execute('COMMIT')
@@ -123,6 +136,7 @@ class SqliteTransactionContext(DbTransactionContext):
         self.__update_transaction_state('COMMIT')
 
     def cursor(self) -> DbCursor:
+        assert self.__context is not None, 'no context'
         return self.__context.cursor()
 
     def execute(self, sql: str, params: DbParams | None = None) -> DbCursor:
@@ -133,6 +147,7 @@ class SqliteTransactionContext(DbTransactionContext):
         :param params: A tuple containing the params to substitute into the SQL statement.
         :return: The cursor object the caller can use to retrieve results.
         """
+        assert self.__cursor is not None, 'no cursor'
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
@@ -144,6 +159,7 @@ class SqliteTransactionContext(DbTransactionContext):
     def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__cursor is not None, 'no cursor'
         sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
         self.__cursor.execute(
             sql,
@@ -153,6 +169,7 @@ class SqliteTransactionContext(DbTransactionContext):
     def execute_reader(self, sql: str, params: DbParams | None = None) -> Generator[Any, None, None]:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__cursor is not None, 'no cursor'
         self.__update_transaction_state(sql)
         params = tuple(params) if params is not None else tuple()
         sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
@@ -166,6 +183,7 @@ class SqliteTransactionContext(DbTransactionContext):
     def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__cursor is not None, 'no cursor'
         self.__update_transaction_state(sql)
         sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
         self.__cursor.execute(
@@ -179,10 +197,12 @@ class SqliteTransactionContext(DbTransactionContext):
     def execute_script(self, sql: str) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__cursor is not None, 'no cursor'
         self.__update_transaction_state("INSERT")
         self.__cursor.execute(sql)
 
     def rollback(self) -> None:
+        assert self.__cursor is not None, 'no cursor'
         if SqliteTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
             self.__cursor.execute('ROLLBACK TRANSACTION')
         else:
