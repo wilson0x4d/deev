@@ -300,6 +300,7 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'ALTER TABLE `{table_name}` DELETE WHERE {where}'
         await self.__execute(sql, keys)
+        await self.sync_replicas()
 
     async def exists(self, **kwargs: Any) -> bool:
         """

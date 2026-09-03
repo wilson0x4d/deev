@@ -297,6 +297,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'ALTER TABLE `{table_name}` DELETE WHERE {where}'
         self.__execute(sql, keys)
+        self.sync_replicas()
 
     def exists(self, **kwargs: Any) -> bool:
         """
