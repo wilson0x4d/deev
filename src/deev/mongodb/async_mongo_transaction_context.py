@@ -26,7 +26,7 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
     _DELEGATE_TXN_CACHE: dict[tuple[str | None, int], bool] = {}
 
     __ambient_transaction_id: ContextVar[UUID | None] = ContextVar[UUID | None]('ambient_transaction_id', default=None)
-    __context: AsyncDbConnection | AsyncDbTransactionContext
+    __context: AsyncDbConnection | AsyncDbTransactionContext | None
     __cursor: AsyncMongoProxyCursor | None
     __database_name: str
     __transaction_id: UUID
@@ -34,7 +34,10 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
     __delegate_mode: bool | None
 
     def __init__(self, context: AsyncDbConnection | AsyncDbTransactionContext):
-        self.__context = context
+        self.__owns_context = not isinstance(context, (AsyncMongoProxyConnection, AsyncMongoTransactionContext))
+        mongo_database_name = getattr(context, 'mongo_database_name', None)
+        assert mongo_database_name is not None, 'bad init'
+        self.__context = context if not self.__owns_context else AsyncMongoProxyConnection(context, mongo_database_name)  # type: ignore[arg-type]
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
         self.__database_name = getattr(context, 'mongo_database_name', '')  # type: ignore[arg-type]
@@ -59,15 +62,14 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
 
     def __del__(self) -> None:
         try:
-            if self.__cursor is not None:
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-                if loop and loop.is_running():
-                    loop.create_task(self.__cursor.close())
-                else:
-                    asyncio.run(self.__cursor.close())
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if loop and loop.is_running():
+                loop.create_task(self.close())
+            else:
+                asyncio.run(self.close())
         except Exception:
             pass
 
@@ -81,20 +83,23 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None
     ) -> Literal[False]:
-        if await self.__is_delegate_mode():
-            self.__transaction_state = 3
-            return False
-        if exc_type is not None and self.__transaction_state == 2:
-            await self.rollback()
-        elif self.__transaction_state == 2:
-            await self.rollback()
-            raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
-        elif self.__transaction_state <= 1:
-            if exc_type is not None:
+        try:
+            if await self.__is_delegate_mode():
+                self.__transaction_state = 3
+                return False
+            if exc_type is not None and self.__transaction_state == 2:
                 await self.rollback()
-            else:
-                await self.commit()
-        return False
+            elif self.__transaction_state == 2:
+                await self.rollback()
+                raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
+            elif self.__transaction_state <= 1:
+                if exc_type is not None:
+                    await self.rollback()
+                else:
+                    await self.commit()
+            return False
+        finally:
+            await self.close()
 
     def __update_transaction_state(self, sql: str) -> None:
         sql = sql.lstrip().upper()
@@ -149,8 +154,18 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
         return self  # type: ignore[return-type]
 
     async def close(self) -> None:
-        # only defined for cross-compat with `AsyncDbConnection`
-        pass
+        try:
+            if self.__cursor is not None:
+                await self.__cursor.close()
+                self.__cursor = None
+        except Exception:
+            pass
+        try:
+            if self.__context is not None and self.__owns_context and hasattr(self.__context, 'close'):
+                await self.__context.close()
+                self.__context = None
+        except Exception:
+            pass
 
     async def commit(self) -> None:
         if self.__cursor is None:

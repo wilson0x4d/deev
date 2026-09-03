@@ -9,7 +9,7 @@ from deev._migration_data import _MigrationData, _MigrationData2
 from deev.common import ConnectionString
 from deev.common.db_migrator import DbMigrator
 from deev.utils import connect
-from punit import fact, trait, setup
+from punit import fact, trait, setup, sequential
 from typing import cast
 
 
@@ -35,6 +35,7 @@ def delete_all_collections() -> None:
 @fact
 @trait('integration')
 @trait('mongodb')
+@sequential
 def bvt_mongo_applies_all_migrations_and_records_them() -> None:
     """Full apply on live MongoDB, 3 records in _migrationdata, uses _MigrationData2 (UUID PK)."""
     cs = _get_connection('mongo_test')
@@ -56,6 +57,7 @@ def bvt_mongo_applies_all_migrations_and_records_them() -> None:
 @fact
 @trait('integration')
 @trait('mongodb')
+@sequential
 def bvt_mongo_skips_reapply() -> None:
     """Re-apply produces same record count (idempotency)."""
     cs = _get_connection('mongo_test')
@@ -81,6 +83,7 @@ def bvt_mongo_skips_reapply() -> None:
 @fact
 @trait('integration')
 @trait('mongodb')
+@sequential
 def bvt_mongo_undo_clears_all_records() -> None:
     """undo('all') clears all _migrationdata records."""
     cs = _get_connection('mongo_test')
@@ -104,6 +107,7 @@ def bvt_mongo_undo_clears_all_records() -> None:
 @fact
 @trait('integration')
 @trait('mongodb')
+@sequential
 def bvt_mongo_users_collection_has_documents() -> None:
     """Direct pymongo query on users collection confirms seed data."""
     cs = _get_connection('mongo_test')

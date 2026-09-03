@@ -23,8 +23,8 @@ class MongoTransactionContext(DbTransactionContext):
     _DELEGATE_TXN_CACHE: dict[tuple[str | None, int], bool] = {}
 
     __ambient_transaction_id: ContextVar[UUID | None] = ContextVar[UUID | None]('ambient_transaction_id', default=None)
-    __context: DbContext
-    __cursor: DbCursor
+    __context: DbContext | None
+    __cursor: DbCursor | None
     __database_name: str
     __transaction_id: UUID
     __transaction_state: int
@@ -36,7 +36,11 @@ class MongoTransactionContext(DbTransactionContext):
 
         :param context: A :class:`MongoProxyConnection` or related context.
         """
-        self.__context = context
+        from ..mongodb import MongoProxyConnection
+        self.__owns_context = not isinstance(context, (MongoProxyConnection, MongoTransactionContext))
+        mongo_database_name = getattr(context, 'mongo_database_name', None)
+        assert mongo_database_name is not None, 'bad init'
+        self.__context = context if not self.__owns_context else MongoProxyConnection(context, mongo_database_name)  # type: ignore[arg-type]
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
         self.__database_name = context.mongo_database_name  # type: ignore[missing-attribute, union-attr]
@@ -66,11 +70,7 @@ class MongoTransactionContext(DbTransactionContext):
             return False
 
     def __del__(self):
-        try:
-            if self.__cursor is not None:
-                self.__cursor.close()
-        except Exception:
-            pass
+        self.close()
 
     def __enter__(self) -> Self:
         self.begin_transaction()
@@ -82,19 +82,22 @@ class MongoTransactionContext(DbTransactionContext):
         exc_value: BaseException | None = None,  # noqa: ARG001 - unused per context manager protocol
         traceback: TracebackType | None = None
     ) -> Literal[False]:
-        if self.__delegate_mode:
-            self.__transaction_state = 3
-            return False
-        if exc_type is not None and self.__transaction_state == 2:
-            self.rollback()
-        elif self.__transaction_state == 2:
-            self.rollback()
-            raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
-        elif self.__transaction_state <= 1:
-            if exc_type is not None:
+        try:
+            if self.__delegate_mode:
+                self.__transaction_state = 3
+                return False
+            if exc_type is not None and self.__transaction_state == 2:
                 self.rollback()
-            else:
-                self.commit()
+            elif self.__transaction_state == 2:
+                self.rollback()
+                raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
+            elif self.__transaction_state <= 1:
+                if exc_type is not None:
+                    self.rollback()
+                else:
+                    self.commit()
+        finally:
+            self.close()
         return False
 
     def __update_transaction_state(self, sql: str) -> None:
@@ -113,7 +116,7 @@ class MongoTransactionContext(DbTransactionContext):
         if isinstance(self.__context, DbTransactionContext):
             return self.__context.connection
         else:
-            return self.__context
+            return self.__context  # type: ignore[return-value]
 
     @property
     def mongo_client(self) -> pymongo.MongoClient[Any]:
@@ -139,6 +142,7 @@ class MongoTransactionContext(DbTransactionContext):
         if self.__transaction_state != 0:
             raise DbError(f'A transaction was already started in this context, cannot begin a new transaction. ({self.__transaction_state})')
         self.__transaction_state = 1
+        assert self.__context is not None, 'no context'
         self.__cursor = self.__context.cursor()
         if MongoTransactionContext.__ambient_transaction_id.get(None) is None:
             MongoTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
@@ -147,8 +151,18 @@ class MongoTransactionContext(DbTransactionContext):
         return self
 
     def close(self) -> None:
-        # only defined for cross-compat with `DbConnection`
-        pass
+        try:
+            if self.__cursor is not None:
+                self.__cursor.close()
+                self.__cursor = None
+        except Exception:
+            pass
+        try:
+            if self.__context is not None and self.__owns_context and hasattr(self.__context, 'close'):
+                self.__context.close()
+                self.__context = None
+        except Exception:
+            pass
 
     def commit(self) -> None:
         if not self.__delegate_mode and MongoTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
@@ -156,6 +170,7 @@ class MongoTransactionContext(DbTransactionContext):
         self.__update_transaction_state('COMMIT')
 
     def cursor(self) -> DbCursor:
+        assert self.__cursor is not None, 'no cursor'
         return self.__cursor
 
     def execute(self, sql: str, params: DbParams | None = None) -> DbCursor:
@@ -167,6 +182,7 @@ class MongoTransactionContext(DbTransactionContext):
         """
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__cursor is not None, 'no cursor'
         self.__cursor.execute(
             sql,
             tuple(params) if params is not None else tuple())
@@ -175,6 +191,7 @@ class MongoTransactionContext(DbTransactionContext):
     def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__cursor is not None, 'no cursor'
         self.__cursor.execute(
             sql,
             tuple(params) if params is not None else tuple())
@@ -183,6 +200,7 @@ class MongoTransactionContext(DbTransactionContext):
     def execute_reader(self, sql: str, params: DbParams | None = None) -> Generator[Any, None, None]:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__cursor is not None, 'no cursor'
         self.__update_transaction_state(sql)
         params = tuple(params) if params is not None else tuple()
         self.__cursor.execute(sql, params)
@@ -195,6 +213,7 @@ class MongoTransactionContext(DbTransactionContext):
     def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__cursor is not None, 'no cursor'
         self.__update_transaction_state(sql)
         self.__cursor.execute(
             sql,
