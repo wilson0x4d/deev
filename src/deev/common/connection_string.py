@@ -248,7 +248,7 @@ class ConnectionString:
                 case 'command_timeout':
                     self.__command_timeout = int(val)
                 case _:
-                    self.__parameters[key_lower] = val
+                    self.__parameters[key] = val
 
     def parse(self, connectionstring: str | None) -> ConnectionString:
         if not connectionstring:
@@ -305,7 +305,7 @@ class ConnectionString:
                 case 'command timeout':
                     self.command_timeout = int(value)
                 case _:
-                    self.__parameters[key_lower] = value
+                    self.__parameters[key] = value
 
 
 __all__ = ['ConnectionString']
