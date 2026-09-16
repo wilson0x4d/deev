@@ -127,7 +127,8 @@ class MongoTableAdapter(Generic[TEntity]):
         collection_name = self.__get_collection_name()
         connection = cast(pymongo.MongoClient[Any], getattr(self.__context, 'mongo_client', None))
         db = connection.get_database(self.__database_name)
-        mongo_session = cast(pymongo.client_session.ClientSession, getattr(self.__context.cursor(), 'mongo_session', None))
+        cursor = self.__context.cursor()
+        mongo_session = cast(pymongo.client_session.ClientSession, getattr(cursor, 'mongo_session', None))
         if collection_name not in db.list_collection_names():
             collection: pymongo.collection.Collection[Any]
             if len(self.primary_key) > 0:

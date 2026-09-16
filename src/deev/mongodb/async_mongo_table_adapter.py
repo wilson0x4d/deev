@@ -5,7 +5,7 @@ from deev.entities import IndexOptions, IndexOrder
 from collections import defaultdict
 import pymongo
 from pymongo.asynchronous.collection import AsyncCollection
-from typing import Any, AsyncGenerator, Generic, TypeVar, cast, get_args, get_origin
+from typing import Any, AsyncGenerator, TypeVar, cast, get_args, get_origin
 
 from ..common.async_db_connection import AsyncDbConnection
 from ..common.async_db_table_adapter import AsyncDbTableAdapter
@@ -86,7 +86,7 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         return self.__entity_spec.primary_key
 
     @property
-    def mongo_collection(self) -> AsyncCollection:
+    def mongo_collection(self) -> AsyncCollection[Any]:
         # NOTE: this is a non-conformant property that we require for migration scripts (QOL), and must be retained.
         self.__ensure_init()
         mongo_database = getattr(self.__context, 'mongo_database', None)  # type: ignore
@@ -133,7 +133,7 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
             raise DbError('Cursor does not have a mongo_session attribute.')
         return mongo_session._client[self.__database_name]  # type: ignore[attr-defined]
 
-    def _get_collection(self) -> AsyncCollection:
+    def _get_collection(self) -> AsyncCollection[Any]:
         """Get the MongoDB collection for this adapter."""
         db = self.__get_database()
         return db[self.__get_collection_name()]  # type: ignore[return-value]
@@ -144,10 +144,11 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         collection_name = self.__get_collection_name()
         connection = cast(Any, getattr(self.__context, 'mongo_client', None))
         db = connection.get_database(self.__database_name)
-        mongo_session = cast(Any, getattr(self.__context.cursor(), 'mongo_session', None))
+        cursor = await self.__context.cursor()
+        mongo_session = cast(Any, getattr(cursor, 'mongo_session', None))
         collection_names = await db.list_collection_names()
         if collection_name not in collection_names:
-            collection: AsyncCollection
+            collection: AsyncCollection[Any]
             if len(self.primary_key) > 0:
                 collection = db[collection_name]  # type: ignore
             else:
