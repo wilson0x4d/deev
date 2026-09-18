@@ -29,9 +29,10 @@ class MysqlTransactionContext(DbTransactionContext):
     __transaction_id: UUID
     __transaction_state: int
 
-    def __init__(self, context: DbContext):
-        self.__owns_context = False if isinstance(context, (MysqlProxyConnection, MysqlTransactionContext)) else True
-        self.__context = context if not self.__owns_context else MysqlProxyConnection(context)  # type: ignore[arg-type]
+    def __init__(self, context: DbContext, *, owns_context: bool | None = None):
+        self.__owns_context = owns_context is True
+        self.__is_deev_context = isinstance(context, (MysqlProxyConnection, MysqlTransactionContext))
+        self.__context = context if self.__is_deev_context else MysqlProxyConnection(context)  # type: ignore[arg-type]
         self.__logger = hanaro.get_logger()
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
@@ -95,15 +96,15 @@ class MysqlTransactionContext(DbTransactionContext):
         try:
             if self.__cursor is not None:
                 self.__cursor.close()
-                self.__cursor = None
         except Exception:
             pass
+        self.__cursor = None
         try:
             if self.__context is not None and self.__owns_context and hasattr(self.__context, 'close'):
                 self.__context.close()
-                self.__context = None
         except Exception:
             pass
+        self.__context = None
 
     def commit(self) -> None:
         if MysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:

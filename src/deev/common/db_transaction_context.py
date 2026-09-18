@@ -17,7 +17,7 @@ from .db_params import DbParams
 @runtime_checkable
 class DbTransactionContext(Protocol):
 
-    def __init__(self, connection: DbConnection) -> None:
+    def __init__(self, connection: DbConnection, *, owns_context: bool | None = None) -> None:
         ...
 
     def __del__(self) -> None:

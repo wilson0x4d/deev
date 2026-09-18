@@ -33,11 +33,12 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
     __transaction_state: int
     __delegate_mode: bool | None
 
-    def __init__(self, context: AsyncDbConnection | AsyncDbTransactionContext):
-        self.__owns_context = not isinstance(context, (AsyncMongoProxyConnection, AsyncMongoTransactionContext))
+    def __init__(self, context: AsyncDbConnection | AsyncDbTransactionContext, *, owns_context: bool | None = None):
+        self.__owns_context = owns_context is True
+        self.__is_deev_context = isinstance(context, (AsyncMongoProxyConnection, AsyncMongoTransactionContext))
         mongo_database_name = getattr(context, 'mongo_database_name', None)
         assert mongo_database_name is not None, 'bad init'
-        self.__context = context if not self.__owns_context else AsyncMongoProxyConnection(context, mongo_database_name)  # type: ignore[arg-type]
+        self.__context = context if self.__is_deev_context else AsyncMongoProxyConnection(context, mongo_database_name)  # type: ignore[arg-type]
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
         self.__database_name = getattr(context, 'mongo_database_name', '')  # type: ignore[arg-type]
@@ -157,15 +158,15 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
         try:
             if self.__cursor is not None:
                 await self.__cursor.close()
-                self.__cursor = None
         except Exception:
             pass
+        self.__cursor = None
         try:
             if self.__context is not None and self.__owns_context and hasattr(self.__context, 'close'):
                 await self.__context.close()
-                self.__context = None
         except Exception:
             pass
+        self.__context = None
 
     async def commit(self) -> None:
         if self.__cursor is None:

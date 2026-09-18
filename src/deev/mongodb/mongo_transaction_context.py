@@ -30,17 +30,19 @@ class MongoTransactionContext(DbTransactionContext):
     __transaction_state: int
     __delegate_mode: bool | None
 
-    def __init__(self, context: DbContext):
+    def __init__(self, context: DbContext, *, owns_context: bool | None = None):
         """
         Initialize the MongoDB transaction context.
 
         :param context: A :class:`MongoProxyConnection` or related context.
+        :param owns_context: Whether this transaction context owns *context* and should close it.
         """
         from ..mongodb import MongoProxyConnection
-        self.__owns_context = not isinstance(context, (MongoProxyConnection, MongoTransactionContext))
+        self.__owns_context = owns_context is True
+        self.__is_deev_context = isinstance(context, (MongoProxyConnection, MongoTransactionContext))
         mongo_database_name = getattr(context, 'mongo_database_name', None)
         assert mongo_database_name is not None, 'bad init'
-        self.__context = context if not self.__owns_context else MongoProxyConnection(context, mongo_database_name)  # type: ignore[arg-type]
+        self.__context = context if self.__is_deev_context else MongoProxyConnection(context, mongo_database_name)  # type: ignore[arg-type]
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
         self.__database_name = context.mongo_database_name  # type: ignore[missing-attribute, union-attr]
@@ -154,15 +156,15 @@ class MongoTransactionContext(DbTransactionContext):
         try:
             if self.__cursor is not None:
                 self.__cursor.close()
-                self.__cursor = None
         except Exception:
             pass
+        self.__cursor = None
         try:
             if self.__context is not None and self.__owns_context and hasattr(self.__context, 'close'):
                 self.__context.close()
-                self.__context = None
         except Exception:
             pass
+        self.__context = None
 
     def commit(self) -> None:
         if not self.__delegate_mode and MongoTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:

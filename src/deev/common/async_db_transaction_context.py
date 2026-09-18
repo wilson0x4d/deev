@@ -20,7 +20,7 @@ from .db_params import DbParams
 @runtime_checkable
 class AsyncDbTransactionContext(Protocol):
 
-    def __init__(self, connection: AsyncDbConnection) -> None:
+    def __init__(self, connection: AsyncDbConnection, *, owns_context: bool | None = None) -> None:
         ...
 
     def __del__(self) -> None:

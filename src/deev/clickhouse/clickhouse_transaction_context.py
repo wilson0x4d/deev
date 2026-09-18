@@ -38,7 +38,7 @@ class ClickHouseTransactionContext(DbTransactionContext):
     __transaction_id: UUID
     __transaction_state: int
 
-    def __init__(self, context: DbContext) -> None:
+    def __init__(self, context: DbContext, *, owns_context: bool | None = None) -> None:
         """
         Initialize the ClickHouse transaction context.
 
@@ -47,9 +47,11 @@ class ClickHouseTransactionContext(DbTransactionContext):
         transactional semantics.
 
         :param context: A :class:`ClickHouseProxyConnection` or related context.
+        :param owns_context: Whether this transaction context owns *context* and should close it.
         """
-        self.__owns_context = not isinstance(context, (ClickHouseProxyConnection, ClickHouseTransactionContext))
-        self.__context = context if not self.__owns_context else ClickHouseProxyConnection(context)  # type: ignore[arg-type]
+        self.__owns_context = owns_context is True
+        self.__is_deev_context = isinstance(context, (ClickHouseProxyConnection, ClickHouseTransactionContext))
+        self.__context = context if self.__is_deev_context else ClickHouseProxyConnection(context)  # type: ignore[arg-type]
         self.__logger = hanaro.get_logger()
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
@@ -103,11 +105,13 @@ class ClickHouseTransactionContext(DbTransactionContext):
                 self.__cursor.close()
         except Exception:
             pass
+        self.__cursor = None
         try:
             if self.__context is not None and self.__owns_context and hasattr(self.__context, 'close'):
                 self.__context.close()
         except Exception:
             pass
+        self.__context = None
 
     def commit(self) -> None:
         try:

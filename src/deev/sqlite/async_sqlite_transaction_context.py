@@ -31,12 +31,13 @@ class AsyncSqliteTransactionContext(AsyncDbTransactionContext):
     __context: AsyncDbContext | None
     __sync_ctx: SqliteTransactionContext
 
-    def __init__(self, context: AsyncDbContext) -> None:
-        from .async_sqlite_proxy_connection import AsyncSqliteProxyConnection
-        self.__owns_context = not isinstance(context, (AsyncSqliteProxyConnection, AsyncSqliteTransactionContext))
-        self.__context = context if not self.__owns_context else AsyncSqliteProxyConnection(context)  # type: ignore[arg-type]
+    def __init__(self, context: AsyncDbContext, *, owns_context: bool | None = None) -> None:
+        self.__owns_context = owns_context is True
+        self.__is_deev_context = isinstance(context, (AsyncSqliteProxyConnection, AsyncSqliteTransactionContext))
+        self.__context = context if self.__is_deev_context else AsyncSqliteProxyConnection(context)  # type: ignore[arg-type]
         self.__sync_ctx = SqliteTransactionContext(
-            context=cast(AsyncSqliteProxyConnection, self.connection).sqlite_connection
+            context=cast(AsyncSqliteProxyConnection, self.connection).sqlite_connection,
+            owns_context=owns_context
         )
 
     def __del__(self) -> None:
