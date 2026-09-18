@@ -29,7 +29,7 @@ class AsyncSqliteTransactionContext(AsyncDbTransactionContext):
     """
 
     __context: AsyncDbContext | None
-    __sync_ctx: SqliteTransactionContext
+    __sync_ctx: SqliteTransactionContext | None
 
     def __init__(self, context: AsyncDbContext, *, owns_context: bool | None = None) -> None:
         self.__owns_context = owns_context is True
@@ -54,6 +54,7 @@ class AsyncSqliteTransactionContext(AsyncDbTransactionContext):
             pass
 
     async def __aenter__(self) -> Self:
+        assert self.__sync_ctx is not None, 'invalid state'
         await asyncio.to_thread(self.__sync_ctx.begin_transaction)
         return self
 
@@ -80,46 +81,46 @@ class AsyncSqliteTransactionContext(AsyncDbTransactionContext):
 
     @property
     def connection(self) -> AsyncDbConnection:
+        assert self.__context is not None, 'no context'
         if isinstance(self.__context, AsyncDbTransactionContext):
             return cast(AsyncDbTransactionContext, self.__context).connection
         else:
             return cast(AsyncDbConnection, self.__context)
 
     async def begin_transaction(self) -> AsyncDbTransactionContext:
+        assert self.__sync_ctx is not None, 'no context'
         await asyncio.to_thread(self.__sync_ctx.begin_transaction)
         return self
 
     async def close(self) -> None:
         try:
-            cursor = self.__sync_ctx._SqliteTransactionContext__cursor  # type: ignore[attr-defined]
-            if cursor is not None:
-                sync_cursor = cursor._SqliteProxyCursor__cursor  # type: ignore[attr-defined]
-                await asyncio.to_thread(sync_cursor.close)
+            if self.__sync_ctx is not None:
+                self.__sync_ctx.close()
         except Exception:
             pass
-        try:
-            if self.__context is not None and self.__owns_context and hasattr(self.__context, 'close'):
-                await self.__context.close()
-                self.__context = None
-        except Exception:
-            pass
+        self.__sync_ctx = None
 
     async def commit(self) -> None:
+        assert self.__sync_ctx is not None, 'no context'
         await asyncio.to_thread(self.__sync_ctx.commit)
 
     async def cursor(self) -> Any:
+        assert self.__sync_ctx is not None, 'no context'
         sync_cursor = self.__sync_ctx.cursor()  # type: ignore[arg-type]
         raw_cursor = sync_cursor._SqliteProxyCursor__cursor  # type: ignore[attr-defined]
         return AsyncSqliteProxyCursor(raw_cursor)
 
     async def execute(self, sql: str, params: DbParams | None = None) -> Any:
+        assert self.__sync_ctx is not None, 'no context'
         await asyncio.to_thread(self.__sync_ctx.execute, sql, params)
         return await self.cursor()
 
     async def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
+        assert self.__sync_ctx is not None, 'no context'
         await asyncio.to_thread(self.__sync_ctx.execute_nonquery, sql, params)
 
     async def execute_reader(self, sql: str, params: DbParams | None = None) -> AsyncGenerator[tuple[Any, ...], None]:  # type: ignore[override]
+        assert self.__sync_ctx is not None, 'no context'
         sync_gen = self.__sync_ctx.execute_reader(sql, params)
         loop = asyncio.get_event_loop()
         while True:
@@ -128,14 +129,16 @@ class AsyncSqliteTransactionContext(AsyncDbTransactionContext):
             except StopIteration:
                 break
 
-    async def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
+        assert self.__sync_ctx is not None, 'no context'
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, lambda: self.__sync_ctx.execute_scalar(sql, params))
 
     async def execute_script(self, sql: str) -> None:
+        assert self.__sync_ctx is not None, 'no context'
         await asyncio.to_thread(self.__sync_ctx.execute_script, sql)
 
     async def rollback(self) -> None:
+        assert self.__sync_ctx is not None, 'no context'
         await asyncio.to_thread(self.__sync_ctx.rollback)
 
 
