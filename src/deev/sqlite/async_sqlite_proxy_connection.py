@@ -17,9 +17,6 @@ from .sqlite_proxy_connection import SqliteProxyConnection
 class AsyncSqliteProxyConnection(AsyncDbConnection):
     """
     Async shim that delegates to ``SqliteProxyConnection``.
-
-    Since sqlite3 has no native async API, all calls are forwarded to the
-    synchronous proxy using ``asyncio.to_thread``.
     """
 
     __sync_conn: SqliteProxyConnection
@@ -35,13 +32,13 @@ class AsyncSqliteProxyConnection(AsyncDbConnection):
         return AsyncSqliteProxyCursor(self.__sync_conn.cursor(*args, **kwargs))  # type: ignore[arg-type]
 
     async def commit(self) -> None:
-        await asyncio.to_thread(self.__sync_conn.commit)
+        self.__sync_conn.commit()
 
     async def rollback(self) -> None:
-        await asyncio.to_thread(self.__sync_conn.rollback)
+        self.__sync_conn.rollback()
 
     async def close(self) -> None:
-        await asyncio.to_thread(self.__sync_conn.close)
+        self.__sync_conn.close()
 
     async def __aenter__(self) -> Self:
         return self

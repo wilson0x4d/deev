@@ -241,8 +241,6 @@ Async utilities:
 - `create_table_adapter_async(entity_type, dbcontext)` — async auto-detect adapter
 - `begin_transaction_async(dbcontext)` — async transactional scope
 
-Async table adapters delegate to sync adapters via `asyncio.to_thread` (SQLite) or use native async drivers (MySQL, MongoDB, ClickHouse).
-
 Async transaction contexts mirror sync contexts: `AsyncDbTransactionContext`, `AsyncMongoTransactionContext`, `AsyncClickHouseTransactionContext`.
 
 ---

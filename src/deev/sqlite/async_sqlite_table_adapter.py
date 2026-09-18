@@ -21,9 +21,6 @@ TEntity = TypeVar('TEntity')
 class AsyncSqliteTableAdapter(AsyncDbTableAdapter[TEntity]):
     """
     Async shim that delegates to ``SqliteTableAdapter``.
-
-    Since sqlite3 has no native async API, all calls are forwarded to the
-    synchronous table adapter using ``asyncio.to_thread``.
     """
 
     __sync_adapter: SqliteTableAdapter[TEntity]
@@ -38,7 +35,7 @@ class AsyncSqliteTableAdapter(AsyncDbTableAdapter[TEntity]):
         create_table: bool = False,
         table_name: str | None = None
     ) -> None:
-        """Initialize the async SQLite table adapter (delegates to sync via ``asyncio.to_thread``)."""
+        """Initialize the async SQLite table adapter."""
         self.__context = context if isinstance(context, (AsyncSqliteProxyConnection, AsyncSqliteTransactionContext)) else AsyncSqliteProxyConnection(context)  # type: ignore[arg-type]
         self.__create_table = create_table is True
         self.__table_name = table_name

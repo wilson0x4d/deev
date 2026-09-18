@@ -23,9 +23,6 @@ from .sqlite_transaction_context import SqliteTransactionContext
 class AsyncSqliteTransactionContext(AsyncDbTransactionContext):
     """
     Async shim that delegates to ``SqliteTransactionContext``.
-
-    Wraps the synchronous transaction context and exposes an async API
-    using ``asyncio.to_thread`` for underlying sqlite3 operations.
     """
 
     __context: AsyncDbContext | None
@@ -55,7 +52,7 @@ class AsyncSqliteTransactionContext(AsyncDbTransactionContext):
 
     async def __aenter__(self) -> Self:
         assert self.__sync_ctx is not None, 'invalid state'
-        await asyncio.to_thread(self.__sync_ctx.begin_transaction)
+        self.__sync_ctx.begin_transaction()
         return self
 
     async def __aexit__(
@@ -65,16 +62,8 @@ class AsyncSqliteTransactionContext(AsyncDbTransactionContext):
         traceback: TracebackType | None = None
     ) -> Literal[False]:
         try:
-            if exc_type is not None and self.__sync_ctx._SqliteTransactionContext__transaction_state == 2:  # type: ignore[attr-defined]
-                await self.rollback()
-            elif self.__sync_ctx._SqliteTransactionContext__transaction_state == 2:  # type: ignore[attr-defined]
-                await self.rollback()
-                raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
-            elif self.__sync_ctx._SqliteTransactionContext__transaction_state <= 1:  # type: ignore[attr-defined]
-                if exc_type is not None:
-                    await self.rollback()
-                else:
-                    await self.commit()
+            if self.__sync_ctx is not None:
+                self.__sync_ctx.__exit__(exc_type, exc_value, traceback)
             return False
         finally:
             await self.close()
@@ -89,7 +78,7 @@ class AsyncSqliteTransactionContext(AsyncDbTransactionContext):
 
     async def begin_transaction(self) -> AsyncDbTransactionContext:
         assert self.__sync_ctx is not None, 'no context'
-        await asyncio.to_thread(self.__sync_ctx.begin_transaction)
+        self.__sync_ctx.begin_transaction()
         return self
 
     async def close(self) -> None:
@@ -102,7 +91,7 @@ class AsyncSqliteTransactionContext(AsyncDbTransactionContext):
 
     async def commit(self) -> None:
         assert self.__sync_ctx is not None, 'no context'
-        await asyncio.to_thread(self.__sync_ctx.commit)
+        self.__sync_ctx.commit()
 
     async def cursor(self) -> Any:
         assert self.__sync_ctx is not None, 'no context'
@@ -112,34 +101,33 @@ class AsyncSqliteTransactionContext(AsyncDbTransactionContext):
 
     async def execute(self, sql: str, params: DbParams | None = None) -> Any:
         assert self.__sync_ctx is not None, 'no context'
-        await asyncio.to_thread(self.__sync_ctx.execute, sql, params)
+        self.__sync_ctx.execute(sql, params)
         return await self.cursor()
 
     async def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
         assert self.__sync_ctx is not None, 'no context'
-        await asyncio.to_thread(self.__sync_ctx.execute_nonquery, sql, params)
+        self.__sync_ctx.execute_nonquery(sql, params)
 
     async def execute_reader(self, sql: str, params: DbParams | None = None) -> AsyncGenerator[tuple[Any, ...], None]:  # type: ignore[override]
         assert self.__sync_ctx is not None, 'no context'
         sync_gen = self.__sync_ctx.execute_reader(sql, params)
-        loop = asyncio.get_event_loop()
         while True:
             try:
-                yield await loop.run_in_executor(None, next, sync_gen)
+                yield next(sync_gen)
             except StopIteration:
                 break
 
+    async def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
         assert self.__sync_ctx is not None, 'no context'
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, lambda: self.__sync_ctx.execute_scalar(sql, params))
+        return self.__sync_ctx.execute_scalar(sql, params)
 
     async def execute_script(self, sql: str) -> None:
         assert self.__sync_ctx is not None, 'no context'
-        await asyncio.to_thread(self.__sync_ctx.execute_script, sql)
+        self.__sync_ctx.execute_script(sql)
 
     async def rollback(self) -> None:
         assert self.__sync_ctx is not None, 'no context'
-        await asyncio.to_thread(self.__sync_ctx.rollback)
+        self.__sync_ctx.rollback()
 
 
 __all__ = ['AsyncSqliteTransactionContext']

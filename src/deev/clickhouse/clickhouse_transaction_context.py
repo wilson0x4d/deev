@@ -126,7 +126,7 @@ class ClickHouseTransactionContext(DbTransactionContext):
         assert self.__context is not None, 'no context'
         return self.__context.cursor()
 
-    def execute(self, sql: str, parameters: DbParameters | None = None) -> DbCursor:
+    def execute(self, sql: str, params: DbParams | None = None) -> DbCursor:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__context is not None, 'no context'
@@ -141,10 +141,10 @@ class ClickHouseTransactionContext(DbTransactionContext):
         assert self.__context is not None, 'no context'
         if self.__cursor is None:
             self.__cursor = self.__context.cursor()
-        self.__cursor.execute(sql, parameters)
+        self.__cursor.execute(sql, params)
         self.__update_transaction_state(sql)
 
-    def execute_reader(self, sql: str, parameters: DbParameters | None = None) -> Generator[Any, None, None]:
+    def execute_reader(self, sql: str, params: DbParams | None = None) -> Generator[Any, None, None]:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__context is not None, 'no context'
