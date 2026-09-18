@@ -32,7 +32,7 @@ class ClickHouseTransactionContext(DbTransactionContext):
     """
 
     __ambient_transaction_id: ContextVar = ContextVar('ambient_transaction_id', default=None)
-    __context: DbContext
+    __context: DbContext | None
     __cursor: DbCursor | None
     __logger: logging.Logger
     __transaction_id: UUID
@@ -93,6 +93,7 @@ class ClickHouseTransactionContext(DbTransactionContext):
     def begin_transaction(self) -> DbTransactionContext:
         if self.__transaction_state != 0:
             raise DbError(f'A transaction was already started in this context, cannot begin a new transaction. ({self.__transaction_state})')
+        assert self.__context is not None, 'no context'
         self.__transaction_state = 1
         self.__cursor = self.__context.cursor()
         if ClickHouseTransactionContext.__ambient_transaction_id.get(None) is None:
@@ -114,6 +115,7 @@ class ClickHouseTransactionContext(DbTransactionContext):
         self.__context = None
 
     def commit(self) -> None:
+        assert self.__context is not None, 'no context'
         try:
             self.__context.commit()
         except Exception:
@@ -121,11 +123,13 @@ class ClickHouseTransactionContext(DbTransactionContext):
         self.__update_transaction_state('COMMIT')
 
     def cursor(self) -> DbCursor:
+        assert self.__context is not None, 'no context'
         return self.__context.cursor()
 
-    def execute(self, sql: str, params: DbParams | None = None) -> DbCursor:
+    def execute(self, sql: str, parameters: DbParameters | None = None) -> DbCursor:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__context is not None, 'no context'
         if self.__cursor is None:
             self.__cursor = self.__context.cursor()
         self.__cursor.execute(sql, params)
@@ -134,14 +138,16 @@ class ClickHouseTransactionContext(DbTransactionContext):
     def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__context is not None, 'no context'
         if self.__cursor is None:
             self.__cursor = self.__context.cursor()
-        self.__cursor.execute(sql, params)
+        self.__cursor.execute(sql, parameters)
         self.__update_transaction_state(sql)
 
-    def execute_reader(self, sql: str, params: DbParams | None = None) -> Generator[Any, None, None]:
+    def execute_reader(self, sql: str, parameters: DbParameters | None = None) -> Generator[Any, None, None]:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__context is not None, 'no context'
         self.__update_transaction_state(sql)
         if self.__cursor is None:
             self.__cursor = self.__context.cursor()
@@ -155,6 +161,7 @@ class ClickHouseTransactionContext(DbTransactionContext):
     def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__context is not None, 'no context'
         self.__update_transaction_state(sql)
         if self.__cursor is None:
             self.__cursor = self.__context.cursor()
@@ -166,6 +173,7 @@ class ClickHouseTransactionContext(DbTransactionContext):
     def execute_script(self, sql: str) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+        assert self.__context is not None, 'no context'
         self.__update_transaction_state("INSERT")
         if self.__cursor is None:
             self.__cursor = self.__context.cursor()
@@ -175,6 +183,7 @@ class ClickHouseTransactionContext(DbTransactionContext):
                 self.__cursor.execute(stmt)
 
     def rollback(self) -> None:
+        assert self.__context is not None, 'no context'
         try:
             self.__context.rollback()
         except Exception:
