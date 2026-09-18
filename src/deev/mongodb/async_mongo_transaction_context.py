@@ -43,14 +43,14 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
         self.__transaction_state = 0
         self.__database_name = getattr(context, 'mongo_database_name', '')  # type: ignore[arg-type]
         self.__delegate_mode = AsyncMongoTransactionContext._DELEGATE_TXN_CACHE.get(
-            AsyncMongoTransactionContext._server_key(self.mongo_client), None
+            AsyncMongoTransactionContext.__server_key(self.mongo_client), None
         )
         self.__cursor = None
 
     @staticmethod
-    def _server_key(mongo_client: Any) -> tuple[str | None, int]:
+    def __server_key(mongo_client: pymongo.AsyncMongoClient[Any]) -> tuple[str | None, int]:
         """Extract (hostname, port) from a pymongo.MongoClient as cache key."""
-        return (mongo_client.HOST, mongo_client.PORT)  # type: ignore[attr-defined]
+        return (mongo_client.HOST, mongo_client.PORT)
 
     async def __is_delegate_mode(self) -> bool:
         """Return True when the server is known NOT to support transactions."""
