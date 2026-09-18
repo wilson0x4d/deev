@@ -9,10 +9,10 @@ from typing import Any, Literal, Self
 
 from ..common.db_connection import DbConnection
 from ..common.db_cursor import DbCursor
-from .sqlite_proxy_cursor import SqliteProxyCursor
+from .sqlite_proxy_cursor import SQLiteProxyCursor
 
 
-class SqliteProxyConnection(DbConnection):
+class SQLiteProxyConnection(DbConnection):
     """
     Normalized connection interface for sqlite3.
 
@@ -29,7 +29,7 @@ class SqliteProxyConnection(DbConnection):
         return self.__connection
 
     def cursor(self, *args: Any, **kwargs: Any) -> DbCursor:
-        return SqliteProxyCursor(self.__connection.cursor(*args, **kwargs))
+        return SQLiteProxyCursor(self.__connection.cursor(*args, **kwargs))
 
     def commit(self) -> None:
         self.__connection.commit()
@@ -47,4 +47,4 @@ class SqliteProxyConnection(DbConnection):
         return self.__connection.__exit__(exc_type, exc, tb)
 
 
-__all__ = ['SqliteProxyConnection']
+__all__ = ['SQLiteProxyConnection']

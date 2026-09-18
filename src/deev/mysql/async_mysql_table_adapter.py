@@ -11,23 +11,23 @@ from uuid import UUID
 from ..common.async_db_table_adapter import AsyncDbTableAdapter
 from ..common.db_context import AsyncDbContext
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
+from ..common.db_parameters import DbParameters
 from ..entities import EntitySpec, get_entity_spec
 from ..translation import hydrate, to_pyobject, splat
-from .async_mysql_proxy_connection import AsyncMysqlProxyConnection
-from .async_mysql_transaction_context import AsyncMysqlTransactionContext
-from .mysql_type_mapper import MysqlTypeMapper
+from .async_mysql_proxy_connection import AsyncMySQLProxyConnection
+from .async_mysql_transaction_context import AsyncMySQLTransactionContext
+from .mysql_type_mapper import MySQLTypeMapper
 
 TEntity = TypeVar('TEntity')
 
 
-class AsyncMysqlTableAdapter(AsyncDbTableAdapter[TEntity]):
+class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
     """
     Async MySQL implementation of :class:`AsyncDbTableAdapter`.
 
     Uses native async MySQL driver with ``ON DUPLICATE KEY UPDATE`` for upserts.
 
-    :param context: An :class:`AsyncMysqlProxyConnection` or :class:`AsyncMysqlTransactionContext`.
+    :param context: An :class:`AsyncMySQLProxyConnection` or :class:`AsyncMySQLTransactionContext`.
     :param create_table: Whether to auto-create the table on first operation.
     :param table_name: Optional table name override.
     """
@@ -48,7 +48,7 @@ class AsyncMysqlTableAdapter(AsyncDbTableAdapter[TEntity]):
         table_name: str | None = None
     ) -> None:
         """Initialize the async MySQL table adapter."""
-        self.__context = context if isinstance(context, (AsyncMysqlProxyConnection, AsyncMysqlTransactionContext)) else AsyncMysqlProxyConnection(context)  # type: ignore[arg-type]
+        self.__context = context if isinstance(context, (AsyncMySQLProxyConnection, AsyncMySQLTransactionContext)) else AsyncMySQLProxyConnection(context)  # type: ignore[arg-type]
         self.__create_table = create_table is True
         self.__initialized = False
         self.__table_name = table_name
@@ -58,7 +58,7 @@ class AsyncMysqlTableAdapter(AsyncDbTableAdapter[TEntity]):
         if not self.__initialized:
             self.__entity_spec = get_entity_spec(self.__get_typearg(self))
             self.__column_names = ', '.join([f'`{k}`' for k in self.__entity_spec.fields.keys()])
-            self.__dbtype_mapper = MysqlTypeMapper(self.__entity_spec)
+            self.__dbtype_mapper = MySQLTypeMapper(self.__entity_spec)
             self.__initialized = True
             if self.__create_table is True:
                 await self.create_table()
@@ -68,13 +68,13 @@ class AsyncMysqlTableAdapter(AsyncDbTableAdapter[TEntity]):
         if not self.__initialized:
             self.__entity_spec = get_entity_spec(self.__get_typearg(self))
             self.__column_names = ', '.join([f'`{k}`' for k in self.__entity_spec.fields.keys()])
-            self.__dbtype_mapper = MysqlTypeMapper(self.__entity_spec)
+            self.__dbtype_mapper = MySQLTypeMapper(self.__entity_spec)
             self.__initialized = True
         return self.__entity_spec.primary_key
 
-    async def __execute(self, sql: str, params: DbParams | None = None) -> None:
+    async def __execute(self, sql: str, parameters: DbParameters | None = None) -> None:
         cursor = await self.__context.cursor()
-        await cursor.execute(sql, params)
+        await cursor.execute(sql, parameters)
 
     def __get_pyobject(self, key: str, value: Any) -> Any:
         return to_pyobject(
@@ -89,20 +89,20 @@ class AsyncMysqlTableAdapter(AsyncDbTableAdapter[TEntity]):
                 return args[0]
         for base in obj.__class__.__mro__:
             for generic_base in getattr(base, '__orig_bases__', ()):
-                if get_origin(generic_base) is AsyncMysqlTableAdapter:
+                if get_origin(generic_base) is AsyncMySQLTableAdapter:
                     args = get_args(generic_base)
                     if args is not None and len(args) > 0:
                         return args[0]
         raise RuntimeError(
             f'Could not determine the entity type for {obj.__class__.__qualname__}. '
-            'Instantiate via the generic alias, e.g. AsyncMysqlTableAdapter[MyEntity]().'
+            'Instantiate via the generic alias, e.g. AsyncMySQLTableAdapter[MyEntity]().'
         )
 
     async def create_table(self) -> None:
         """Utility method for creating the target table."""
         await self.__deferred_init()
-        from .mysql_ddl_generator import MysqlDDLGenerator
-        ddl_generator = MysqlDDLGenerator()
+        from .mysql_ddl_generator import MySQLDDLGenerator
+        ddl_generator = MySQLDDLGenerator()
         ddl = ddl_generator.generate_table_ddl(entity_spec=self.__entity_spec, table_name=self.__table_name)
         for stmt in ddl:
             await self.__execute(stmt)
@@ -143,10 +143,10 @@ class AsyncMysqlTableAdapter(AsyncDbTableAdapter[TEntity]):
         cursor = await self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'INSERT INTO `{table_name}` ({column_names}) VALUES ({parms})'
-        params = tuple([
+        parameters = tuple([
             cast(mysql.connector.types.MySQLConvertibleType, p.hex if type(p) is UUID else p)
             for p in data.values()])
-        await cursor.execute(sql, params)
+        await cursor.execute(sql, parameters)
         if self.__entity_spec.has_autoincrement:
             await cursor.execute('SELECT LAST_INSERT_ID()')
             v = await cursor.fetchone()
@@ -269,25 +269,25 @@ class AsyncMysqlTableAdapter(AsyncDbTableAdapter[TEntity]):
     async def query(  # type: ignore[override]
         self,
         where: str | None = None,
-        params: DbParams | None = None,
+        parameters: DbParameters | None = None,
         orderby: str | None = None,
         limit: int | None = None
     ) -> AsyncGenerator[TEntity, None]:
         await self.__deferred_init()
-        if params is not None:
-            params = [
+        if parameters is not None:
+            parameters = [
                 p.hex if type(p) is UUID else p
-                for p in params
+                for p in parameters
             ]
         else:
-            params = []
+            parameters = []
         where = f' WHERE {where}' if where is not None and len(where) > 0 else ''
         orderby = f' ORDER BY {orderby}' if orderby is not None and len(orderby) > 0 else ''
         limit_str = f' LIMIT {limit}' if limit is not None and limit > 0 else ''
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'SELECT {self.__column_names} FROM `{table_name}`{where}{orderby}{limit_str}'
         cursor = await self.__context.cursor()
-        await cursor.execute(sql, tuple(params))
+        await cursor.execute(sql, tuple(parameters))
         if cursor.description is None:
             raise Exception('cursor missing required descriptor')
         row = await cursor.fetchone()
@@ -303,4 +303,4 @@ class AsyncMysqlTableAdapter(AsyncDbTableAdapter[TEntity]):
             row = await cursor.fetchone()
 
 
-__all__ = ['AsyncMysqlTableAdapter']
+__all__ = ['AsyncMySQLTableAdapter']

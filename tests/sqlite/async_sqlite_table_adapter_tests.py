@@ -5,7 +5,7 @@ import appsettings2
 from datetime import datetime, timedelta, timezone
 from deev import entity, field
 from deev.common import ConnectionString
-from deev.sqlite import AsyncSqliteTableAdapter
+from deev.sqlite import AsyncSQLiteTableAdapter
 from deev.utils import connect_async, create_database
 from punit import fact, trait
 import os
@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 
 
 @fact
-@trait('sqlite3')
+@trait('sqlite')
 @trait('integration')
 async def async_adapter_basic_crud() -> None:
     appsettings = appsettings2.get_configuration()
@@ -31,7 +31,7 @@ async def async_adapter_basic_crud() -> None:
             floaty: float | None = None
 
         async with await connect_async(cxnstring) as connection:
-            async_adapter = AsyncSqliteTableAdapter[BasicEntity](connection, create_table=True)
+            async_adapter = AsyncSQLiteTableAdapter[BasicEntity](connection, create_table=True)
 
             entity1 = BasicEntity(
                 example=456,
@@ -61,7 +61,7 @@ async def async_adapter_basic_crud() -> None:
 
 
 @fact
-@trait('sqlite3')
+@trait('sqlite')
 @trait('integration')
 async def async_adapter_create_kwargs() -> None:
     appsettings = appsettings2.get_configuration()
@@ -75,7 +75,7 @@ async def async_adapter_create_kwargs() -> None:
             value: str | None = None
 
         async with await connect_async(cxnstring) as connection:
-            async_adapter = AsyncSqliteTableAdapter[KwargsEntity](connection, create_table=True)
+            async_adapter = AsyncSQLiteTableAdapter[KwargsEntity](connection, create_table=True)
 
             key = await async_adapter.create(value='from_kwargs')
             assert key is not None
@@ -92,7 +92,7 @@ async def async_adapter_create_kwargs() -> None:
 
 
 @fact
-@trait('sqlite3')
+@trait('sqlite')
 @trait('integration')
 async def async_adapter_query_and_delete() -> None:
     appsettings = appsettings2.get_configuration()
@@ -107,13 +107,13 @@ async def async_adapter_query_and_delete() -> None:
             status: str | None = None
 
         async with await connect_async(cxnstring) as connection:
-            async_adapter = AsyncSqliteTableAdapter[QueryEntity](connection, create_table=True)
+            async_adapter = AsyncSQLiteTableAdapter[QueryEntity](connection, create_table=True)
 
             for i in range(3):
                 await async_adapter.create(name=f'item_{i}', status='active')
 
             results = []
-            async for row in async_adapter.query(where='status=%?', params=['active']):
+            async for row in async_adapter.query(where='status=%?', parameters=['active']):
                 results.append(row)
             assert len(results) >= 3
 
@@ -130,7 +130,7 @@ async def async_adapter_query_and_delete() -> None:
 
 
 @fact
-@trait('sqlite3')
+@trait('sqlite')
 @trait('integration')
 async def async_adapter_upsert() -> None:
     appsettings = appsettings2.get_configuration()
@@ -145,7 +145,7 @@ async def async_adapter_upsert() -> None:
             count: int | None = None
 
         async with await connect_async(cxnstring) as connection:
-            async_adapter = AsyncSqliteTableAdapter[UpsertEntity](connection, create_table=True)
+            async_adapter = AsyncSQLiteTableAdapter[UpsertEntity](connection, create_table=True)
 
             entity1 = UpsertEntity(name='new_entity', count=1)
             pk = await async_adapter.upsert(entity1)
@@ -169,7 +169,7 @@ async def async_adapter_upsert() -> None:
 
 
 @fact
-@trait('sqlite3')
+@trait('sqlite')
 @trait('integration')
 async def async_adapter_primary_key_property() -> None:
     appsettings = appsettings2.get_configuration()
@@ -183,7 +183,7 @@ async def async_adapter_primary_key_property() -> None:
             value: str | None = None
 
         async with await connect_async(cxnstring) as connection:
-            async_adapter = AsyncSqliteTableAdapter[PKEntity](connection, create_table=True)
+            async_adapter = AsyncSQLiteTableAdapter[PKEntity](connection, create_table=True)
             await async_adapter.create_table()
             assert async_adapter.primary_key == ('id',)
     finally:
@@ -194,7 +194,7 @@ async def async_adapter_primary_key_property() -> None:
 
 
 @fact
-@trait('sqlite3')
+@trait('sqlite')
 @trait('integration')
 async def async_adapter_uuid_field_roundtrip() -> None:
     appsettings = appsettings2.get_configuration()
@@ -208,7 +208,7 @@ async def async_adapter_uuid_field_roundtrip() -> None:
             ref_uuid: UUID | None = None
 
         async with await connect_async(cxnstring) as connection:
-            async_adapter = AsyncSqliteTableAdapter[UuidEntity](connection, create_table=True)
+            async_adapter = AsyncSQLiteTableAdapter[UuidEntity](connection, create_table=True)
 
             target_uuid = uuid4()
             entity1 = UuidEntity(ref_uuid=target_uuid)
@@ -226,7 +226,7 @@ async def async_adapter_uuid_field_roundtrip() -> None:
 
 
 @fact
-@trait('sqlite3')
+@trait('sqlite')
 @trait('integration')
 async def async_adapter_datetime_roundtrip() -> None:
     appsettings = appsettings2.get_configuration()
@@ -240,7 +240,7 @@ async def async_adapter_datetime_roundtrip() -> None:
             created_at: datetime | None = None
 
         async with await connect_async(cxnstring) as connection:
-            async_adapter = AsyncSqliteTableAdapter[DateTimeEntity](connection, create_table=True)
+            async_adapter = AsyncSQLiteTableAdapter[DateTimeEntity](connection, create_table=True)
 
             now = datetime.now(tz=timezone.utc)
             entity1 = DateTimeEntity(created_at=now)

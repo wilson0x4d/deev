@@ -11,7 +11,7 @@ from ..common.async_db_connection import AsyncDbConnection
 from ..common.async_db_table_adapter import AsyncDbTableAdapter
 from ..common.async_db_transaction_context import AsyncDbTransactionContext
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
+from ..common.db_parameters import DbParameters
 from ..common.db_type_mapper import DbTypeMapper
 from ..entities import EntitySpec, get_entity_spec
 from ..translation import hydrate, splat, to_pyobject
@@ -322,14 +322,14 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
     async def query(  # type: ignore[override]
         self,
         where: str | None = None,
-        params: DbParams | None = None,
+        parameters: DbParameters | None = None,
         orderby: str | None = None,
         limit: int | None = None
     ) -> AsyncGenerator[TEntity, None]:
         await self.__deferred_init()
-        if params is None:
-            params = ()
-        where_filter: dict[str, Any] = parse_sql_where(where, tuple(params)) if where else {}
+        if parameters is None:
+            parameters = ()
+        where_filter: dict[str, Any] = parse_sql_where(where, tuple(parameters)) if where else {}
         sort_spec: list[tuple[str, int]] | None = None
         if orderby is not None and len(orderby) > 0:
             sort_entries = [s.strip() for s in orderby.split(',')]

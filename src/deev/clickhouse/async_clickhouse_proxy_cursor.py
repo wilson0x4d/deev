@@ -12,8 +12,8 @@ from uuid import UUID
 
 import hanaro
 
-from ..common.async_db_cursor import AsyncDbCursor
-from ..common.db_params import DbParams
+from ..common.async_db_cursor import AsyncDbCursor, AsyncDbCursorDescription
+from ..common.db_parameters import DbParameters
 
 if TYPE_CHECKING:
     from clickhouse_connect.driver.asyncclient import AsyncClient
@@ -28,8 +28,8 @@ class AsyncClickHouseProxyCursor(AsyncDbCursor):
     on the client. This cursor wraps the AsyncClient to provide a DB-API 2.0
     compliant async cursor interface.
 
-    Positional params (%?) are converted to pyformat %(pN)s format because
-    ClickHouse's pyformat paramstyle is %(name)s.
+    Positional parameters (%?) are converted to pyformat %(pN)s format because
+    ClickHouse's pyformat parameter style is %(name)s.
 
     INSERT statements are routed through the native ``client.insert()``
     method for optimal performance.
@@ -38,7 +38,7 @@ class AsyncClickHouseProxyCursor(AsyncDbCursor):
     __client: AsyncClient
     __cursor: logging.Logger
     __result: list[tuple[Any, ...]]
-    __description: Sequence[tuple[Any, ...]] | None
+    __description: AsyncDbCursorDescription
     __rowcount: int
     __query_index: int
     __is_insert: bool
@@ -59,7 +59,7 @@ class AsyncClickHouseProxyCursor(AsyncDbCursor):
         return self.__client
 
     @property
-    def description(self) -> Sequence[tuple[Any, ...]] | None:
+    def description(self) -> AsyncDbCursorDescription:
         return self.__description
 
     @property
@@ -112,20 +112,22 @@ class AsyncClickHouseProxyCursor(AsyncDbCursor):
             return dict
         return str
 
-    def __build_description(self, column_names: tuple[str, ...], column_types: tuple[Any, ...]) -> list[tuple[Any, ...]]:
+    def __build_description(self, column_names: tuple[str, ...], column_types: tuple[Any, ...]) -> AsyncDbCursorDescription:
         """Build a PEP 249 compliant description from column_names and column_types."""
-        description: list[tuple[Any, ...]] = []
+        from ..common.description_field import DescriptionField
+
+        description: list[DescriptionField] = []
         for name, ch_type in zip(column_names, column_types):
             type_name: str = ch_type.name
             python_type = self.__get_pep249_type(type_name)
-            description.append((
-                name,
-                python_type,
-                None,  # display_size
-                None,  # internal_size
-                None,  # precision
-                None,  # scale
-                ch_type.nullable,  # null_ok
+            description.append(DescriptionField(
+                name=name,
+                type_code=python_type,
+                display_size=None,
+                internal_size=None,
+                precision=None,
+                scale=None,
+                null_ok=1 if ch_type.nullable else 0,
             ))
         return description
 
@@ -149,26 +151,26 @@ class AsyncClickHouseProxyCursor(AsyncDbCursor):
             columns.append(c.split()[0])
         return (table, columns)
 
-    def __convert_positional_to_pyformat(self, operation: str, params: tuple[Any, ...]) -> tuple[str, dict[str, Any]]:
-        """Convert %? placeholders to pyformat %(pN)s placeholders and build a params dict."""
+    def __convert_positional_to_pyformat(self, operation: str, parameters: tuple[Any, ...]) -> tuple[str, dict[str, Any]]:
+        """Convert %? placeholders to pyformat %(pN)s placeholders and build a parameters dict."""
         param_dict: dict[str, Any] = {}
         result: list[str] = []
         i = 0
         for part in re.split(r'(%\?)', operation):
             if part == '%?':
                 name = f'p{i}'
-                param_dict[name] = params[i]
+                param_dict[name] = parameters[i]
                 result.append(f'%({name})s')
                 i += 1
             else:
                 result.append(part)
         return ''.join(result), param_dict
 
-    async def execute(self, operation: str, params: DbParams | None = None) -> None:
-        if params is not None:
-            param_tuple: tuple[Any, ...] = tuple(params)
-            pyformat_sql, pyformat_params = self.__convert_positional_to_pyformat(operation, param_tuple)
-            result = await self.__client.query(pyformat_sql, parameters=pyformat_params or None)
+    async def execute(self, operation: str, parameters: DbParameters | None = None) -> None:
+        if parameters is not None:
+            param_tuple: tuple[Any, ...] = tuple(parameters)
+            pyformat_sql, pyformat_parameters = self.__convert_positional_to_pyformat(operation, param_tuple)
+            result = await self.__client.query(pyformat_sql, parameters=pyformat_parameters or None)
             self.__result = [tuple(row) for row in result.result_rows]
             self.__description = self.__build_description(result.column_names, result.column_types)
             self.__rowcount = result.row_count
@@ -180,9 +182,9 @@ class AsyncClickHouseProxyCursor(AsyncDbCursor):
             self.__rowcount = result.row_count
             self.__query_index = 0
 
-    async def executemany(self, operation: str, seq_params: Sequence[DbParams]) -> None:
-        tuple_list: list[DbParams] = []
-        for p in seq_params:
+    async def executemany(self, operation: str, seq_of_parameters: Sequence[DbParameters]) -> None:
+        tuple_list: list[DbParameters] = []
+        for p in seq_of_parameters:
             if isinstance(p, (tuple, list)):
                 tuple_list.append(tuple(p))
             else:
@@ -201,10 +203,10 @@ class AsyncClickHouseProxyCursor(AsyncDbCursor):
                         return
                     except Exception:
                         pass
-        param_tuples = [tuple(p) if not isinstance(p, tuple) else p for p in seq_params]
-        for params_list in param_tuples:
-            pyformat_sql, pyformat_params = self.__convert_positional_to_pyformat(operation, params_list)
-            query_result = await self.__client.query(pyformat_sql, parameters=pyformat_params or None)
+        param_tuples = [tuple(p) if not isinstance(p, tuple) else p for p in seq_of_parameters]
+        for parameters_list in param_tuples:
+            pyformat_sql, pyformat_parameters = self.__convert_positional_to_pyformat(operation, parameters_list)
+            query_result = await self.__client.query(pyformat_sql, parameters=pyformat_parameters or None)
             self.__result = [tuple(row) for row in query_result.result_rows]
             self.__description = self.__build_description(query_result.column_names, query_result.column_types)
             self.__rowcount = query_result.row_count

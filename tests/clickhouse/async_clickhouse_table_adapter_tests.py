@@ -161,7 +161,7 @@ async def async_adapter_query_and_delete() -> None:
             time.sleep(0.2)
 
             results = []
-            async for row in adapter.query(where='status=%?', params=['active']):
+            async for row in adapter.query(where='status=%?', parameters=['active']):
                 results.append(row)
             assert len(results) >= 3
     finally:

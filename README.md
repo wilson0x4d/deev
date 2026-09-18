@@ -17,6 +17,7 @@ This README is only a high-level introduction to **deev**. For more detailed doc
 - **Declarative indexes** — define composite, unique, and directional indexes on entity fields.
 - **Native Interface Access** — drop down to provider-specific methods when the ORM layer isn't enough.
 
+
 ## Installation
 
 You can install `deev` from [PyPI](https://pypi.org/project/deev/) through usual means, such as `pip`:
@@ -69,9 +70,9 @@ Next, let's write some CRUD-based code:
 
     # connect to your database, create a table for storage, and perform some CRUD operations
     from deev import connect
-    from deev.sqlite import SqliteTableAdapter
+    from deev.sqlite import SQLiteTableAdapter
     with connect(connection_str) as db:
-        table = SqliteTableAdapter[SimpleEntity](db)
+        table = SQLiteTableAdapter[SimpleEntity](db)
         table.create_table()
         # CREATE
         entity_key = table.create(SimpleEntity(
@@ -104,7 +105,7 @@ Next, let's write some CRUD-based code:
             where='column1 = %?',
             orderby='column1 DESC',
             limit=2,   
-            params=(2,)
+            parameters=(2,)
         )
         count = 0
         for result in results:
@@ -117,7 +118,7 @@ Next, let's write some CRUD-based code:
 
 ### CLI `db-migrate` Tool
 
-.. note:: For comprehensive migration documentation (provider-specific behavior, best practices, DDL auto-commit considerations), see the full [Migration Guide](https://deev.readthedocs.io/en/latest/migration.html).
+> NOTE: For comprehensive migration documentation (provider-specific behavior, best practices, DDL auto-commit considerations), see the full [Migration Guide](https://deev.readthedocs.io/en/latest/migration.html).
 
 The `db-migrate` tool can be used to apply a migration script or undo a previously applied migration script.
 
@@ -153,9 +154,7 @@ options:
 
 ```
 
-:::note
-The `generate` subcommand is **alpha-quality** and subject to change without notice. Do not rely on its interface for production tooling.
-:::
+> NOTE: The `generate` subcommand is **alpha-quality** and subject to change without notice. Do not rely on its interface for production tooling.
 
 A migration script is a Python file which defines two functions `apply(...)` and `undo(...)`, each receiving a `DbTransactionContext` you can use to modify the database transactionally.
 

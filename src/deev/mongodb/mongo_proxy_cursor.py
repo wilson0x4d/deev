@@ -13,9 +13,9 @@ import hanaro
 from pymongo.collection import Collection
 from pymongo.client_session import ClientSession
 
-from ..common.db_cursor import DbCursor
+from ..common.db_cursor import DbCursor, DbCursorDescription
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
+from ..common.db_parameters import DbParameters
 from .utils import infer_description_fields, parse_sql_where
 
 
@@ -47,17 +47,24 @@ class MongoProxyCursor(DbCursor):
         self.__row_count = 0
 
     @property
-    def description(self) -> Sequence[tuple[Any, Any, int | None, int | None, int | None, int | None, bool]] | None:
+    def description(self) -> DbCursorDescription:
         if self.__result_set is not None and len(self.__result_set) > 0:
             first_doc = self.__result_set[0]
             fields = list(self.__description_fields) if self.__description_fields else list(first_doc.keys())
+            from ..common.description_field import DescriptionField
+
             return tuple(
-                (
-                    name,
-                    *self._describe_field(name, first_doc),
-                    True,
+                DescriptionField(
+                    name=name,
+                    type_code=f[0],
+                    display_size=f[1],
+                    internal_size=f[2],
+                    precision=f[3],
+                    scale=f[4],
+                    null_ok=1,
                 )
                 for name in fields
+                for f in (self._describe_field(name, first_doc),)
             )
         return None
 
@@ -87,8 +94,8 @@ class MongoProxyCursor(DbCursor):
         """Store the target collection name for use by mongo_fetch* methods."""
         self.__last_collection = self.__get_database()[name]  # type: ignore[attr-defined]
 
-    def execute(self, operation: str, params: DbParams | None = None) -> None:
-        param_tuple: tuple[Any, ...] = tuple(params) if params is not None else ()
+    def execute(self, operation: str, parameters: DbParameters | None = None) -> None:
+        param_tuple: tuple[Any, ...] = tuple(parameters) if parameters is not None else ()
         operation_upper = operation.strip().upper()
         self.__row_index = 0
         self.__result_set = None
@@ -108,7 +115,7 @@ class MongoProxyCursor(DbCursor):
             self.__logger.error('MongoProxyCursor.execute failed: %s', str(exc))
             raise DbError(f'MongoDB operation failed: {exc}') from exc
 
-    def _execute_select(self, sql: str, params: tuple[Any, ...]) -> None:
+    def _execute_select(self, sql: str, parameters: tuple[Any, ...]) -> None:
         """Parse a SELECT statement and execute the corresponding MongoDB find."""
         select_re = re.compile(
             r"SELECT\s+(.+?)(?:\s+FROM\s+(`[^`]+`|\w+))?(?:\s+WHERE\s+(.+?))?(?:\s+ORDER\s+BY\s+(.+?))?(?:\s+LIMIT\s+(\d+))?\s*$",
@@ -142,7 +149,7 @@ class MongoProxyCursor(DbCursor):
         else:
             col_names = [c.strip().strip('`]["') for c in columns_str.split(',')]
             projection = {c: 1 for c in col_names}
-        where_filter = parse_sql_where(where_clause, params) if where_clause else {}
+        where_filter = parse_sql_where(where_clause, parameters) if where_clause else {}
         sort_spec: list[tuple[str, int]] | None = None
         if order_by_str:
             sort_entries = [s.strip() for s in order_by_str.split(',')]
@@ -166,7 +173,7 @@ class MongoProxyCursor(DbCursor):
             self.__description_fields = tuple(col_names)
         self.__row_count = len(docs)
 
-    def _execute_insert(self, sql: str, params: tuple[Any, ...]) -> None:
+    def _execute_insert(self, sql: str, parameters: tuple[Any, ...]) -> None:
         """Parse an INSERT statement and execute the corresponding MongoDB insert_one."""
         insert_re = re.compile(
             r'INSERT\s+(?:\w+\s+)?(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)\s*$',
@@ -189,8 +196,8 @@ class MongoProxyCursor(DbCursor):
         param_idx = 0
         for vs in value_strings:
             if vs == '%?':
-                if param_idx < len(params):
-                    values.append(params[param_idx])
+                if param_idx < len(parameters):
+                    values.append(parameters[param_idx])
                     param_idx += 1
                 else:
                     raise DbError('INSERT statement has more placeholders than provided parameters.')
@@ -212,7 +219,7 @@ class MongoProxyCursor(DbCursor):
         self.__description_fields = tuple(doc.keys())
         self.__row_count = 1
 
-    def _execute_update(self, sql: str, params: tuple[Any, ...]) -> None:
+    def _execute_update(self, sql: str, parameters: tuple[Any, ...]) -> None:
         """Parse an UPDATE statement and execute the corresponding MongoDB update_one."""
         update_re = re.compile(
             r'UPDATE\s+(\w+)\s+SET\s+(.+?)\s+WHERE\s+(.+)\s*$',
@@ -231,13 +238,13 @@ class MongoProxyCursor(DbCursor):
         self._set_collection_name(table_name)
         assignments_re = re.compile(r"(\w+)\s*=\s*(\%\?|'[^']*'|NULL|\d+(?:\.\d+)?)")
         assignment_pairs = assignments_re.findall(set_clause)
-        where_filter = parse_sql_where(where_clause, params) if where_clause else {}
+        where_filter = parse_sql_where(where_clause, parameters) if where_clause else {}
         update_data: dict[str, Any] = {}
         param_idx = 0
         for field_name, value_str in assignment_pairs:
             if value_str == '%?':
-                if param_idx < len(params):
-                    update_data[field_name] = params[param_idx]
+                if param_idx < len(parameters):
+                    update_data[field_name] = parameters[param_idx]
                     param_idx += 1
                 else:
                     raise DbError('UPDATE statement has more SET placeholders than provided parameters.')
@@ -256,7 +263,7 @@ class MongoProxyCursor(DbCursor):
         match_result = self.__get_database()[table_name].update_one(where_filter, {'$set': update_data})
         self.__row_count = match_result.modified_count
 
-    def _execute_delete(self, sql: str, params: tuple[Any, ...]) -> None:
+    def _execute_delete(self, sql: str, parameters: tuple[Any, ...]) -> None:
         """Parse a DELETE statement and execute the corresponding MongoDB delete_one."""
         delete_re = re.compile(
             r'DELETE\s+FROM\s+(\w+)(?:\s+WHERE\s+(.+))?\s*$',
@@ -272,11 +279,11 @@ class MongoProxyCursor(DbCursor):
             table_name.strip('`]["')
         where_clause = m.group(2)
         self._set_collection_name(table_name)
-        where_filter = parse_sql_where(where_clause, params) if where_clause else {}
+        where_filter = parse_sql_where(where_clause, parameters) if where_clause else {}
         match_result = self.__get_database()[table_name].delete_one(where_filter)
         self.__row_count = match_result.deleted_count
 
-    def executemany(self, operation: str, seq_params: Sequence[DbParams]) -> None:
+    def executemany(self, operation: str, seq_of_parameters: Sequence[DbParameters]) -> None:
         """Execute an INSERT with multiple parameter sets."""
         insert_re = re.compile(
             r'INSERT\s+(?:\w+\s+)?(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)\s*$',
@@ -284,7 +291,7 @@ class MongoProxyCursor(DbCursor):
         )
         m = insert_re.match(operation.strip())
         if not m:
-            self.execute(operation, seq_params[0] if seq_params else None)
+            self.execute(operation, seq_of_parameters[0] if seq_of_parameters else None)
             return
         table_name = m.group(1)
         columns_str = m.group(2)
@@ -292,7 +299,7 @@ class MongoProxyCursor(DbCursor):
         columns = [c.strip().strip('`]["') for c in columns_str.split(',')]
         placeholders = values_pattern.split(',')
         docs: list[dict[str, Any]] = []
-        for param_set in seq_params:
+        for param_set in seq_of_parameters:
             param_tuple = tuple(param_set) if not isinstance(param_set, tuple) else param_set
             doc: dict[str, Any] = {}
             pi = 0

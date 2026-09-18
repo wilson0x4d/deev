@@ -10,26 +10,26 @@ from typing import Any, Literal, Self
 
 from ..common.async_db_connection import AsyncDbConnection
 from ..common.async_db_cursor import AsyncDbCursor
-from .async_sqlite_proxy_cursor import AsyncSqliteProxyCursor
-from .sqlite_proxy_connection import SqliteProxyConnection
+from .async_sqlite_proxy_cursor import AsyncSQLiteProxyCursor
+from .sqlite_proxy_connection import SQLiteProxyConnection
 
 
-class AsyncSqliteProxyConnection(AsyncDbConnection):
+class AsyncSQLiteProxyConnection(AsyncDbConnection):
     """
-    Async shim that delegates to ``SqliteProxyConnection``.
+    Async shim that delegates to ``SQLiteProxyConnection``.
     """
 
-    __sync_conn: SqliteProxyConnection
+    __sync_conn: SQLiteProxyConnection
 
     def __init__(self, conn: Connection) -> None:
-        self.__sync_conn = SqliteProxyConnection(conn)
+        self.__sync_conn = SQLiteProxyConnection(conn)
 
     @property
-    def sqlite_connection(self) -> SqliteProxyConnection:
+    def sqlite_connection(self) -> SQLiteProxyConnection:
         return self.__sync_conn
 
     async def cursor(self, *args: Any, **kwargs: Any) -> AsyncDbCursor:
-        return AsyncSqliteProxyCursor(self.__sync_conn.cursor(*args, **kwargs))  # type: ignore[arg-type]
+        return AsyncSQLiteProxyCursor(self.__sync_conn.cursor(*args, **kwargs))  # type: ignore[arg-type]
 
     async def commit(self) -> None:
         self.__sync_conn.commit()
@@ -48,4 +48,4 @@ class AsyncSqliteProxyConnection(AsyncDbConnection):
         return False
 
 
-__all__ = ['AsyncSqliteProxyConnection']
+__all__ = ['AsyncSQLiteProxyConnection']

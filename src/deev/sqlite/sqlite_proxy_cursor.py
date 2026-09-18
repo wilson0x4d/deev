@@ -11,11 +11,11 @@ from typing import (
     Sequence
 )
 
-from ..common.db_cursor import DbCursor
-from ..common.db_params import DbParams
+from ..common.db_cursor import DbCursor, DbCursorDescription
+from ..common.db_parameters import DbParameters
 
 
-class SqliteProxyCursor(DbCursor):
+class SQLiteProxyCursor(DbCursor):
     """
     Normalized cursor interface for sqlite3.
 
@@ -33,8 +33,8 @@ class SqliteProxyCursor(DbCursor):
         self.__sql_arg_subst = '?'
 
     @property
-    def description(self) -> Sequence[tuple[Any, ...]] | None:
-        return self.__cursor.description
+    def description(self) -> DbCursorDescription:
+        return self.__cursor.description  # type: ignore[return-value]
 
     @property
     def lastrowid(self) -> int | None:
@@ -44,19 +44,19 @@ class SqliteProxyCursor(DbCursor):
     def rowcount(self) -> int:
         return self.__cursor.rowcount
 
-    def execute(self, operation: str, params: DbParams | None = None) -> None:
-        if params is not None:
+    def execute(self, operation: str, parameters: DbParameters | None = None) -> None:
+        if parameters is not None:
             operation = operation.replace(self.__sql_arg_expect, self.__sql_arg_subst)
-        self.__logger.debug(f'execute({operation!r}, {params!r})')
-        if params is None:
+        self.__logger.debug(f'execute({operation!r}, {parameters!r})')
+        if parameters is None:
             self.__cursor.execute(operation)
         else:
-            self.__cursor.execute(operation, params)  # type: ignore[arg-type]
+            self.__cursor.execute(operation, parameters)  # type: ignore[arg-type]
 
-    def executemany(self, operation: str, seq_params: Sequence[DbParams]) -> None:
+    def executemany(self, operation: str, seq_of_parameters: Sequence[DbParameters]) -> None:
         operation = operation.replace(self.__sql_arg_expect, self.__sql_arg_subst)
-        self.__logger.debug(f'execute({operation!r}, {seq_params!r})')
-        self.__cursor.executemany(operation, seq_params)
+        self.__logger.debug(f'execute({operation!r}, {seq_of_parameters!r})')
+        self.__cursor.executemany(operation, seq_of_parameters)
 
     def fetchone(self) -> tuple[Any, ...] | None:
         return self.__cursor.fetchone()
@@ -71,4 +71,4 @@ class SqliteProxyCursor(DbCursor):
         self.__cursor.close()
 
 
-__all__ = ['SqliteProxyCursor']
+__all__ = ['SQLiteProxyCursor']

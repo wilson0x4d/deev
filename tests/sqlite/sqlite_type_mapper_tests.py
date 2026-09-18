@@ -6,7 +6,7 @@ from decimal import Decimal
 from deev import entity, field
 from deev.common import DbError
 from deev.entities import get_entity_spec
-from deev.sqlite import SqliteTypeMapper
+from deev.sqlite import SQLiteTypeMapper
 from punit import fact, inlinedata, theory, trait
 from typing import Any, Callable, Mapping
 from uuid import UUID
@@ -36,10 +36,10 @@ class TypeMapperTestEntity:
 
 
 @fact
-@trait('sqlite3')
+@trait('sqlite')
 def when_unmapped_then_raises() -> None:
     entity_spec = get_entity_spec(TypeMapperTestEntity)
-    mapper = SqliteTypeMapper(entity_spec)
+    mapper = SQLiteTypeMapper(entity_spec)
     try:
         mapper.get_provider_type('unmappable')
     except DbError:
@@ -49,10 +49,10 @@ def when_unmapped_then_raises() -> None:
 
 
 @fact
-@trait('sqlite3')
+@trait('sqlite')
 def when_non_existent_then_raises() -> None:
     entity_spec = get_entity_spec(TypeMapperTestEntity)
-    mapper = SqliteTypeMapper(entity_spec)
+    mapper = SQLiteTypeMapper(entity_spec)
     try:
         mapper.get_provider_type('non_existent')
     except DbError:
@@ -80,9 +80,9 @@ def when_non_existent_then_raises() -> None:
 @inlinedata('bit', 'INTEGER')
 @inlinedata('uid', 'TEXT')
 @inlinedata('with_dbtype', 'TEXT')
-@trait('sqlite3')
+@trait('sqlite')
 def expected_mapping(field_name: str, dbtype: str) -> None:
     entity_spec = get_entity_spec(TypeMapperTestEntity)
-    mapper = SqliteTypeMapper(entity_spec)
+    mapper = SQLiteTypeMapper(entity_spec)
     actual = mapper.get_provider_type(field_name)
     assert actual == dbtype, f'expected "{dbtype}" for "{field_name}", got "{actual}"'

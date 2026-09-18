@@ -17,7 +17,7 @@ from ..common.db_context import AsyncDbContext
 from ..common.async_db_cursor import AsyncDbCursor
 from ..common.async_db_transaction_context import AsyncDbTransactionContext
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
+from ..common.db_parameters import DbParameters
 from .async_clickhouse_proxy_connection import AsyncClickHouseProxyConnection
 
 
@@ -134,27 +134,27 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
         assert self.__context is not None, 'no context'
         return await self.__context.cursor()
 
-    async def execute(self, sql: str, params: DbParams | None = None) -> AsyncDbCursor:  # type: ignore[override]
+    async def execute(self, sql: str, parameters: DbParameters | None = None) -> AsyncDbCursor:  # type: ignore[override]
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__context is not None, 'no context'
         if self.__cursor is None:
             self.__cursor = await self.__context.cursor()
         assert self.__cursor is not None
-        await self.__cursor.execute(sql, params)
+        await self.__cursor.execute(sql, parameters)
         return cast(AsyncDbCursor, self.__cursor)
 
-    async def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
+    async def execute_nonquery(self, sql: str, parameters: DbParameters | None = None) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__context is not None, 'no context'
         if self.__cursor is None:
             self.__cursor = await self.__context.cursor()
         assert self.__cursor is not None
-        await self.__cursor.execute(sql, params)
+        await self.__cursor.execute(sql, parameters)
         self.__update_transaction_state(sql)
 
-    async def execute_reader(self, sql: str, params: DbParams | None = None) -> AsyncGenerator[tuple[Any, ...], None]:  # type: ignore[override]
+    async def execute_reader(self, sql: str, parameters: DbParameters | None = None) -> AsyncGenerator[tuple[Any, ...], None]:  # type: ignore[override]
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__context is not None, 'no context'
@@ -162,14 +162,14 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
         if self.__cursor is None:
             self.__cursor = await self.__context.cursor()
         assert self.__cursor is not None
-        await self.__cursor.execute(sql, params)
+        await self.__cursor.execute(sql, parameters)
         self.__update_transaction_state(sql)
         row = await self.__cursor.fetchone()
         while row is not None:
             yield row
             row = await self.__cursor.fetchone()
 
-    async def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
+    async def execute_scalar(self, sql: str, parameters: DbParameters | None = None) -> Any:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
@@ -177,7 +177,7 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
         if self.__cursor is None:
             self.__cursor = await self.__context.cursor()
         assert self.__cursor is not None
-        await self.__cursor.execute(sql, params)
+        await self.__cursor.execute(sql, parameters)
         self.__update_transaction_state(sql)
         row = await self.__cursor.fetchone()
         return None if row is None else row[0]

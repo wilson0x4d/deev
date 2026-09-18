@@ -6,9 +6,9 @@ from __future__ import annotations
 import sqlite3
 from deev import entity, field
 from deev.common.db_error import DbError
-from deev.sqlite import SqliteProxyConnection, SqliteTableAdapter
-from deev.sqlite.async_sqlite_proxy_connection import AsyncSqliteProxyConnection
-from deev.sqlite.async_sqlite_table_adapter import AsyncSqliteTableAdapter
+from deev.sqlite import SQLiteProxyConnection, SQLiteTableAdapter
+from deev.sqlite.async_sqlite_proxy_connection import AsyncSQLiteProxyConnection
+from deev.sqlite.async_sqlite_table_adapter import AsyncSQLiteTableAdapter
 from deev.utils import (
     async_db_table_adapter_factory,
     create_table_adapter,
@@ -26,20 +26,20 @@ class SimpleEntity:
 
 @fact
 def db_table_adapter_factory_returns_sqlite_adapter() -> None:
-    """Real SqliteProxyConnection object, real factory call, verified return type."""
+    """Real SQLiteProxyConnection object, real factory call, verified return type."""
     conn = sqlite3.connect(':memory:')
-    proxy = SqliteProxyConnection(conn)
-    assert type(proxy).__name__ == 'SqliteProxyConnection'
+    proxy = SQLiteProxyConnection(conn)
+    assert type(proxy).__name__ == 'SQLiteProxyConnection'
 
     adapter = db_table_adapter_factory(SimpleEntity, proxy)
-    assert type(adapter).__name__ == 'SqliteTableAdapter'
+    assert type(adapter).__name__ == 'SQLiteTableAdapter'
 
 
 @fact
 def db_table_adapter_factory_passes_kwargs() -> None:
     """create_table and table_name kwargs reach the constructor."""
     conn = sqlite3.connect(':memory:')
-    proxy = SqliteProxyConnection(conn)
+    proxy = SQLiteProxyConnection(conn)
 
     adapter = db_table_adapter_factory(
         SimpleEntity,
@@ -47,7 +47,7 @@ def db_table_adapter_factory_passes_kwargs() -> None:
         create_table=True,
         table_name='custom_table',
     )
-    assert type(adapter).__name__ == 'SqliteTableAdapter'
+    assert type(adapter).__name__ == 'SQLiteTableAdapter'
 
 
 @fact
@@ -67,20 +67,20 @@ def db_table_adapter_factory_raises_for_unsupported_type() -> None:
 
 @fact
 def async_db_table_adapter_factory_returns_async_sqlite_adapter() -> None:
-    """Real AsyncSqliteProxyConnection object, real factory call, verified return type."""
+    """Real AsyncSQLiteProxyConnection object, real factory call, verified return type."""
     conn = sqlite3.connect(':memory:')
-    async_proxy = AsyncSqliteProxyConnection(conn)
-    assert type(async_proxy).__name__ == 'AsyncSqliteProxyConnection'
+    async_proxy = AsyncSQLiteProxyConnection(conn)
+    assert type(async_proxy).__name__ == 'AsyncSQLiteProxyConnection'
 
     adapter = async_db_table_adapter_factory(SimpleEntity, async_proxy)
-    assert type(adapter).__name__ == 'AsyncSqliteTableAdapter'
+    assert type(adapter).__name__ == 'AsyncSQLiteTableAdapter'
 
 
 @fact
 def async_db_table_adapter_factory_passes_kwargs() -> None:
     """create_table and table_name kwargs reach the constructor."""
     conn = sqlite3.connect(':memory:')
-    async_proxy = AsyncSqliteProxyConnection(conn)
+    async_proxy = AsyncSQLiteProxyConnection(conn)
 
     adapter = async_db_table_adapter_factory(
         SimpleEntity,
@@ -88,7 +88,7 @@ def async_db_table_adapter_factory_passes_kwargs() -> None:
         create_table=True,
         table_name='custom_async_table',
     )
-    assert type(adapter).__name__ == 'AsyncSqliteTableAdapter'
+    assert type(adapter).__name__ == 'AsyncSQLiteTableAdapter'
 
 
 @fact
@@ -110,10 +110,10 @@ def async_db_table_adapter_factory_raises_for_unsupported_type() -> None:
 def create_table_adapter_delegates_to_db_table_adapter_factory() -> None:
     """create_table_adapter with a DbContext (not ConnectionString) passes through."""
     conn = sqlite3.connect(':memory:')
-    proxy = SqliteProxyConnection(conn)
+    proxy = SQLiteProxyConnection(conn)
 
     adapter = create_table_adapter(SimpleEntity, proxy)
-    assert type(adapter).__name__ == 'SqliteTableAdapter'
+    assert type(adapter).__name__ == 'SQLiteTableAdapter'
 
 
 # The following integration test would require async facts (pUnit doesn't expose

@@ -37,7 +37,7 @@ def _get_connection() -> ConnectionString:
 
 @fact
 @trait('integration')
-@trait('sqlite3')
+@trait('sqlite')
 def bvt_sqlite_applies_all_migrations_and_records_them() -> None:
     """Verify apply() inserts data into live SQLite table and records migrations."""
     cs = _get_connection()
@@ -57,7 +57,7 @@ def bvt_sqlite_applies_all_migrations_and_records_them() -> None:
 
 @fact
 @trait('integration')
-@trait('sqlite3')
+@trait('sqlite')
 def bvt_sqlite_skips_reapply() -> None:
     """Re-applying should produce no new _migrationdata rows."""
     cs = _get_connection()
@@ -80,7 +80,7 @@ def bvt_sqlite_skips_reapply() -> None:
 
 @fact
 @trait('integration')
-@trait('sqlite3')
+@trait('sqlite')
 def bvt_sqlite_undo_clears_all_records() -> None:
     """Apply all, then undo all -- _migrationdata should be empty."""
     cs = _get_connection()
@@ -101,7 +101,7 @@ def bvt_sqlite_undo_clears_all_records() -> None:
 
 @fact
 @trait('integration')
-@trait('sqlite3')
+@trait('sqlite')
 def bvt_sqlite_users_table_has_seeded_data() -> None:
     """Verify the seeded data actually exists in the live users table."""
     cs = _get_connection()
@@ -122,7 +122,7 @@ def bvt_sqlite_users_table_has_seeded_data() -> None:
 
 @fact
 @trait('integration')
-@trait('sqlite3')
+@trait('sqlite')
 def bvt_sqlite_rollback_on_failure() -> None:
     """Use a migration that raises -- verify the failure is propagated and no uncommitted DDL persists."""
     temp_dir = tempfile.mkdtemp()
@@ -182,7 +182,7 @@ def bvt_sqlite_rollback_on_failure() -> None:
 
 @fact
 @trait('integration')
-@trait('sqlite3')
+@trait('sqlite')
 def bvt_sqlite_undo_then_reapply_restores_data() -> None:
     """Full cycle: apply all -> undo up to beta -> re-apply with stop_at=gamma."""
     cs = _get_connection()

@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Any, Sequence
 
 import hanaro
 
-from ..common.db_cursor import DbCursor
+from ..common.db_cursor import DbCursor, DbCursorDescription
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
+from ..common.db_parameters import DbParameters
 
 if TYPE_CHECKING:
     from clickhouse_connect.dbapi.cursor import Cursor
@@ -22,8 +22,8 @@ class ClickHouseProxyCursor(DbCursor):
     """
     Normalized cursor interface for clickhouse-connect.
 
-    ClickHouse's DBAPI cursor uses pyformat paramstyle (%(name)s), but deev standardizes on
-    positional parameters (%?). This cursor converts positional params to pyformat format
+    ClickHouse's DBAPI cursor uses pyformat parameter style (%(name)s), but deev standardizes on
+    positional parameters (%?). This cursor converts positional parameters to pyformat format
     by generating parameter names like %(p0)s, %(p1)s, etc.
 
     INSERT statements in execute/executemany are routed through the native ``client.insert()``
@@ -43,8 +43,8 @@ class ClickHouseProxyCursor(DbCursor):
         return self.__cursor.client
 
     @property
-    def description(self) -> Sequence[tuple[Any, ...]] | None:
-        return self.__cursor.description
+    def description(self) -> DbCursorDescription:
+        return self.__cursor.description  # type: ignore[return-value]
 
     @property
     def rowcount(self) -> int:
@@ -74,32 +74,32 @@ class ClickHouseProxyCursor(DbCursor):
             columns.append(c.split()[0])
         return (table, columns)
 
-    def __convert_positional_to_pyformat(self, operation: str, params: tuple[Any, ...]) -> tuple[str, dict[str, Any]]:
-        """Convert %? placeholders to pyformat %(pN)s placeholders and build a params dict."""
+    def __convert_positional_to_pyformat(self, operation: str, parameters: tuple[Any, ...]) -> tuple[str, dict[str, Any]]:
+        """Convert %? placeholders to pyformat %(pN)s placeholders and build a parameters dict."""
         param_dict: dict[str, Any] = {}
         result: list[str] = []
         i = 0
         for part in re.split(r'(%\?)', operation):
             if part == '%?':
                 name = f'p{i}'
-                param_dict[name] = params[i]
+                param_dict[name] = parameters[i]
                 result.append(f'%({name})s')
                 i += 1
             else:
                 result.append(part)
         return ''.join(result), param_dict
 
-    def execute(self, operation: str, params: DbParams | None = None) -> None:
-        if params is not None:
-            param_tuple: tuple[Any, ...] = tuple(params)
-            pyformat_sql, pyformat_params = self.__convert_positional_to_pyformat(operation, param_tuple)
-            self.__cursor.execute(pyformat_sql, parameters=pyformat_params)
+    def execute(self, operation: str, parameters: DbParameters | None = None) -> None:
+        if parameters is not None:
+            param_tuple: tuple[Any, ...] = tuple(parameters)
+            pyformat_sql, pyformat_parameters = self.__convert_positional_to_pyformat(operation, param_tuple)
+            self.__cursor.execute(pyformat_sql, parameters=pyformat_parameters)
         else:
             self.__cursor.execute(operation)
 
-    def executemany(self, operation: str, seq_params: Sequence[DbParams]) -> None:
-        tuple_list: list[DbParams] = []
-        for p in seq_params:
+    def executemany(self, operation: str, seq_of_parameters: Sequence[DbParameters]) -> None:
+        tuple_list: list[DbParameters] = []
+        for p in seq_of_parameters:
             if isinstance(p, (tuple, list)):
                 tuple_list.append(tuple(p))
             else:
@@ -119,7 +119,7 @@ class ClickHouseProxyCursor(DbCursor):
                         return
                     except Exception:
                         pass
-        self.__cursor.executemany(operation, [list(p) if not isinstance(p, tuple) else p for p in seq_params])
+        self.__cursor.executemany(operation, [list(p) if not isinstance(p, tuple) else p for p in seq_of_parameters])
 
     def fetchone(self) -> tuple[Any, ...] | None:
         result = self.__cursor.fetchone()

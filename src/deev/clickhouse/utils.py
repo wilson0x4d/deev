@@ -27,10 +27,10 @@ def resolve_clickhouse_table_engine(db_engine_full: str) -> str:
     if '(' in db_engine_full:
         idx = db_engine_full.index('(')
         base = db_engine_full[:idx].strip()
-        params = db_engine_full[idx:]
+        parameters = db_engine_full[idx:]
     else:
         base = db_engine_full.strip()
-        params = ''
+        parameters = ''
     
     mapping = {
         'Replicated': 'ReplicatedMergeTree',
@@ -41,7 +41,7 @@ def resolve_clickhouse_table_engine(db_engine_full: str) -> str:
         'Shared': 'MergeTree',
     }
     table_base = mapping.get(base, 'MergeTree')
-    return f'{table_base}{params}'
+    return f'{table_base}{parameters}'
 
 
 __all__ = [

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from deev import entity, field
 from deev.common import ConnectionString
 from deev.utils import connect, create_database
-from deev.mysql.mysql_table_adapter import MysqlTableAdapter
+from deev.mysql.mysql_table_adapter import MySQLTableAdapter
 from uuid import UUID, uuid4
 from punit import fact, trait
 from typing import Any
@@ -42,7 +42,7 @@ def basic_verification() -> None:
             #
             # ..create a table adapter _and_ create a backing table for `BasicEntity`
             #
-            adapter = MysqlTableAdapter[BasicEntity](connection, create_table=True)
+            adapter = MySQLTableAdapter[BasicEntity](connection, create_table=True)
             #
             # ..create a BasicEntity instance in the database
             #
@@ -80,7 +80,7 @@ def basic_verification() -> None:
             selected = []
             for row in adapter.query(
                 where='example_text=%?',
-                params=['updated'],
+                parameters=['updated'],
                 orderby='id DESC'
             ):
                 selected.append(row)

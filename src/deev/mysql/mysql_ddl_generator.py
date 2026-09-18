@@ -6,10 +6,10 @@ from __future__ import annotations
 import hanaro
 
 from ..entities import EntitySpec, IndexOrder
-from .mysql_type_mapper import MysqlTypeMapper
+from .mysql_type_mapper import MySQLTypeMapper
 
 
-class MysqlDDLGenerator():
+class MySQLDDLGenerator():
     """
     Generates DDL statements for MySQL tables from entity specifications.
 
@@ -59,7 +59,7 @@ class MysqlDDLGenerator():
         :param table_name: Optional table name override.
         :return: List of DDL statements including ``CREATE TABLE`` and ``CREATE INDEX``.
         """
-        db_type_mapper = MysqlTypeMapper(entity_spec)
+        db_type_mapper = MySQLTypeMapper(entity_spec)
         ddl = list[str]()
         table_name = entity_spec.table_name if table_name is None else table_name
         if len(entity_spec.primary_key) == 1:
@@ -89,4 +89,4 @@ class MysqlDDLGenerator():
         return ddl
 
 
-__all__ = ['MysqlDDLGenerator']
+__all__ = ['MySQLDDLGenerator']

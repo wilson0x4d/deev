@@ -60,10 +60,10 @@ Next, the CRUD-based code:
 
     # connect to your database, create a table for storage, and perform some CRUD operations
     from deev import connect
-    from deev.sqlite import SqliteTableAdapter
+    from deev.sqlite import SQLiteTableAdapter
 
     with connect(connection_str) as db:
-        table = SqliteTableAdapter[SimpleEntity](db)
+        table = SQLiteTableAdapter[SimpleEntity](db)
         table.create_table()
 
         # CREATE
@@ -106,7 +106,7 @@ Next, the CRUD-based code:
             where='column1 = %?',
             orderby='column1 DESC',
             limit=2,
-            params=(2,)
+            parameters=(2,)
         )
         count = 0
         for result in results:

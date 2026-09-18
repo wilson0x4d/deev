@@ -206,23 +206,23 @@ class ConnectionString:
         self.__command_timeout = value
 
     def to_parameters(self) -> dict[str, str]:
-        params: dict[str, str] = {}
+        parameters: dict[str, str] = {}
         if self.__server is not None:
-            params['server'] = str(self.__server)
+            parameters['server'] = str(self.__server)
         if self.__database is not None:
-            params['database'] = str(self.__database)
+            parameters['database'] = str(self.__database)
         if self.__user is not None:
-            params['user'] = str(self.__user)
+            parameters['user'] = str(self.__user)
         if self.__password is not None:
-            params['password'] = str(self.__password)
+            parameters['password'] = str(self.__password)
         if self.__provider is not None:
-            params['provider'] = str(self.__provider)
+            parameters['provider'] = str(self.__provider)
         if self.__connect_timeout is not None:
-            params['connect_timeout'] = str(self.__connect_timeout)
+            parameters['connect_timeout'] = str(self.__connect_timeout)
         if self.__command_timeout is not None:
-            params['command_timeout'] = str(self.__command_timeout)
-        params.update(self.__parameters)
-        return params
+            parameters['command_timeout'] = str(self.__command_timeout)
+        parameters.update(self.__parameters)
+        return parameters
 
     @property
     def parameters(self) -> dict[str, str]:

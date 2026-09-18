@@ -9,7 +9,7 @@ from typing import Any, Generator, Generic, TypeVar, cast, get_args, get_origin
 from ..common.db_context import DbContext
 from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
+from ..common.db_parameters import DbParameters
 from ..common.db_type_mapper import DbTypeMapper
 from ..entities import EntitySpec, get_entity_spec
 from ..translation import hydrate, splat, to_pyobject
@@ -314,7 +314,7 @@ class MongoTableAdapter(Generic[TEntity]):
     def query(
         self,
         where: str | None = None,
-        params: DbParams | None = None,
+        parameters: DbParameters | None = None,
         orderby: str | None = None,
         limit: int | None = None
     ) -> Generator[TEntity, None, None]:
@@ -322,16 +322,16 @@ class MongoTableAdapter(Generic[TEntity]):
         Query documents from the collection using SQL-style WHERE parsing.
 
         :param where: SQL-style WHERE clause (translated to MongoDB filter via :func:`parse_sql_where`).
-        :param params: Parameters for ``%?`` placeholders in ``where``.
+        :param parameters Parameters for ``%?`` placeholders in ``where``.
         :param orderby: Optional comma-separated field list with optional ``ASC``/``DESC`` suffixes.
         :param limit: Optional maximum number of results.
         :yields: Hydrated entity instances.
         """
         self.__deferred_init()
-        if params is None:
-            params = ()
+        if parameters is None:
+            parameters = ()
         where_clause = where
-        where_filter: dict[str, Any] = parse_sql_where(where_clause, tuple(params)) if where_clause else {}
+        where_filter: dict[str, Any] = parse_sql_where(where_clause, tuple(parameters)) if where_clause else {}
         raw_orderby = orderby
         sort_spec: list[tuple[str, int]] | None = None
         if raw_orderby is not None and len(raw_orderby) > 0:

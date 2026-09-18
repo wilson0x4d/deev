@@ -15,12 +15,12 @@ from ..common.db_connection import DbConnection
 from ..common.db_context import DbContext
 from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
+from ..common.db_parameters import DbParameters
 from ..common.db_transaction_context import DbTransactionContext
-from .mysql_proxy_connection import MysqlProxyConnection
+from .mysql_proxy_connection import MySQLProxyConnection
 
 
-class MysqlTransactionContext(DbTransactionContext):
+class MySQLTransactionContext(DbTransactionContext):
 
     __ambient_transaction_id: ContextVar = ContextVar('ambient_transacton_id', default=None)
     __context: DbContext | None
@@ -31,8 +31,8 @@ class MysqlTransactionContext(DbTransactionContext):
 
     def __init__(self, context: DbContext, *, owns_context: bool | None = None):
         self.__owns_context = owns_context is True
-        self.__is_deev_context = isinstance(context, (MysqlProxyConnection, MysqlTransactionContext))
-        self.__context = context if self.__is_deev_context else MysqlProxyConnection(context)  # type: ignore[arg-type]
+        self.__is_deev_context = isinstance(context, (MySQLProxyConnection, MySQLTransactionContext))
+        self.__context = context if self.__is_deev_context else MySQLProxyConnection(context)  # type: ignore[arg-type]
         self.__logger = hanaro.get_logger()
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
@@ -67,8 +67,8 @@ class MysqlTransactionContext(DbTransactionContext):
             self.__transaction_state = 2
         elif prefix in ['COMM', 'ROLL']:
             self.__transaction_state = 3
-            if MysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
-                MysqlTransactionContext.__ambient_transaction_id.set(None)
+            if MySQLTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
+                MySQLTransactionContext.__ambient_transaction_id.set(None)
         elif self.__transaction_state == 0:
             self.__transaction_state = 1
 
@@ -85,8 +85,8 @@ class MysqlTransactionContext(DbTransactionContext):
             raise DbError(f'A transaction was already started in this context, cannot begin a new transaction. ({self.__transaction_state})')
         self.__transaction_state = 1
         self.__cursor = self.__context.cursor()
-        if MysqlTransactionContext.__ambient_transaction_id.get(None) is None:
-            MysqlTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
+        if MySQLTransactionContext.__ambient_transaction_id.get(None) is None:
+            MySQLTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
             self.__cursor.execute('START TRANSACTION')
         else:
             self.__cursor.execute(f'SAVEPOINT TID_{self.__transaction_id.hex}')
@@ -107,7 +107,7 @@ class MysqlTransactionContext(DbTransactionContext):
         self.__context = None
 
     def commit(self) -> None:
-        if MysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
+        if MySQLTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
             assert self.__context is not None, 'context expected'
             self.__context.commit()
         else:
@@ -126,12 +126,12 @@ class MysqlTransactionContext(DbTransactionContext):
         assert self.__context is not None, 'context expected'
         return self.__context.cursor()
 
-    def execute(self, sql: str, params: DbParams | None = None) -> DbCursor:
+    def execute(self, sql: str, parameters: DbParameters | None = None) -> DbCursor:
         """
         An `execute` method that more closely conforms to PEP 249 (to facilitate drop-in use cases.)
 
         :param sql: A string containing the SQL statement to execute.
-        :param params: A tuple containing the params to substitute into the SQL statement.
+        :param parameters A tuple containing the parameters to substitute into the SQL statement.
         :return: The cursor object the caller can use to retrieve results.
         """
         assert self.__cursor is not None, 'cursor expected'
@@ -139,39 +139,39 @@ class MysqlTransactionContext(DbTransactionContext):
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__cursor.execute(
             sql,
-            tuple(params) if params is not None else tuple())
+            tuple(parameters) if parameters is not None else tuple())
         return cast(DbCursor, self.__cursor)
 
-    def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
+    def execute_nonquery(self, sql: str, parameters: DbParameters | None = None) -> None:
         assert self.__cursor is not None, 'cursor expected'
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__cursor.execute(
             sql,
-            tuple(params) if params is not None else tuple())
+            tuple(parameters) if parameters is not None else tuple())
         self.__update_transaction_state(sql)
 
-    def execute_reader(self, sql: str, params: DbParams | None = None) -> Generator[Any, None, None]:
+    def execute_reader(self, sql: str, parameters: DbParameters | None = None) -> Generator[Any, None, None]:
         assert self.__cursor is not None, 'cursor expected'
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
-        params = tuple(params) if params is not None else tuple()
-        self.__cursor.execute(sql, params)
+        parameters = tuple(parameters) if parameters is not None else tuple()
+        self.__cursor.execute(sql, parameters)
         self.__update_transaction_state(sql)
         row = self.__cursor.fetchone()
         while row is not None:
             yield row
             row = self.__cursor.fetchone()
 
-    def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
+    def execute_scalar(self, sql: str, parameters: DbParameters | None = None) -> Any:
         assert self.__cursor is not None, 'cursor expected'
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
         self.__cursor.execute(
             sql,
-            tuple(params) if params is not None else tuple()
+            tuple(parameters) if parameters is not None else tuple()
         )
         self.__update_transaction_state(sql)
         row = self.__cursor.fetchone()
@@ -186,7 +186,7 @@ class MysqlTransactionContext(DbTransactionContext):
 
     def rollback(self) -> None:
         assert self.__cursor is not None, 'cursor expected'
-        if MysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
+        if MySQLTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
             try:
                 self.__cursor.execute('ROLLBACK')
             except mysql.connector.Error:
@@ -206,4 +206,4 @@ class MysqlTransactionContext(DbTransactionContext):
         self.__update_transaction_state('ROLLBACK')
 
 
-__all__ = ['MysqlTransactionContext']
+__all__ = ['MySQLTransactionContext']

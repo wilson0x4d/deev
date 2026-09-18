@@ -22,7 +22,7 @@ from uuid import UUID
 from ..common.db_connection import DbConnection
 from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
+from ..common.db_parameters import DbParameters
 from ..entities import EntitySpec, get_entity_spec
 from ..translation import hydrate, splat, to_pyobject
 from .clickhouse_proxy_connection import ClickHouseProxyConnection
@@ -82,9 +82,9 @@ class ClickHouseTableAdapter(Generic[TEntity]):
     def primary_key(self) -> tuple[str, ...]:
         return self.__entity_spec.primary_key
 
-    def __execute(self, sql: str, params: DbParams | None = None) -> None:
+    def __execute(self, sql: str, parameters: DbParameters | None = None) -> None:
         cursor = self.__context.cursor()
-        cursor.execute(sql, params)
+        cursor.execute(sql, parameters)
 
     def __get_pyobject(self, key: str, value: Any) -> Any:
         return to_pyobject(
@@ -123,16 +123,16 @@ class ClickHouseTableAdapter(Generic[TEntity]):
     def __hex_and_to_pyformat(
         self,
         sql: str,
-        params: Sequence[Any]
+        parameters: Sequence[Any]
     ) -> tuple[str, dict[str, Any]]:
-        """Convert %? placeholders to pyformat params, applying UUID hex conversion."""
+        """Convert %? placeholders to pyformat parameters, applying UUID hex conversion."""
         param_dict: dict[str, Any] = {}
         result: list[str] = []
         i = 0
         for part in re.split(r'(%\?)', sql):
             if part == '%?':
                 name = f'p{i}'
-                param_dict[name] = self.__hexify(params[i])
+                param_dict[name] = self.__hexify(parameters[i])
                 result.append(f'(%({name})s)')
                 i += 1
             else:
@@ -251,10 +251,10 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         where, keys = self.__build_where_clause(kwargs)
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'SELECT {self.__column_names} FROM `{table_name}` WHERE {where}'
-        pyformat_sql, pyformat_params = self.__hex_and_to_pyformat(sql, keys)
+        pyformat_sql, pyformat_parameters = self.__hex_and_to_pyformat(sql, keys)
         client = self.clickhouse_client
         try:
-            result = client.query(pyformat_sql, parameters=pyformat_params)  # type: ignore[attr-defined]
+            result = client.query(pyformat_sql, parameters=pyformat_parameters)  # type: ignore[attr-defined]
             rows = list(result.named_results())  # type: ignore[attr-defined]
             if rows:
                 raw: dict[str, Any] = {}
@@ -279,24 +279,24 @@ class ClickHouseTableAdapter(Generic[TEntity]):
 
         set_parts: list[str] = []
         pk_where_parts: list[str] = []
-        params: list[Any] = []
+        parameters: list[Any] = []
 
         for key in entity_data.keys():
             if key not in self.__entity_spec.primary_key:
                 set_parts.append(f'`{key}` = %?')
-                params.append(entity_data[key])
+                parameters.append(entity_data[key])
 
         for key in entity_data.keys():
             if key in self.__entity_spec.primary_key:
                 pk_where_parts.append(f'`{key}` = %?')
-                params.append(entity_data[key])
+                parameters.append(entity_data[key])
 
         where_clause = ' AND '.join(pk_where_parts)
         set_clause = ', '.join(set_parts)
 
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'ALTER TABLE `{table_name}` UPDATE {set_clause} WHERE {where_clause}'
-        self.__execute(sql, tuple(params))
+        self.__execute(sql, tuple(parameters))
         self.sync_replicas()
 
     def delete(self, **kwargs: Any) -> None:
@@ -322,10 +322,10 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         where, keys = self.__build_where_clause(kwargs)
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'SELECT 1 FROM `{table_name}` WHERE {where} LIMIT 1'
-        pyformat_sql, pyformat_params = self.__hex_and_to_pyformat(sql, keys)
+        pyformat_sql, pyformat_parameters = self.__hex_and_to_pyformat(sql, keys)
         client = self.clickhouse_client
         try:
-            result = client.query(pyformat_sql, parameters=pyformat_params)  # type: ignore[attr-defined]
+            result = client.query(pyformat_sql, parameters=pyformat_parameters)  # type: ignore[attr-defined]
             rows = list(result.named_results())  # type: ignore[attr-defined]
             return len(rows) > 0
         except Exception as e:
@@ -396,7 +396,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
     def query(
         self,
         where: str | None = None,
-        params: DbParams | None = None,
+        parameters: DbParameters | None = None,
         orderby: str | None = None,
         limit: int | None = None
     ) -> Generator[TEntity, None, None]:
@@ -409,13 +409,13 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         limit_str = f' LIMIT {limit}' if limit is not None and limit > 0 else ''
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'SELECT {self.__column_names} FROM `{table_name}`{where_clause}{orderby_clause}{limit_str}'
-        if params is not None:
-            pyformat_sql, pyformat_params = self.__hex_and_to_pyformat(sql, [p for p in params])
+        if parameters is not None:
+            pyformat_sql, pyformat_parameters = self.__hex_and_to_pyformat(sql, [p for p in parameters])
         else:
-            pyformat_sql, pyformat_params = sql, {}
+            pyformat_sql, pyformat_parameters = sql, {}
         client = self.clickhouse_client
         try:
-            result = client.query(pyformat_sql, parameters=pyformat_params or None)  # type: ignore[attr-defined]
+            result = client.query(pyformat_sql, parameters=pyformat_parameters or None)  # type: ignore[attr-defined]
             for row in result.named_results():  # type: ignore[attr-defined]
                 raw: dict[str, Any] = {}
                 for key, value in row.items():

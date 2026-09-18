@@ -129,9 +129,9 @@ ConnectionString('mysql://user:pass@localhost:3306/db?connect_timeout=10&command
 ConnectionString('Server=127.0.0.1;Database=mydb;UID=root;PWD=pass;Provider=mysql.connector')
 ```
 
-Recognized keys (case-insensitive): `server`, `database`, `uid`, `user`, `user id`, `username`, `pwd`, `password`, `pass`, `provider`, `connection timeout`, `command timeout`.
+Recognized keys (case-insensitive): `server`, `data source`, `database`, `catalog`, `uid`, `user`, `user id`, `username`, `pwd`, `password`, `pass`, `provider`, `connection timeout`, `command timeout`.
 
-**Properties:** `server`, `database`, `user`, `password`, `provider`, `connect_timeout`, `command_timeout`, `parameters` (arbitrary extra params from DSN query string).
+**Properties:** `server`, `database`, `user`, `password`, `provider`, `connect_timeout`, `command_timeout`, `parameters` (all parsed connection string components plus any extra DSN query parameters).
 
 ```python
 from deev import ConnectionString
@@ -141,6 +141,7 @@ str(cs)     # reconstituted connection string
 ```
 
 Create the database if missing: `deev.utils.create_database(conn_str)`.
+Drop the database: `deev.utils.drop_database(conn_str)`.
 
 Resolve MongoDB authSource automatically: `deev.utils.resolve_mongodb_auth_source(conn_str)`.
 
@@ -178,9 +179,9 @@ For MongoDB and ClickHouse, migration scripts use their respective context types
 Create a provider-specific `TableAdapter` for typed CRUD:
 
 ```python
-from deev.sqlite import SqliteTableAdapter      # or ...mysql.MysqlTableAdapter, ...mongodb.MongoTableAdapter, ...clickhouse.ClickHouseTableAdapter
+from deev.sqlite import SQLiteTableAdapter      # or ...mysql.MySQLTableAdapter, ...mongodb.MongoTableAdapter, ...clickhouse.ClickHouseTableAdapter
 
-table = SqliteTableAdapter[User](db)
+table = SQLiteTableAdapter[User](db)
 table.create_table()
 ```
 
@@ -197,7 +198,7 @@ Or auto-detect: `table = create_table_adapter(User, conn_str)` from `deev.utils`
 | `delete` | `delete(**pk_kwargs)` | — |
 | `exists` | `exists(**pk_kwargs)` | `bool` |
 | `upsert` | `upsert(entity)` | `{pk_name: pk_value}` |
-| `query` | `query(where?, params?, orderby?, limit?)` | `Generator[Entity]` |
+| `query` | `query(where?, parameters?, orderby?, limit?)` | `Generator[Entity]` |
 | `bulk_create` | `bulk_create(entities)` | `list[{pk_name: pk_value}]` |
 
 `bulk_create` is available on ClickHouse adapters only.
@@ -208,17 +209,17 @@ Or auto-detect: `table = create_table_adapter(User, conn_str)` from `deev.utils`
 - **MongoDB:** collections are created implicitly on first insert — no DDL needed. `create_table()` creates indexes.
 - **ClickHouse:** tables require `create_table(engine, order_by, partition_by)` with MergeTree engine options. `update()` and `delete()` are mutations (expensive, rewrite data parts). `bulk_create()` uses native batch insert. `sync_replicas()` forces replica sync.
 - **Parameter syntax:** all providers use `%?` placeholders, translated at runtime (SQLite → `?`, MySQL → `%s`).
-- **MongoDB:** auto-increment is not available; `_migrationdata` uses UUID PKs. MongoDB adapters expose `mongo_collection` property for advanced operations.
+- **MongoDB:** MongoDB adapters expose `mongo_collection` property for advanced operations.
 
 ### Translating entities ↔ dicts
 
-- `splat(entity, to_sql=True)` — entity to dict (optionally serialize complex types).
+- `splat(entity, attrs=None, to_sql=False, to_bson=False)` — extract field values from entity. Optionally filter to specific attributes (`attrs`) or serialize for BSON (`to_bson`).
 - `hydrate(EntityClass, dict, from_sql=True)` — dict to entity (or hydrate into existing instance).
 - `configure_serialization(*, encoder, decoder, serializer, deserializer)` — customize JSON serialization.
 - `to_sqlobject(value, hint)` — convert Python value to SQL-storable form.
 - `to_bsonobject(value)` — convert Python value to BSON-storable form (MongoDB).
 - `to_pyobject(value, hint)` — convert SQL/BSON value back to Python type.
-- `deunionize(t)` — unwrap `Optional[T]` to `T`.
+- `deunionize(t)` — unwrap `Union[T, None]`/`Optional[T]` to `T` (returns input unchanged if not a Union type).
 
 Complex types (`list`, `dict`, `set`, `tuple`, `Decimal`, `UUID`, `datetime`, `date`, `time`, `timedelta`, `bytes`, `Enum`) are auto-serialized to JSON.
 
@@ -342,25 +343,96 @@ def undo(tx: ClickHouseTransactionContext) -> None:
 | `connect`, `connect_async` | Create DB connection (sync/async) |
 | `ConnectionString` | Parse/build connection strings (DSN and OLEDB formats) |
 | `DbError` | Exception for DB errors |
-| `common.DbTransactionContext` | Transaction context for SQLite/MySQL |
-| `common.MongoTransactionContext` | Transaction context for MongoDB |
-| `common.ClickHouseTransactionContext` | Transaction context for ClickHouse |
-| `common.AsyncDbTransactionContext` | Async transaction context protocol |
-| `validation.validate`, `validation.ValidationError` | Entity validation |
-| `translation.splat` / `hydrate` | Entity ↔ dict conversion |
-| `translation.configure_serialization` | Customize JSON serialization |
-| `translation.to_bsonobject` / `to_pyobject` / `to_sqlobject` | Type conversions |
-| `translation.deunionize` | Unwrap `Optional[T]` to `T` |
-| `utils.create_database` | Create DB if missing |
-| `utils.create_table_adapter` | Auto-detect provider, return adapter |
-| `utils.create_table_adapter_async` | Async variant |
-| `utils.begin_transaction` | Start transactional scope |
-| `utils.begin_transaction_async` | Async variant |
-| `utils.apply_migrations` / `undo_migrations` | Programmatic migration |
-| `utils.generate_entity_ddl` / `generate_dbadapter_ddl` | Generate DDL statements |
-| `utils.resolve_mongodb_auth_source` | Auto-resolve MongoDB authSource |
-| `entities.IndexOptions` / `IndexOrder` | Index definition options |
+| `common` | Common base types and protocols module |
+| `entities` | Entity definitions module |
+| `translation` | Serialization/hydration module |
+| `utils` | Utility functions module |
+| `validation` | Validation utilities module |
+| `sqlite` | SQLite provider module |
+| `mysql` | MySQL provider module |
+| `mongodb` | MongoDB provider module |
+| `clickhouse` | ClickHouse provider module |
 
-Provider adapters:
-- Sync: `deev.sqlite.SqliteTableAdapter`, `deev.mysql.MysqlTableAdapter`, `deev.mongodb.MongoTableAdapter`, `deev.clickhouse.ClickHouseTableAdapter`
-- Async: `deev.sqlite.AsyncSqliteTableAdapter`, `deev.mysql.AsyncMysqlTableAdapter`, `deev.mongodb.AsyncMongoTableAdapter`, `deev.clickhouse.AsyncClickHouseTableAdapter`
+### From `deev.common`
+
+| Name | Purpose |
+|------|---------|
+| `DbAdapter` | Sync DB adapter base |
+| `AsyncDbAdapter` | Async DB adapter base |
+| `DbConnection` | Sync DB connection interface |
+| `AsyncDbConnection` | Async DB connection interface |
+| `DbCursor` | Sync cursor interface |
+| `AsyncDbCursor` | Async cursor interface |
+| `DbTableAdapter` | Sync table adapter base |
+| `AsyncDbTableAdapter` | Async table adapter base |
+| `DbTransactionContext` | Sync transaction context |
+| `AsyncDbTransactionContext` | Async transaction context |
+| `DbContext` | Sync context manager wrapper |
+| `AsyncDbContext` | Async context manager wrapper |
+| `DbMigrator` | Migration engine |
+| `DbParameters` | Parameter binding |
+| `DbTypeMapper` | Python-to-DB type mapping |
+
+### From `deev.entities`
+
+| Name | Purpose |
+|------|---------|
+| `EntitySpec` | Full specification of an entity class |
+| `EntityFieldSpec` | Specification for a single entity field |
+| `IndexOptions` | Options for defining indexes |
+| `IndexOrder` | Direction for index ordering (ASC/DESC) |
+| `define_entity_spec` | Define a custom entity spec |
+| `get_entity_spec` | Retrieve spec for a decorated entity class |
+| `pluralize` | Utility to pluralize table names |
+
+### From `deev.translation`
+
+| Name | Purpose |
+|------|---------|
+| `splat` | Extract entity field values from object (params: `attrs`, `to_sql`, `to_bson`) |
+| `hydrate` | Create entity instances from dicts |
+| `configure_serialization` | Customize JSON serialization |
+| `DeevJsonEncoder` | Custom JSON encoder for deev types |
+| `DeevJsonDecoder` | Custom JSON decoder for deev types |
+| `to_sqlobject` | Convert Python value to SQL-storable form |
+| `to_bsonobject` | Convert Python value to BSON-storable form |
+| `to_pyobject` | Convert SQL/BSON value back to Python type |
+| `deunionize` | Unwrap `Union[T, None]` to `T` |
+
+### From `deev.validation`
+
+| Name | Purpose |
+|------|---------|
+| `validate` | Validate entity instance (params: `attrs`) |
+| `ValidationError` | Exception raised on validation failure |
+
+### From `deev.utils`
+
+| Name | Purpose |
+|------|---------|
+| `create_database` | Create DB if missing |
+| `drop_database` | Drop a DB |
+| `create_table_adapter` | Auto-detect provider, return sync table adapter |
+| `create_table_adapter_async` | Auto-detect provider, return async table adapter |
+| `db_table_adapter_factory` | Create sync `DbTableAdapter[T]` for entity + context |
+| `async_db_table_adapter_factory` | Create async `AsyncDbTableAdapter[T]` for entity + context |
+| `begin_transaction` | Start sync transactional scope |
+| `begin_transaction_async` | Start async transactional scope |
+| `apply_migrations` / `undo_migrations` | Programmatic migration |
+| `generate_entity_ddl` / `generate_dbadapter_ddl` | Generate DDL statements |
+| `resolve_mongodb_auth_source` | Auto-resolve MongoDB authSource |
+
+### Provider module exports
+
+Each provider module exports the following classes (sync + async variants):
+
+| Component | SQLite | MySQL | MongoDB | ClickHouse |
+|-----------|--------|-------|---------|------------|
+| Connection | `SQLiteProxyConnection` | `MySQLProxyConnection` | `MongoProxyConnection` | `ClickHouseProxyConnection` |
+| Cursor | `SQLiteProxyCursor` | `MySQLProxyCursor` | `MongoProxyCursor` | `ClickHouseProxyCursor` |
+| TableAdapter | `SQLiteTableAdapter` | `MySQLTableAdapter` | `MongoTableAdapter` | `ClickHouseTableAdapter` |
+| Transaction | `SQLiteTransactionContext` | `MySQLTransactionContext` | `MongoTransactionContext` | `ClickHouseTransactionContext` |
+| DDL Generator | `SQLiteDDLGenerator` | `MySQLDDLGenerator` | — | `ClickHouseDDLGenerator` |
+| Type Mapper | `SQLiteTypeMapper` | `MySQLTypeMapper` | `MongoTypeMapper` | `ClickHouseTypeMapper` |
+
+Async variants are prefixed with `Async` (e.g., `AsyncSQLiteTableAdapter`, `AsyncMySQLTableAdapter`, `AsyncMongoTableAdapter`, `AsyncClickHouseTableAdapter`).

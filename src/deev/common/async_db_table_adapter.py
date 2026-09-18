@@ -11,7 +11,7 @@ from typing import (
     runtime_checkable
 )
 
-from .db_params import DbParams
+from .db_parameters import DbParameters
 
 TEntity = TypeVar('TEntity')
 
@@ -70,7 +70,7 @@ class AsyncDbTableAdapter(Protocol[TEntity]):
     async def query(
         self,
         where: str | None = ...,
-        params: DbParams | None = ...,
+        parameters: DbParameters | None = ...,
         orderby: str | None = ...,
         limit: int | None = ...
     ) -> AsyncGenerator[TEntity, None]:

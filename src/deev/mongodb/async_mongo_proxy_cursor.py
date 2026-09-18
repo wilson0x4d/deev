@@ -15,7 +15,7 @@ from pymongo.asynchronous.collection import AsyncCollection
 
 from ..common.async_db_cursor import AsyncDbCursor
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
+from ..common.db_parameters import DbParameters
 from .utils import infer_description_fields, parse_sql_where
 
 
@@ -87,8 +87,8 @@ class AsyncMongoProxyCursor:
         """Store the target collection name for use by mongo_fetch* methods."""
         self.__last_collection = self.__get_database()[name]  # type: ignore[attr-defined]
 
-    async def execute(self, operation: str, params: DbParams | None = None) -> None:
-        param_tuple: tuple[Any, ...] = tuple(params) if params is not None else ()
+    async def execute(self, operation: str, parameters: DbParameters | None = None) -> None:
+        param_tuple: tuple[Any, ...] = tuple(parameters) if parameters is not None else ()
         operation_upper = operation.strip().upper()
         self.__row_index = 0
         self.__result_set = None
@@ -108,7 +108,7 @@ class AsyncMongoProxyCursor:
             self.__logger.error('AsyncMongoProxyCursor.execute failed: %s', str(exc))
             raise DbError(f'MongoDB operation failed: {exc}') from exc
 
-    async def _execute_select(self, sql: str, params: tuple[Any, ...]) -> None:
+    async def _execute_select(self, sql: str, parameters: tuple[Any, ...]) -> None:
         """Parse a SELECT statement and execute the corresponding MongoDB find."""
         select_re = re.compile(
             r"SELECT\s+(.+?)(?:\s+FROM\s+(`[^`]+`|\w+))?(?:\s+WHERE\s+(.+?))?(?:\s+ORDER\s+BY\s+(.+?))?(?:\s+LIMIT\s+(\d+))?\s*$",
@@ -142,7 +142,7 @@ class AsyncMongoProxyCursor:
         else:
             col_names = [c.strip().strip('`]["') for c in columns_str.split(',')]
             projection = {c: 1 for c in col_names}
-        where_filter = parse_sql_where(where_clause, params) if where_clause else {}
+        where_filter = parse_sql_where(where_clause, parameters) if where_clause else {}
         sort_spec: list[tuple[str, int]] | None = None
         if order_by_str:
             sort_entries = [s.strip() for s in order_by_str.split(',')]
@@ -168,7 +168,7 @@ class AsyncMongoProxyCursor:
             self.__description_fields = tuple(col_names)
         self.__row_count = len(docs)
 
-    async def _execute_insert(self, sql: str, params: tuple[Any, ...]) -> None:
+    async def _execute_insert(self, sql: str, parameters: tuple[Any, ...]) -> None:
         """Parse an INSERT statement and execute the corresponding MongoDB insert_one."""
         insert_re = re.compile(
             r'INSERT\s+(?:\w+\s+)?(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)\s*$',
@@ -191,8 +191,8 @@ class AsyncMongoProxyCursor:
         param_idx = 0
         for vs in value_strings:
             if vs == '%?':
-                if param_idx < len(params):
-                    values.append(params[param_idx])
+                if param_idx < len(parameters):
+                    values.append(parameters[param_idx])
                     param_idx += 1
                 else:
                     raise DbError('INSERT statement has more placeholders than provided parameters.')
@@ -214,7 +214,7 @@ class AsyncMongoProxyCursor:
         self.__description_fields = tuple(doc.keys())
         self.__row_count = 1
 
-    async def _execute_update(self, sql: str, params: tuple[Any, ...]) -> None:
+    async def _execute_update(self, sql: str, parameters: tuple[Any, ...]) -> None:
         """Parse an UPDATE statement and execute the corresponding MongoDB update_one."""
         update_re = re.compile(
             r'UPDATE\s+(\w+)\s+SET\s+(.+?)\s+WHERE\s+(.+)\s*$',
@@ -233,13 +233,13 @@ class AsyncMongoProxyCursor:
         self._set_collection_name(table_name)
         assignments_re = re.compile(r"(\w+)\s*=\s*(\%\?|'[^']*'|NULL|\d+(?:\.\d+)?)")
         assignment_pairs = assignments_re.findall(set_clause)
-        where_filter = parse_sql_where(where_clause, params) if where_clause else {}
+        where_filter = parse_sql_where(where_clause, parameters) if where_clause else {}
         update_data: dict[str, Any] = {}
         param_idx = 0
         for field_name, value_str in assignment_pairs:
             if value_str == '%?':
-                if param_idx < len(params):
-                    update_data[field_name] = params[param_idx]
+                if param_idx < len(parameters):
+                    update_data[field_name] = parameters[param_idx]
                     param_idx += 1
                 else:
                     raise DbError('UPDATE statement has more SET placeholders than provided parameters.')
@@ -258,7 +258,7 @@ class AsyncMongoProxyCursor:
         match_result = await self.__get_database()[table_name].update_one(where_filter, {'$set': update_data})
         self.__row_count = match_result.modified_count
 
-    async def _execute_delete(self, sql: str, params: tuple[Any, ...]) -> None:
+    async def _execute_delete(self, sql: str, parameters: tuple[Any, ...]) -> None:
         """Parse a DELETE statement and execute the corresponding MongoDB delete_one."""
         delete_re = re.compile(
             r'DELETE\s+FROM\s+(\w+)(?:\s+WHERE\s+(.+))?\s*$',
@@ -274,11 +274,11 @@ class AsyncMongoProxyCursor:
             table_name.strip('`]["')
         where_clause = m.group(2)
         self._set_collection_name(table_name)
-        where_filter = parse_sql_where(where_clause, params) if where_clause else {}
+        where_filter = parse_sql_where(where_clause, parameters) if where_clause else {}
         match_result = await self.__get_database()[table_name].delete_one(where_filter)
         self.__row_count = match_result.deleted_count
 
-    async def executemany(self, operation: str, seq_params: Sequence[DbParams]) -> None:
+    async def executemany(self, operation: str, seq_of_parameters: Sequence[DbParameters]) -> None:
         """Execute an INSERT with multiple parameter sets."""
         insert_re = re.compile(
             r'INSERT\s+(?:\w+\s+)?(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)\s*$',
@@ -286,7 +286,7 @@ class AsyncMongoProxyCursor:
         )
         m = insert_re.match(operation.strip())
         if not m:
-            await self.execute(operation, seq_params[0] if seq_params else None)
+            await self.execute(operation, seq_of_parameters[0] if seq_of_parameters else None)
             return
         table_name = m.group(1)
         columns_str = m.group(2)
@@ -294,7 +294,7 @@ class AsyncMongoProxyCursor:
         columns = [c.strip().strip('`]["') for c in columns_str.split(',')]
         placeholders = values_pattern.split(',')
         docs: list[dict[str, Any]] = []
-        for param_set in seq_params:
+        for param_set in seq_of_parameters:
             param_tuple = tuple(param_set) if not isinstance(param_set, tuple) else param_set
             doc: dict[str, Any] = {}
             pi = 0

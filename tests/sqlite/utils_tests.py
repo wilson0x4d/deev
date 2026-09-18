@@ -11,7 +11,7 @@ from uuid import uuid4
 
 @fact
 @trait('integration')
-@trait('sqlite3')
+@trait('sqlite')
 def can_create_database() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.sqlite_test)

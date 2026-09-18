@@ -575,7 +575,7 @@ def query_with_uuid_param_filter() -> None:
         adapter.create(id=f'match-2-{uuid4().hex[:8]}', ref_id=target_uuid)
         adapter.create(id=f'no-match-{uuid4().hex[:8]}', ref_id=other_uuid)
 
-        results = list(adapter.query(where="ref_id = %?", params=(target_uuid,)))
+        results = list(adapter.query(where="ref_id = %?", parameters=(target_uuid,)))
         assert len(results) == 2
         found_ids = {getattr(r, 'id', None) for r in results}
         assert any('match-1' in str(rid) for rid in found_ids)

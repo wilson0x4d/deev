@@ -2,30 +2,30 @@
 # SPDX-License-Identifier: MIT
 
 try:
-    from .async_mysql_proxy_connection import AsyncMysqlProxyConnection
-    from .async_mysql_proxy_cursor import AsyncMysqlProxyCursor
-    from .async_mysql_table_adapter import AsyncMysqlTableAdapter
-    from .async_mysql_transaction_context import AsyncMysqlTransactionContext
-    from .mysql_ddl_generator import MysqlDDLGenerator
-    from .mysql_proxy_connection import MysqlProxyConnection
-    from .mysql_proxy_cursor import MysqlProxyCursor
-    from .mysql_table_adapter import MysqlTableAdapter
-    from .mysql_transaction_context import MysqlTransactionContext
-    from .mysql_type_mapper import MysqlTypeMapper
+    from .async_mysql_proxy_connection import AsyncMySQLProxyConnection
+    from .async_mysql_proxy_cursor import AsyncMySQLProxyCursor
+    from .async_mysql_table_adapter import AsyncMySQLTableAdapter
+    from .async_mysql_transaction_context import AsyncMySQLTransactionContext
+    from .mysql_ddl_generator import MySQLDDLGenerator
+    from .mysql_proxy_connection import MySQLProxyConnection
+    from .mysql_proxy_cursor import MySQLProxyCursor
+    from .mysql_table_adapter import MySQLTableAdapter
+    from .mysql_transaction_context import MySQLTransactionContext
+    from .mysql_type_mapper import MySQLTypeMapper
 except Exception:
     # NOTE: if required packages are not enabled we expect this module to import without errors
     pass
 
 
 __all__ = [
-    'AsyncMysqlProxyConnection',
-    'AsyncMysqlProxyCursor',
-    'AsyncMysqlTableAdapter',
-    'AsyncMysqlTransactionContext',
-    'MysqlDDLGenerator',
-    'MysqlProxyConnection',
-    'MysqlProxyCursor',
-    'MysqlTableAdapter',
-    'MysqlTransactionContext',
-    'MysqlTypeMapper'
+    'AsyncMySQLProxyConnection',
+    'AsyncMySQLProxyCursor',
+    'AsyncMySQLTableAdapter',
+    'AsyncMySQLTransactionContext',
+    'MySQLDDLGenerator',
+    'MySQLProxyConnection',
+    'MySQLProxyCursor',
+    'MySQLTableAdapter',
+    'MySQLTransactionContext',
+    'MySQLTypeMapper'
 ]

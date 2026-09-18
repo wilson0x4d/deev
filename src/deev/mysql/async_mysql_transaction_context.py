@@ -17,12 +17,12 @@ from ..common.db_context import AsyncDbContext
 from ..common.async_db_cursor import AsyncDbCursor
 from ..common.async_db_transaction_context import AsyncDbTransactionContext
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
-from .async_mysql_proxy_connection import AsyncMysqlProxyConnection
-from .async_mysql_proxy_cursor import AsyncMysqlProxyCursor
+from ..common.db_parameters import DbParameters
+from .async_mysql_proxy_connection import AsyncMySQLProxyConnection
+from .async_mysql_proxy_cursor import AsyncMySQLProxyCursor
 
 
-class AsyncMysqlTransactionContext(AsyncDbTransactionContext):
+class AsyncMySQLTransactionContext(AsyncDbTransactionContext):
 
     __ambient_transaction_id: ContextVar = ContextVar('ambient_transacton_id', default=None)
     __context: AsyncDbContext | None
@@ -33,8 +33,8 @@ class AsyncMysqlTransactionContext(AsyncDbTransactionContext):
 
     def __init__(self, context: AsyncDbContext, *, owns_context: bool | None = None):
         self.__owns_context = owns_context is True
-        self.__is_deev_context = isinstance(context, (AsyncMysqlProxyConnection, AsyncMysqlTransactionContext))
-        self.__context = context if self.__is_deev_context else AsyncMysqlProxyConnection(context)  # type: ignore[arg-type]
+        self.__is_deev_context = isinstance(context, (AsyncMySQLProxyConnection, AsyncMySQLTransactionContext))
+        self.__context = context if self.__is_deev_context else AsyncMySQLProxyConnection(context)  # type: ignore[arg-type]
         self.__logger = hanaro.get_logger()
         self.__transaction_id = uuid4()
         self.__transaction_state = 0
@@ -80,8 +80,8 @@ class AsyncMysqlTransactionContext(AsyncDbTransactionContext):
             self.__transaction_state = 2
         elif prefix in ['COMM', 'ROLL']:
             self.__transaction_state = 3
-            if AsyncMysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
-                AsyncMysqlTransactionContext.__ambient_transaction_id.set(None)
+            if AsyncMySQLTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
+                AsyncMySQLTransactionContext.__ambient_transaction_id.set(None)
         elif self.__transaction_state == 0:
             self.__transaction_state = 1
 
@@ -98,8 +98,8 @@ class AsyncMysqlTransactionContext(AsyncDbTransactionContext):
         self.__transaction_state = 1
         assert self.__context is not None, 'no context'
         self.__cursor = await self.__context.cursor()
-        if AsyncMysqlTransactionContext.__ambient_transaction_id.get(None) is None:
-            AsyncMysqlTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
+        if AsyncMySQLTransactionContext.__ambient_transaction_id.get(None) is None:
+            AsyncMySQLTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
             await self.__cursor.execute('START TRANSACTION')
         else:
             await self.__cursor.execute(f'SAVEPOINT TID_{self.__transaction_id.hex}')
@@ -120,7 +120,7 @@ class AsyncMysqlTransactionContext(AsyncDbTransactionContext):
         self.__context = None
 
     async def commit(self) -> None:
-        if AsyncMysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
+        if AsyncMySQLTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
             assert self.__context is not None, 'no context'
             await self.__context.commit()
         else:
@@ -132,12 +132,12 @@ class AsyncMysqlTransactionContext(AsyncDbTransactionContext):
         assert self.__context is not None, 'no context'
         return await self.__context.cursor()
 
-    async def execute(self, sql: str, params: DbParams | None = None) -> AsyncMysqlProxyCursor:  # type: ignore[override]
+    async def execute(self, sql: str, parameters: DbParameters | None = None) -> AsyncMySQLProxyCursor:  # type: ignore[override]
         """
         An async `execute` method that more closely conforms to PEP 249 (to facilitate drop-in use cases.)
 
         :param sql: A string containing the SQL statement to execute.
-        :param params: A tuple containing the params to substitute into the SQL statement.
+        :param parameters A tuple containing the parameters to substitute into the SQL statement.
         :return: The cursor object the caller can use to retrieve results.
         """
         if self.__transaction_state == 3:
@@ -145,39 +145,39 @@ class AsyncMysqlTransactionContext(AsyncDbTransactionContext):
         assert self.__cursor is not None, 'no cursor'
         await self.__cursor.execute(
             sql,
-            tuple(params) if params is not None else tuple())
-        return cast(AsyncMysqlProxyCursor, self.__cursor)
+            tuple(parameters) if parameters is not None else tuple())
+        return cast(AsyncMySQLProxyCursor, self.__cursor)
 
-    async def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
+    async def execute_nonquery(self, sql: str, parameters: DbParameters | None = None) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__cursor is not None, 'no cursor'
         await self.__cursor.execute(
             sql,
-            tuple(params) if params is not None else tuple())
+            tuple(parameters) if parameters is not None else tuple())
         self.__update_transaction_state(sql)
 
-    async def execute_reader(self, sql: str, params: DbParams | None = None) -> AsyncGenerator[tuple[Any, ...], None]:  # type: ignore[override]
+    async def execute_reader(self, sql: str, parameters: DbParameters | None = None) -> AsyncGenerator[tuple[Any, ...], None]:  # type: ignore[override]
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
-        params = tuple(params) if params is not None else tuple()
+        parameters = tuple(parameters) if parameters is not None else tuple()
         assert self.__cursor is not None, 'no cursor'
-        await self.__cursor.execute(sql, params)
+        await self.__cursor.execute(sql, parameters)
         self.__update_transaction_state(sql)
         row = await self.__cursor.fetchone()
         while row is not None:
             yield row
             row = await self.__cursor.fetchone()
 
-    async def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
+    async def execute_scalar(self, sql: str, parameters: DbParameters | None = None) -> Any:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__cursor is not None, 'no cursor'
         self.__update_transaction_state(sql)
         await self.__cursor.execute(
             sql,
-            tuple(params) if params is not None else tuple()
+            tuple(parameters) if parameters is not None else tuple()
         )
         self.__update_transaction_state(sql)
         row = await self.__cursor.fetchone()
@@ -192,7 +192,7 @@ class AsyncMysqlTransactionContext(AsyncDbTransactionContext):
 
     async def rollback(self) -> None:
         assert self.__cursor is not None, 'no cursor'
-        if AsyncMysqlTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
+        if AsyncMySQLTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
             try:
                 await self.__cursor.execute('ROLLBACK')
             except mysql.connector.Error:
@@ -212,4 +212,4 @@ class AsyncMysqlTransactionContext(AsyncDbTransactionContext):
         self.__update_transaction_state('ROLLBACK')
 
 
-__all__ = ['AsyncMysqlTransactionContext']
+__all__ = ['AsyncMySQLTransactionContext']

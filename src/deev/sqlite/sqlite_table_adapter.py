@@ -9,25 +9,25 @@ from uuid import UUID
 from ..common.db_context import DbContext
 from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
+from ..common.db_parameters import DbParameters
 from ..common.db_type_mapper import DbTypeMapper
 from ..entities import EntitySpec, get_entity_spec
 from ..translation import hydrate, to_pyobject, splat
-from .sqlite_proxy_connection import SqliteProxyConnection
-from .sqlite_transaction_context import SqliteTransactionContext
-from .sqlite_type_mapper import SqliteTypeMapper
+from .sqlite_proxy_connection import SQLiteProxyConnection
+from .sqlite_transaction_context import SQLiteTransactionContext
+from .sqlite_type_mapper import SQLiteTypeMapper
 
 TEntity = TypeVar('TEntity')
 
 
-class SqliteTableAdapter(Generic[TEntity]):
+class SQLiteTableAdapter(Generic[TEntity]):
     """
     SQLite implementation of :class:`DbTableAdapter`.
 
     Provides typed CRUD operations with SQL parameter binding using ``%?`` placeholders
     (translated to ``?`` at runtime).
 
-    :param context: A :class:`SqliteProxyConnection` or :class:`SqliteTransactionContext`.
+    :param context: A :class:`SQLiteProxyConnection` or :class:`SQLiteTransactionContext`.
     :param create_table: Whether to auto-create the table on first operation.
     :param table_name: Optional table name override.
     """
@@ -50,7 +50,7 @@ class SqliteTableAdapter(Generic[TEntity]):
         table_name: str | None = None
     ) -> None:
         """Initialize the SQLite table adapter."""
-        self.__context = context if isinstance(context, (SqliteProxyConnection, SqliteTransactionContext)) else SqliteProxyConnection(context)  # type: ignore[arg-type]
+        self.__context = context if isinstance(context, (SQLiteProxyConnection, SQLiteTransactionContext)) else SQLiteProxyConnection(context)  # type: ignore[arg-type]
         self.__create_table = create_table is True
         self.__initialized = False
         self.__table_name = table_name
@@ -61,7 +61,7 @@ class SqliteTableAdapter(Generic[TEntity]):
             entity_type = self.__get_typearg(self)
             self.__entity_spec = get_entity_spec(entity_type)
             self.__column_names = ', '.join([f'[{k}]' for k in self.__entity_spec.fields.keys()])
-            self.__dbtype_mapper = SqliteTypeMapper(self.__entity_spec)
+            self.__dbtype_mapper = SQLiteTypeMapper(self.__entity_spec)
             self.__initialized = True
             if self.__create_table is True:
                 self.create_table()
@@ -70,9 +70,9 @@ class SqliteTableAdapter(Generic[TEntity]):
     def primary_key(self) -> tuple[str, ...]:
         return self.__entity_spec.primary_key
 
-    def __execute(self, sql: str, params: DbParams | None = None) -> None:
+    def __execute(self, sql: str, parameters: DbParameters | None = None) -> None:
         cursor = self.__context.cursor()
-        cursor.execute(sql, params)
+        cursor.execute(sql, parameters)
 
     def __get_pyobject(self, key: str, value: Any) -> Any:
         return to_pyobject(
@@ -87,20 +87,20 @@ class SqliteTableAdapter(Generic[TEntity]):
                 return args[0]
         for base in obj.__class__.__mro__:
             for generic_base in getattr(base, '__orig_bases__', ()):
-                if get_origin(generic_base) is SqliteTableAdapter:
+                if get_origin(generic_base) is SQLiteTableAdapter:
                     args = get_args(generic_base)
                     if args is not None and len(args) > 0:
                         return args[0]
         raise RuntimeError(
             f'Could not determine the entity type for {obj.__class__.__qualname__}. '
-            'Instantiate via the generic alias, e.g. SqliteTableAdapter[MyEntity]().'
+            'Instantiate via the generic alias, e.g. SQLiteTableAdapter[MyEntity]().'
         )
 
     def create_table(self) -> None:
         """Utility method for creating the target table."""
         self.__deferred_init()
-        from .sqlite_ddl_generator import SqliteDDLGenerator
-        ddl_generator = SqliteDDLGenerator()
+        from .sqlite_ddl_generator import SQLiteDDLGenerator
+        ddl_generator = SQLiteDDLGenerator()
         ddl = ddl_generator.generate_table_ddl(entity_spec=self.__entity_spec, table_name=self.__table_name)
         for stmt in ddl:
             self.__execute(stmt)
@@ -141,10 +141,10 @@ class SqliteTableAdapter(Generic[TEntity]):
         cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'INSERT INTO [{table_name}] ({column_names}) VALUES ({parms})'
-        params = tuple([
+        parameters = tuple([
             p.hex if type(p) is UUID else p
             for p in data.values()])
-        cursor.execute(sql, params)
+        cursor.execute(sql, parameters)
         if self.__entity_spec.has_autoincrement:
             v = cursor.lastrowid  # type: ignore[attr-defined]
             if v is not None:
@@ -269,7 +269,7 @@ class SqliteTableAdapter(Generic[TEntity]):
     def query(
         self,
         where: str | None = None,
-        params: DbParams | None = None,
+        parameters: DbParameters | None = None,
         orderby: str | None = None,
         limit: int | None = None
     ) -> Generator[TEntity, None, None]:
@@ -277,19 +277,19 @@ class SqliteTableAdapter(Generic[TEntity]):
         Query records from the table.
 
         :param where: Optional WHERE clause (without the ``WHERE`` keyword).
-        :param params: Query parameters for placeholders in ``where``.
+        :param parameters Query parameters for placeholders in ``where``.
         :param orderby: Optional ORDER BY clause (without the ``ORDER BY`` keyword).
         :param limit: Optional LIMIT value.
         :yields: Hydrated entity instances.
         """
         self.__deferred_init()
-        if params is not None:
-            params = [
+        if parameters is not None:
+            parameters = [
                 p.hex if type(p) is UUID else p
-                for p in params
+                for p in parameters
             ]
         else:
-            params = []
+            parameters = []
         where = f' WHERE {where}' if where is not None and len(where) > 0 else ''
         orderby = f' ORDER BY {orderby}' if orderby is not None and len(orderby) > 0 else ''
         limit_str = f' LIMIT {limit}' if limit is not None and limit > 0 else ''
@@ -298,7 +298,7 @@ class SqliteTableAdapter(Generic[TEntity]):
         cursor = self.__context.cursor()
         if cursor.description is None:
             Exception('cursor missing required descriptor')
-        cursor.execute(sql, tuple(params))
+        cursor.execute(sql, tuple(parameters))
         row = cursor.fetchone()
         while row is not None:
             if cursor.description is None:
@@ -312,4 +312,4 @@ class SqliteTableAdapter(Generic[TEntity]):
             row = cursor.fetchone()
 
 
-__all__ = ['SqliteTableAdapter']
+__all__ = ['SQLiteTableAdapter']

@@ -14,7 +14,7 @@ from typing import (
 
 from .async_db_connection import AsyncDbConnection
 from .async_db_cursor import AsyncDbCursor
-from .db_params import DbParams
+from .db_parameters import DbParameters
 
 
 @runtime_checkable
@@ -47,19 +47,19 @@ class AsyncDbTransactionContext(Protocol):
     async def commit(self) -> None:
         ...
 
-    async def execute(self, sql: str, params: DbParams | None = ...) -> AsyncDbCursor:
+    async def execute(self, sql: str, parameters: DbParameters | None = ...) -> AsyncDbCursor:
         ...
 
     async def execute_script(self, sql: str) -> None:
         ...
 
-    async def execute_nonquery(self, sql: str, params: DbParams | None = ...) -> None:
+    async def execute_nonquery(self, sql: str, parameters: DbParameters | None = ...) -> None:
         ...
 
-    async def execute_reader(self, sql: str, params: DbParams | None = ...) -> AsyncGenerator[tuple[Any, ...], None]:
+    async def execute_reader(self, sql: str, parameters: DbParameters | None = ...) -> AsyncGenerator[tuple[Any, ...], None]:
         ...
 
-    async def execute_scalar(self, sql: str, params: DbParams | None = ...) -> Any:
+    async def execute_scalar(self, sql: str, parameters: DbParameters | None = ...) -> Any:
         ...
 
     async def rollback(self) -> None:

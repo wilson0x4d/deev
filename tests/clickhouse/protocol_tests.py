@@ -67,17 +67,17 @@ def __protocol_mismatch_report(proto: type, candidate: type) -> str:
             is_mismatch = True
             continue
         if kind == 'callable':
-            req_params = list(req_sig.params.values())
-            prov_params = list(prov_sig.params.values())
-            if req_params and req_params[0].name in {'self', 'cls'}:
-                req_params = req_params[1:]
-            if prov_params and prov_params[0].name in {'self', 'cls'}:
-                prov_params = prov_params[1:]
-            if len(req_params) != len(prov_params):
-                report.append(f'Signature mismatch for {name}: different number of params')
+            required_parameters = list(req_sig.parameters.values())
+            provided_parameters = list(prov_sig.parameters.values())
+            if required_parameters and required_parameters[0].name in {'self', 'cls'}:
+                required_parameters = required_parameters[1:]
+            if provided_parameters and provided_parameters[0].name in {'self', 'cls'}:
+                provided_parameters = provided_parameters[1:]
+            if len(required_parameters) != len(provided_parameters):
+                report.append(f'Signature mismatch for {name}: different number of parameters')
                 is_mismatch = True
                 continue
-            for rp, pp in zip(req_params, prov_params):
+            for rp, pp in zip(required_parameters, provided_parameters):
                 if rp.kind != pp.kind:
                     report.append(f'  Parameter kind mismatch in {name}: {rp} vs {pp}')
                     is_mismatch = True

@@ -12,7 +12,7 @@ from typing import (
 
 from .db_connection import DbConnection
 from .db_cursor import DbCursor
-from .db_params import DbParams
+from .db_parameters import DbParameters
 
 @runtime_checkable
 class DbTransactionContext(Protocol):
@@ -44,19 +44,19 @@ class DbTransactionContext(Protocol):
     def commit(self) -> None:
         ...
 
-    def execute(self, sql: str, params: DbParams | None = ...) -> DbCursor:
+    def execute(self, sql: str, parameters: DbParameters | None = ...) -> DbCursor:
         ...
 
     def execute_script(self, sql: str) -> None:
         ...
 
-    def execute_nonquery(self, sql: str, params: DbParams | None = ...) -> None:
+    def execute_nonquery(self, sql: str, parameters: DbParameters | None = ...) -> None:
         ...
 
-    def execute_reader(self, sql: str, params: DbParams | None = ...) -> Generator[tuple[Any, ...], None, None]:
+    def execute_reader(self, sql: str, parameters: DbParameters | None = ...) -> Generator[tuple[Any, ...], None, None]:
         ...
 
-    def execute_scalar(self, sql: str, params: DbParams | None = ...) -> Any:
+    def execute_scalar(self, sql: str, parameters: DbParameters | None = ...) -> Any:
         ...
 
     def rollback(self) -> None:

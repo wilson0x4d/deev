@@ -10,10 +10,10 @@ from typing import Any, Literal, Self
 
 from ..common.async_db_connection import AsyncDbConnection
 from ..common.async_db_cursor import AsyncDbCursor
-from .async_mysql_proxy_cursor import AsyncMysqlProxyCursor
+from .async_mysql_proxy_cursor import AsyncMySQLProxyCursor
 
 
-class AsyncMysqlProxyConnection(AsyncDbConnection):
+class AsyncMySQLProxyConnection(AsyncDbConnection):
     """
     Async DB-API 2.0 compliant connection interface for ``mysql.connector.aio``.
     """
@@ -24,7 +24,7 @@ class AsyncMysqlProxyConnection(AsyncDbConnection):
         self.__connection = provider_connection
 
     async def cursor(self, *args: Any, **kwargs: Any) -> AsyncDbCursor:
-        return AsyncMysqlProxyCursor(await self.__connection.cursor(*args, **kwargs))  # type: ignore[return-value]
+        return AsyncMySQLProxyCursor(await self.__connection.cursor(*args, **kwargs))  # type: ignore[return-value]
 
     async def commit(self) -> None:
         await self.__connection.commit()
@@ -43,4 +43,4 @@ class AsyncMysqlProxyConnection(AsyncDbConnection):
         return False
 
 
-__all__ = ['AsyncMysqlProxyConnection']
+__all__ = ['AsyncMySQLProxyConnection']

@@ -12,7 +12,7 @@ from ..entities import EntitySpec
 from ..translation import deunionize
 
 
-class MysqlTypeMapper(DbTypeMapper):
+class MySQLTypeMapper(DbTypeMapper):
     """Maps Python types to MySQL column types."""
 
     __entity_spec: EntitySpec
@@ -76,4 +76,4 @@ class MysqlTypeMapper(DbTypeMapper):
         raise DbError(f'Unsupported field "{field_name}" having type "{field_type}".')
 
 
-__all__ = ['MysqlTypeMapper']
+__all__ = ['MySQLTypeMapper']

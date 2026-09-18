@@ -11,7 +11,7 @@ from typing import (
 from ..common.db_error import DbError
 
 
-def parse_sql_where(where_clause: str | None, params: tuple[Any, ...]) -> dict[str, Any]:
+def parse_sql_where(where_clause: str | None, parameters: tuple[Any, ...]) -> dict[str, Any]:
     """Parse a SQL WHERE clause into a MongoDB filter dict.
 
     Supports = (equality), != / <> ($ne), < <= > >= ($lt, $lte, $gt, $gte),
@@ -29,9 +29,9 @@ def parse_sql_where(where_clause: str | None, params: tuple[Any, ...]) -> dict[s
 
     def _next_param() -> Any:
         nonlocal param_idx
-        if param_idx >= len(params):
+        if param_idx >= len(parameters):
             raise DbError('WHERE clause has more placeholders than provided parameters.')
-        val = params[param_idx]
+        val = parameters[param_idx]
         param_idx += 1
         return val
 

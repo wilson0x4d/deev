@@ -9,29 +9,29 @@ from typing import (
     Sequence,
 )
 
-from ..common.async_db_cursor import AsyncDbCursor
-from ..common.db_params import DbParams
-from .sqlite_proxy_cursor import SqliteProxyCursor
+from ..common.async_db_cursor import AsyncDbCursor, AsyncDbCursorDescription
+from ..common.db_parameters import DbParameters
+from .sqlite_proxy_cursor import SQLiteProxyCursor
 
 
-class AsyncSqliteProxyCursor(AsyncDbCursor):
+class AsyncSQLiteProxyCursor(AsyncDbCursor):
     """
-    Async shim that delegates to ``SqliteProxyCursor``.
+    Async shim that delegates to ``SQLiteProxyCursor``.
     """
-    __sync_cursor: SqliteProxyCursor
+    __sync_cursor: SQLiteProxyCursor
     __cursor: Cursor
     __sql_arg_expect: str
     __sql_arg_subst: str
 
     def __init__(self, provider_cursor: Cursor) -> None:
         self.__cursor = provider_cursor
-        self.__sync_cursor = SqliteProxyCursor(provider_cursor)
+        self.__sync_cursor = SQLiteProxyCursor(provider_cursor)
         self.__sql_arg_expect = '%?'
         self.__sql_arg_subst = '?'
 
     @property
-    def description(self) -> Sequence[tuple[Any, ...]] | None:
-        return self.__cursor.description
+    def description(self) -> AsyncDbCursorDescription:
+        return self.__cursor.description  # type: ignore[return-value]
 
     @property
     def lastrowid(self) -> int | None:
@@ -41,17 +41,17 @@ class AsyncSqliteProxyCursor(AsyncDbCursor):
     def rowcount(self) -> int:
         return self.__cursor.rowcount
 
-    async def execute(self, operation: str, params: DbParams | None = None) -> None:
-        if params is not None:
+    async def execute(self, operation: str, parameters: DbParameters | None = None) -> None:
+        if parameters is not None:
             operation = operation.replace(self.__sql_arg_expect, self.__sql_arg_subst)
-        if params is None:
+        if parameters is None:
             self.__cursor.execute(operation)
         else:
-            self.__cursor.execute(operation, params)
+            self.__cursor.execute(operation, parameters)
 
-    async def executemany(self, operation: str, seq_params: Sequence[DbParams]) -> None:
+    async def executemany(self, operation: str, seq_of_parameters: Sequence[DbParameters]) -> None:
         operation = operation.replace(self.__sql_arg_expect, self.__sql_arg_subst)
-        self.__cursor.executemany(operation, seq_params)
+        self.__cursor.executemany(operation, seq_of_parameters)
 
     async def fetchone(self) -> tuple[Any, ...] | None:
         return self.__cursor.fetchone()
@@ -66,4 +66,4 @@ class AsyncSqliteProxyCursor(AsyncDbCursor):
         self.__cursor.close()
 
 
-__all__ = ['AsyncSqliteProxyCursor']
+__all__ = ['AsyncSQLiteProxyCursor']

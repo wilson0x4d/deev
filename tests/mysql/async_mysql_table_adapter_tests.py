@@ -11,7 +11,7 @@ from deev.utils import (
     connect_async,
     create_table_adapter_async,
 )
-from deev.mysql.async_mysql_table_adapter import AsyncMysqlTableAdapter
+from deev.mysql.async_mysql_table_adapter import AsyncMySQLTableAdapter
 from uuid import UUID, uuid4
 from punit import fact, trait
 
@@ -39,7 +39,7 @@ async def async_adapter_basic_crud() -> None:
             floaty: float | None = None
 
         async with await connect_async(cxnstring) as connection:
-            adapter = AsyncMysqlTableAdapter[BasicEntity](connection, create_table=True)
+            adapter = AsyncMySQLTableAdapter[BasicEntity](connection, create_table=True)
 
             entity1 = BasicEntity(
                 example=789,
@@ -89,7 +89,7 @@ async def async_adapter_create_kwargs() -> None:
             value: str | None = None
 
         async with await connect_async(cxnstring) as connection:
-            adapter = AsyncMysqlTableAdapter[KwargsEntity](connection, create_table=True)
+            adapter = AsyncMySQLTableAdapter[KwargsEntity](connection, create_table=True)
 
             key = await adapter.create(value='from_kwargs')
             assert key is not None
@@ -127,13 +127,13 @@ async def async_adapter_query_and_delete() -> None:
             status: str | None = None
 
         async with await connect_async(cxnstring) as connection:
-            adapter = AsyncMysqlTableAdapter[QueryEntity](connection, create_table=True)
+            adapter = AsyncMySQLTableAdapter[QueryEntity](connection, create_table=True)
 
             for i in range(3):
                 await adapter.create(name=f'item_{i}', status='active')
 
             results = []
-            async for row in adapter.query(where='status=%?', params=['active']):
+            async for row in adapter.query(where='status=%?', parameters=['active']):
                 results.append(row)
             assert len(results) >= 3
 
@@ -172,7 +172,7 @@ async def async_adapter_upsert() -> None:
             count: int | None = None
 
         async with await connect_async(cxnstring) as connection:
-            adapter = AsyncMysqlTableAdapter[UpsertEntity](connection, create_table=True)
+            adapter = AsyncMySQLTableAdapter[UpsertEntity](connection, create_table=True)
 
             entity1 = UpsertEntity(name='new_entity', count=1)
             pk = await adapter.upsert(entity1)
@@ -216,7 +216,7 @@ async def async_adapter_primary_key_property() -> None:
             value: str | None = None
 
         async with await connect_async(cxnstring) as connection:
-            adapter = AsyncMysqlTableAdapter[PKEntity](connection, create_table=True)
+            adapter = AsyncMySQLTableAdapter[PKEntity](connection, create_table=True)
             assert adapter.primary_key == ('id',)
     finally:
         try:
@@ -246,7 +246,7 @@ async def async_adapter_uuid_field_roundtrip() -> None:
             ref_uuid: UUID | None = None
 
         async with await connect_async(cxnstring) as connection:
-            adapter = AsyncMysqlTableAdapter[UuidEntity](connection, create_table=True)
+            adapter = AsyncMySQLTableAdapter[UuidEntity](connection, create_table=True)
 
             target_uuid = uuid4()
             entity1 = UuidEntity(ref_uuid=target_uuid)
@@ -284,7 +284,7 @@ async def async_adapter_datetime_roundtrip() -> None:
             created_at: datetime | None = None
 
         async with await connect_async(cxnstring) as connection:
-            adapter = AsyncMysqlTableAdapter[DateTimeEntity](connection, create_table=True)
+            adapter = AsyncMySQLTableAdapter[DateTimeEntity](connection, create_table=True)
 
             now = datetime.now(tz=timezone.utc)
             entity1 = DateTimeEntity(created_at=now)

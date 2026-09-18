@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from deev.sqlite import AsyncSqliteProxyConnection
+from deev.sqlite import AsyncSQLiteProxyConnection
 import importlib
 import os
 import sys
@@ -65,7 +65,7 @@ def connect(
                 database_name=connectionstring.database
             )
         case 'mysql.connector' | 'mysql':
-            from deev.mysql.mysql_proxy_connection import MysqlProxyConnection
+            from deev.mysql.mysql_proxy_connection import MySQLProxyConnection
             import mysql.connector
             if connectionstring.server is None:
                 raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
@@ -87,14 +87,14 @@ def connect(
                 cur.execute(f'SET SESSION wait_timeout={effective_command_timeout}')
                 cur.close()
                 conn.commit()
-            return MysqlProxyConnection(conn)
+            return MySQLProxyConnection(conn)
         case 'sqlite3' | 'sqlite':
-            from deev.sqlite.sqlite_proxy_connection import SqliteProxyConnection
+            from deev.sqlite.sqlite_proxy_connection import SQLiteProxyConnection
             import sqlite3
             if connectionstring.database is None:
                 raise ValueError('Missing `database` value in Connection String.')
             db_path = connectionstring.database if connectionstring.server is None else os.path.join(connectionstring.server, connectionstring.database)
-            return SqliteProxyConnection(sqlite3.connect(db_path, check_same_thread=False))
+            return SQLiteProxyConnection(sqlite3.connect(db_path, check_same_thread=False))
         case 'clickhouse':
             from deev.clickhouse.clickhouse_proxy_connection import ClickHouseProxyConnection
             from clickhouse_connect.dbapi.connection import Connection as ClickHouseDBAPIConnection
@@ -164,13 +164,13 @@ async def connect_async(
                 **kwargs
             )
         case 'mysql.connector' | 'mysql':
-            from deev.mysql.async_mysql_proxy_connection import AsyncMysqlProxyConnection
+            from deev.mysql.async_mysql_proxy_connection import AsyncMySQLProxyConnection
             from mysql.connector.aio import connect
             if connectionstring.server is None:
                 raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
             parts = connectionstring.server.split(':')
             host_name, port_number = (parts[0], int(parts[1])) if len(parts) == 2 else (parts[0], 3306)
-            return AsyncMysqlProxyConnection(
+            return AsyncMySQLProxyConnection(
                 await connect(
                     host=host_name,
                     port=port_number,
@@ -185,13 +185,13 @@ async def connect_async(
                 **kwargs
             )
         case 'sqlite3' | 'sqlite':
-            from deev.sqlite.sqlite_proxy_connection import SqliteProxyConnection
-            from deev.sqlite.async_sqlite_proxy_connection import AsyncSqliteProxyConnection
+            from deev.sqlite.sqlite_proxy_connection import SQLiteProxyConnection
+            from deev.sqlite.async_sqlite_proxy_connection import AsyncSQLiteProxyConnection
             import sqlite3
             if connectionstring.database is None:
                 raise ValueError('Missing `database` value in Connection String.')
             db_path = connectionstring.database if connectionstring.server is None else os.path.join(connectionstring.server, connectionstring.database)
-            return AsyncSqliteProxyConnection(sqlite3.connect(db_path))
+            return AsyncSQLiteProxyConnection(sqlite3.connect(db_path))
         case 'clickhouse':
             from deev.clickhouse.async_clickhouse_proxy_connection import AsyncClickHouseProxyConnection
             import clickhouse_connect
@@ -531,15 +531,15 @@ def generate_entity_ddl(
             else dbcontext_or_connectionstring
         )
         match type(dbcontext).__name__:
-            case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MysqlTransactionContext':
+            case 'MySQLProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MySQLTransactionContext':
                 import deev.mysql
-                mysql_ddl_generator = deev.mysql.MysqlDDLGenerator()
+                mysql_ddl_generator = deev.mysql.MySQLDDLGenerator()
                 return mysql_ddl_generator.generate_table_ddl(
                     entity_spec=entity_spec
                 )
-            case 'SqliteProxyConnection' | 'SqliteTransactionContext':
+            case 'SQLiteProxyConnection' | 'SQLiteTransactionContext':
                 import deev.sqlite
-                sqlite_ddl_generator = deev.sqlite.SqliteDDLGenerator()
+                sqlite_ddl_generator = deev.sqlite.SQLiteDDLGenerator()
                 return sqlite_ddl_generator.generate_table_ddl(
                     entity_spec=entity_spec
                 )
@@ -655,12 +655,12 @@ def db_table_adapter_factory(
         case 'MongoProxyConnection' | 'MongoTransactionContext':
             import deev.mongodb
             return deev.mongodb.MongoTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MysqlTransactionContext':
+        case 'MySQLProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MySQLTransactionContext':
             import deev.mysql
-            return deev.mysql.MysqlTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case 'SqliteProxyConnection' | 'SqliteTransactionContext':
+            return deev.mysql.MySQLTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+        case 'SQLiteProxyConnection' | 'SQLiteTransactionContext':
             import deev.sqlite
-            return deev.sqlite.SqliteTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+            return deev.sqlite.SQLiteTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
         case _:
             raise DbError(f'Unsupported object: {db_context}')
 
@@ -697,12 +697,12 @@ def async_db_table_adapter_factory(
         case 'AsyncMongoProxyConnection' | 'AsyncMongoTransactionContext':
             import deev.mongodb
             return deev.mongodb.AsyncMongoTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case 'AsyncMysqlProxyConnection' | 'AsyncMysqlTransactionContext':
+        case 'AsyncMySQLProxyConnection' | 'AsyncMySQLTransactionContext':
             import deev.mysql
-            return deev.mysql.AsyncMysqlTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
-        case 'AsyncSqliteProxyConnection' | 'AsyncSqliteTransactionContext':
+            return deev.mysql.AsyncMySQLTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+        case 'AsyncSQLiteProxyConnection' | 'AsyncSQLiteTransactionContext':
             import deev.sqlite
-            return deev.sqlite.AsyncSqliteTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+            return deev.sqlite.AsyncSQLiteTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
         case _:
             raise DbError(f'Unsupported object: {async_db_context}')
 
@@ -779,7 +779,7 @@ async def create_table_adapter_async(
     )
 
 
-def begin_transaction(dbcontext_or_connectionstring: DbContext | ConnectionString) -> DbTransactionContext:
+def begin_transaction(dbcontext_or_connectionstring: DbContext | ConnectionString | str) -> DbTransactionContext:
     """
     Begin a transaction on the given connection or context.
 
@@ -787,29 +787,30 @@ def begin_transaction(dbcontext_or_connectionstring: DbContext | ConnectionStrin
     :return: A :class:`DbTransactionContext`.
     :raises DbError: If the provider is unsupported.
     """
-    dbcontext = (
-        connect(dbcontext_or_connectionstring)
-        if isinstance(dbcontext_or_connectionstring, (ConnectionString, str))
-        else dbcontext_or_connectionstring
-    )
+    if isinstance(dbcontext_or_connectionstring, (ConnectionString, str)):
+        owns_context = True
+        dbcontext = connect(dbcontext_or_connectionstring)
+    else:
+        owns_context = False
+        dbcontext = dbcontext_or_connectionstring  # type: ignore[assignment]
     match type(dbcontext).__name__:
         case 'MongoProxyConnection' | 'MongoTransactionContext':
             import deev.mongodb
-            return deev.mongodb.MongoTransactionContext(dbcontext)
-        case 'MysqlProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MysqlTransactionContext':
+            return deev.mongodb.MongoTransactionContext(dbcontext, owns_context=owns_context)
+        case 'MySQLProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MySQLTransactionContext':
             import deev.mysql
-            return deev.mysql.MysqlTransactionContext(dbcontext)
-        case 'SqliteProxyConnection' | 'SqliteTransactionContext':
+            return deev.mysql.MySQLTransactionContext(dbcontext, owns_context=owns_context)
+        case 'SQLiteProxyConnection' | 'SQLiteTransactionContext':
             import deev.sqlite
-            return deev.sqlite.SqliteTransactionContext(dbcontext)
+            return deev.sqlite.SQLiteTransactionContext(dbcontext, owns_context=owns_context)
         case 'ClickHouseProxyConnection' | 'ClickHouseTransactionContext':
             import deev.clickhouse
-            return deev.clickhouse.ClickHouseTransactionContext(dbcontext)
+            return deev.clickhouse.ClickHouseTransactionContext(dbcontext, owns_context=owns_context)
         case _:
             raise DbError(f'Unsupported object: {dbcontext}')
 
 
-async def begin_transaction_async(dbcontext_or_connectionstring: AsyncDbContext | ConnectionString) -> AsyncDbTransactionContext:
+async def begin_transaction_async(dbcontext_or_connectionstring: AsyncDbContext | ConnectionString | str) -> AsyncDbTransactionContext:
     """
     Begin an async transaction on the given connection or context.
 
@@ -817,24 +818,25 @@ async def begin_transaction_async(dbcontext_or_connectionstring: AsyncDbContext 
     :return: An :class:`AsyncDbTransactionContext`.
     :raises DbError: If the provider is unsupported.
     """
-    dbcontext = (
-        (await connect_async(dbcontext_or_connectionstring))
-        if isinstance(dbcontext_or_connectionstring, (ConnectionString, str))
-        else dbcontext_or_connectionstring
-    )
+    if isinstance(dbcontext_or_connectionstring, (ConnectionString, str)):
+        owns_context = True
+        dbcontext = await connect_async(dbcontext_or_connectionstring)
+    else:
+        owns_context = False
+        dbcontext = dbcontext_or_connectionstring  # type: ignore[assignment]
     match type(dbcontext).__name__:
         case 'AsyncMongoProxyConnection' | 'AsyncMongoTransactionContext':
             import deev.mongodb
-            return deev.mongodb.AsyncMongoTransactionContext(dbcontext)
-        case 'AsyncMysqlProxyConnection' | 'AsyncMysqlTransactionContext':
+            return deev.mongodb.AsyncMongoTransactionContext(dbcontext, owns_context=owns_context)
+        case 'AsyncMySQLProxyConnection' | 'AsyncMySQLTransactionContext':
             import deev.mysql
-            return deev.mysql.AsyncMysqlTransactionContext(dbcontext)
-        case 'AsyncSqliteProxyConnection' | 'AsyncSqliteTransactionContext':
+            return deev.mysql.AsyncMySQLTransactionContext(dbcontext, owns_context=owns_context)
+        case 'AsyncSQLiteProxyConnection' | 'AsyncSQLiteTransactionContext':
             import deev.sqlite
-            return deev.sqlite.AsyncSqliteTransactionContext(dbcontext)
+            return deev.sqlite.AsyncSQLiteTransactionContext(dbcontext, owns_context=owns_context)
         case 'AsyncClickHouseProxyConnection' | 'AsyncClickHouseTransactionContext':
             import deev.clickhouse
-            return deev.clickhouse.AsyncClickHouseTransactionContext(dbcontext)
+            return deev.clickhouse.AsyncClickHouseTransactionContext(dbcontext, owns_context=owns_context)
         case _:
             raise DbError(f'Unsupported object: {dbcontext}')
 

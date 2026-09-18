@@ -121,7 +121,7 @@ def where_parser_numeric_equality_returns_int_or_float() -> None:
 
 
 @fact
-def where_parser_placeholder_resolves_from_params() -> None:
+def where_parser_placeholder_resolves_from_parameters() -> None:
     result = parse_sql_where("name=%? AND age=%?", ('alice', 25))
     assert result == {'name': 'alice', 'age': 25}
 
@@ -349,7 +349,7 @@ def adapter_query_with_in_operator_works() -> None:
 
 @fact
 def where_parser_raises_when_too_many_placeholders() -> None:
-    """When the WHERE clause has more %? placeholders than provided params,
+    """When the WHERE clause has more %? placeholders than provided parameters,
     the first placeholder is resolved but subsequent ones silently dropped."""
     result = parse_sql_where("name=%? AND age=%?", ('alice',))
     assert result == {'name': 'alice'}, f"Expected {{'name': 'alice'}}, got {result}"
@@ -501,8 +501,8 @@ def cursor_execute_select_backtick_table_name_stripped() -> None:
 
 
 @fact
-def cursor_execute_select_with_placeholder_params() -> None:
-    """SELECT with %? placeholders should pass params to parse_sql_where."""
+def cursor_execute_select_with_placeholder_parameters() -> None:
+    """SELECT with %? placeholders should pass parameters to parse_sql_where."""
     cursor, session, client = _make_cursor()
     mock_db = MagicMock()
     mock_collection = MagicMock()
@@ -528,8 +528,8 @@ def cursor_execute_select_unparseable_sql_raises() -> None:
 
 
 @fact
-def cursor_execute_insert_with_placeholders_resolves_params() -> None:
-    """INSERT with %? should substitute params into the document."""
+def cursor_execute_insert_with_placeholders_resolves_parameters() -> None:
+    """INSERT with %? should substitute parameters into the document."""
     cursor, session, client = _make_cursor()
     mock_db = MagicMock()
     mock_collection = MagicMock()
@@ -660,7 +660,7 @@ def cursor_execute_insert_unparseable_raises() -> None:
 
 @fact
 def cursor_execute_insert_too_many_placeholders_raises() -> None:
-    """INSERT with more %? placeholders than params raises DbError."""
+    """INSERT with more %? placeholders than parameters raises DbError."""
     cursor, session, client = _make_cursor()
     try:
         cursor.execute("INSERT users(name, age) VALUES (%?, %?)", ('Alice',))
@@ -1061,8 +1061,8 @@ def cursor_description_populated_after_select_no_results_but_columns() -> None:
 
 
 @fact
-def cursor_description_with_nullable_always_true() -> None:
-    """description nullable flag should be True for MongoDB fields."""
+def cursor_description_nullable_is_one() -> None:
+    """description nullable flag should be 1 (int) for MongoDB fields per PEP 249."""
     # description property requires non-empty __result_set, so set it manually
     cursor, session, client = _make_cursor()
     docs_sample: list[dict[str, str]] = [{'name': 'Alice'}]  # type: ignore[var-annotated]
@@ -1072,8 +1072,8 @@ def cursor_description_with_nullable_always_true() -> None:
 
     desc = cursor.description
     assert desc is not None
-    nullable: bool = desc[0][6]  # DB-API: nullable is the 7th element
-    assert nullable is True
+    nullable: int = desc[0][6]  # DB-API: nullable is the 7th element
+    assert nullable == 1
 
 
 @fact

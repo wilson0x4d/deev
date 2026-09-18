@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 from deev.entities import entity, field, IndexOptions, IndexOrder
-from deev.sqlite.sqlite_proxy_connection import SqliteProxyConnection
-from deev.sqlite.sqlite_table_adapter import SqliteTableAdapter
+from deev.sqlite.sqlite_proxy_connection import SQLiteProxyConnection
+from deev.sqlite.sqlite_table_adapter import SQLiteTableAdapter
 from punit import fact, trait
 from unittest.mock import MagicMock
 
@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 def _make_mock_connection():
     """Build mock chain for index-creation testing.
 
-    Uses spec=SqliteProxyConnection so the adapter's isinstance check passes
+    Uses spec=SQLiteProxyConnection so the adapter's isinstance check passes
     and our mock is used directly (same pattern as MongoDB tests).
 
     Returns: (mock_connection, captured_sql_list)
@@ -20,11 +20,11 @@ def _make_mock_connection():
     captured = []
 
     mock_cursor = MagicMock()
-    mock_cursor.execute.side_effect = lambda sql, params=None: captured.append(sql)
+    mock_cursor.execute.side_effect = lambda sql, parameters=None: captured.append(sql)
     # description must be truthy for read()/query paths to work
     mock_cursor.description = [('id',), ('name',)]
 
-    mock_connection = MagicMock(spec=SqliteProxyConnection)
+    mock_connection = MagicMock(spec=SQLiteProxyConnection)
     mock_connection.cursor.return_value = mock_cursor
     # commit/rollback are no-ops on the context level (proxy forwards them)
     mock_connection.commit.side_effect = lambda: None
@@ -42,7 +42,7 @@ def single_column_pk_no_duplicate_index() -> None:
         name: str
 
     mock_connection, captured = _make_mock_connection()
-    adapter = SqliteTableAdapter[SinglePkEntity](mock_connection, create_table=True)
+    adapter = SQLiteTableAdapter[SinglePkEntity](mock_connection, create_table=True)
     # Trigger deferred init via a public method call
     adapter.read(id=1)
 
@@ -62,7 +62,7 @@ def single_secondary_index_string_shorthand() -> None:
         name: str = field(index='ix_single')
 
     mock_connection, captured = _make_mock_connection()
-    adapter = SqliteTableAdapter[SingleIndexEntity](mock_connection, create_table=True)
+    adapter = SQLiteTableAdapter[SingleIndexEntity](mock_connection, create_table=True)
     adapter.read(id=1)  # noqa: E501
 
     # First is CREATE TABLE, second is CREATE INDEX (third is SELECT from read())
@@ -86,7 +86,7 @@ def compound_secondary_index() -> None:
         first_name: str = field(index='ix_user_composite')
 
     mock_connection, captured = _make_mock_connection()
-    adapter = SqliteTableAdapter[CompoundIndexEntity](mock_connection, create_table=True)
+    adapter = SQLiteTableAdapter[CompoundIndexEntity](mock_connection, create_table=True)
     adapter.read(id=1)  # noqa: E501
 
     # First is CREATE TABLE, second is CREATE INDEX (third is SELECT from read())
@@ -114,7 +114,7 @@ def descending_secondary_index() -> None:
         )
 
     mock_connection, captured = _make_mock_connection()
-    adapter = SqliteTableAdapter[DescIndexEntity](mock_connection, create_table=True)
+    adapter = SQLiteTableAdapter[DescIndexEntity](mock_connection, create_table=True)
     adapter.read(id=1)  # noqa: E501
 
     index_sql = captured[1]
@@ -137,7 +137,7 @@ def mixed_direction_compound_index() -> None:
         )
 
     mock_connection, captured = _make_mock_connection()
-    adapter = SqliteTableAdapter[MixedCompoundEntity](mock_connection, create_table=True)
+    adapter = SQLiteTableAdapter[MixedCompoundEntity](mock_connection, create_table=True)
     adapter.read(id=1)  # noqa: E501
 
     index_sql = captured[1]
@@ -161,7 +161,7 @@ def no_secondary_indexes_only_create_table() -> None:
         value: int
 
     mock_connection, captured = _make_mock_connection()
-    adapter = SqliteTableAdapter[NoSecondaryEntity](mock_connection, create_table=True)
+    adapter = SQLiteTableAdapter[NoSecondaryEntity](mock_connection, create_table=True)
     adapter.read(id=1)  # noqa: E501
 
     assert len(captured) >= 1

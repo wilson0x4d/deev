@@ -16,7 +16,7 @@ from uuid import UUID, uuid4
 from ..common.async_db_connection import AsyncDbConnection
 from ..common.async_db_transaction_context import AsyncDbTransactionContext
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
+from ..common.db_parameters import DbParameters
 from .async_mongo_proxy_connection import AsyncMongoProxyConnection
 from .async_mongo_proxy_cursor import AsyncMongoProxyCursor
 
@@ -180,44 +180,44 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
             raise DbError('Cursor not initialized.')
         return self.__cursor
 
-    async def execute(self, sql: str, params: DbParams | None = None) -> AsyncMongoProxyCursor:  # type: ignore[override]
+    async def execute(self, sql: str, parameters: DbParameters | None = None) -> AsyncMongoProxyCursor:  # type: ignore[override]
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__cursor is not None
         await self.__cursor.execute(
             sql,
-            tuple(params) if params is not None else tuple())
+            tuple(parameters) if parameters is not None else tuple())
         return self.__cursor  # type: ignore[return-value]
 
-    async def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
+    async def execute_nonquery(self, sql: str, parameters: DbParameters | None = None) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         await self.__cursor.execute(  # type: ignore[union-attr]
             sql,
-            tuple(params) if params is not None else tuple())
+            tuple(parameters) if parameters is not None else tuple())
         self.__update_transaction_state(sql)
 
-    async def execute_reader(self, sql: str, params: DbParams | None = None) -> AsyncGenerator[tuple[Any, ...], None]:  # type: ignore[override]
+    async def execute_reader(self, sql: str, parameters: DbParameters | None = None) -> AsyncGenerator[tuple[Any, ...], None]:  # type: ignore[override]
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
-        params = tuple(params) if params is not None else tuple()
+        parameters = tuple(parameters) if parameters is not None else tuple()
         assert self.__cursor is not None
-        await self.__cursor.execute(sql, params)
+        await self.__cursor.execute(sql, parameters)
         self.__update_transaction_state(sql)
         row = await self.__cursor.fetchone()
         while row is not None:
             yield row
             row = await self.__cursor.fetchone()
 
-    async def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
+    async def execute_scalar(self, sql: str, parameters: DbParameters | None = None) -> Any:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         self.__update_transaction_state(sql)
         assert self.__cursor is not None and self.__cursor.rowcount >= 0
         await self.__cursor.execute(
             sql,
-            tuple(params) if params is not None else tuple()
+            tuple(parameters) if parameters is not None else tuple()
         )
         self.__update_transaction_state(sql)
         row = await self.__cursor.fetchone()

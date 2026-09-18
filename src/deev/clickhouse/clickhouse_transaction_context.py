@@ -14,7 +14,7 @@ from uuid import uuid4, UUID
 from ..common.db_connection import DbConnection
 from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
+from ..common.db_parameters import DbParameters
 from ..common.db_transaction_context import DbTransactionContext
 from .clickhouse_proxy_connection import ClickHouseProxyConnection
 
@@ -126,46 +126,46 @@ class ClickHouseTransactionContext(DbTransactionContext):
         assert self.__context is not None, 'no context'
         return self.__context.cursor()
 
-    def execute(self, sql: str, params: DbParams | None = None) -> DbCursor:
+    def execute(self, sql: str, parameters: DbParameters | None = None) -> DbCursor:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__context is not None, 'no context'
         if self.__cursor is None:
             self.__cursor = self.__context.cursor()
-        self.__cursor.execute(sql, params)
+        self.__cursor.execute(sql, parameters)
         return cast(DbCursor, self.__cursor)
 
-    def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
+    def execute_nonquery(self, sql: str, parameters: DbParameters | None = None) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__context is not None, 'no context'
         if self.__cursor is None:
             self.__cursor = self.__context.cursor()
-        self.__cursor.execute(sql, params)
+        self.__cursor.execute(sql, parameters)
         self.__update_transaction_state(sql)
 
-    def execute_reader(self, sql: str, params: DbParams | None = None) -> Generator[Any, None, None]:
+    def execute_reader(self, sql: str, parameters: DbParameters | None = None) -> Generator[Any, None, None]:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__context is not None, 'no context'
         self.__update_transaction_state(sql)
         if self.__cursor is None:
             self.__cursor = self.__context.cursor()
-        self.__cursor.execute(sql, params)
+        self.__cursor.execute(sql, parameters)
         self.__update_transaction_state(sql)
         row = self.__cursor.fetchone()
         while row is not None:
             yield row
             row = self.__cursor.fetchone()
 
-    def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
+    def execute_scalar(self, sql: str, parameters: DbParameters | None = None) -> Any:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__context is not None, 'no context'
         self.__update_transaction_state(sql)
         if self.__cursor is None:
             self.__cursor = self.__context.cursor()
-        self.__cursor.execute(sql, params)
+        self.__cursor.execute(sql, parameters)
         self.__update_transaction_state(sql)
         row = self.__cursor.fetchone()
         return None if row is None else row[0]

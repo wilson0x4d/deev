@@ -14,7 +14,7 @@ from ..common.db_connection import DbConnection
 from ..common.db_context import DbContext
 from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
+from ..common.db_parameters import DbParameters
 from ..common.db_transaction_context import DbTransactionContext
 
 
@@ -175,11 +175,11 @@ class MongoTransactionContext(DbTransactionContext):
         assert self.__cursor is not None, 'no cursor'
         return self.__cursor
 
-    def execute(self, sql: str, params: DbParams | None = None) -> DbCursor:
+    def execute(self, sql: str, parameters: DbParameters | None = None) -> DbCursor:
         """
         An `execute` method that more closely conforms to PEP 249 (to facilitate drop-in use cases.)
         :param sql: A string containing the SQL statement to execute.
-        :param params: A tuple containing the params to substitute into the SQL statement.
+        :param parameters A tuple containing the parameters to substitute into the SQL statement.
         :return: The cursor object the caller can use to retrieve results.
         """
         if self.__transaction_state == 3:
@@ -187,39 +187,39 @@ class MongoTransactionContext(DbTransactionContext):
         assert self.__cursor is not None, 'no cursor'
         self.__cursor.execute(
             sql,
-            tuple(params) if params is not None else tuple())
+            tuple(parameters) if parameters is not None else tuple())
         return self.__cursor
 
-    def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
+    def execute_nonquery(self, sql: str, parameters: DbParameters | None = None) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__cursor is not None, 'no cursor'
         self.__cursor.execute(
             sql,
-            tuple(params) if params is not None else tuple())
+            tuple(parameters) if parameters is not None else tuple())
         self.__update_transaction_state(sql)
 
-    def execute_reader(self, sql: str, params: DbParams | None = None) -> Generator[Any, None, None]:
+    def execute_reader(self, sql: str, parameters: DbParameters | None = None) -> Generator[Any, None, None]:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__cursor is not None, 'no cursor'
         self.__update_transaction_state(sql)
-        params = tuple(params) if params is not None else tuple()
-        self.__cursor.execute(sql, params)
+        parameters = tuple(parameters) if parameters is not None else tuple()
+        self.__cursor.execute(sql, parameters)
         self.__update_transaction_state(sql)
         row = self.__cursor.fetchone()
         while row is not None:
             yield row
             row = self.__cursor.fetchone()
 
-    def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
+    def execute_scalar(self, sql: str, parameters: DbParameters | None = None) -> Any:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__cursor is not None, 'no cursor'
         self.__update_transaction_state(sql)
         self.__cursor.execute(
             sql,
-            tuple(params) if params is not None else tuple()
+            tuple(parameters) if parameters is not None else tuple()
         )
         self.__update_transaction_state(sql)
         row = self.__cursor.fetchone()

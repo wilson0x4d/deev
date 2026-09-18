@@ -9,7 +9,7 @@ from deev.common import (
     DbTransactionContext,
     DbTypeMapper
 )
-from deev.mysql import MysqlTransactionContext, MysqlTypeMapper
+from deev.mysql import MySQLTransactionContext, MySQLTypeMapper
 import inspect
 from mysql.connector.abstracts import (
     MySQLConnectionAbstract,
@@ -70,20 +70,20 @@ def __protocol_mismatch_report(proto: type, candidate: type) -> str:
             is_mismatch = True
             continue
         if kind == 'callable':
-            # Compare params (ignoring *self/*cls for methods)
-            req_params = list(req_sig.params.values())
-            prov_params = list(prov_sig.params.values())
+            # Compare parameters (ignoring *self/*cls for methods)
+            required_parameters = list(req_sig.parameters.values())
+            provided_parameters = list(prov_sig.parameters.values())
             # drop the first param if it looks like self/cls
-            if req_params and req_params[0].name in {'self', 'cls'}:
-                req_params = req_params[1:]
-            if prov_params and prov_params[0].name in {'self', 'cls'}:
-                prov_params = prov_params[1:]
+            if required_parameters and required_parameters[0].name in {'self', 'cls'}:
+                required_parameters = required_parameters[1:]
+            if provided_parameters and provided_parameters[0].name in {'self', 'cls'}:
+                provided_parameters = provided_parameters[1:]
 
-            if len(req_params) != len(prov_params):
-                report.append(f'Signature mismatch for {name}: different number of params')
+            if len(required_parameters) != len(provided_parameters):
+                report.append(f'Signature mismatch for {name}: different number of parameters')
                 is_mismatch = True
                 continue
-            for rp, pp in zip(req_params, prov_params):
+            for rp, pp in zip(required_parameters, provided_parameters):
                 if rp.kind != pp.kind:
                     report.append(f'  Parameter kind mismatch in {name}: {rp} vs {pp}')
                     is_mismatch = True
@@ -102,9 +102,9 @@ def __protocol_mismatch_report(proto: type, candidate: type) -> str:
 @inlinedata(MySQLConnectionAbstract, DbConnection)
 @inlinedata(MySQLConnectionAbstract, DbContext)
 @inlinedata(MySQLCursorAbstract, DbCursor)
-@inlinedata(MysqlTransactionContext, DbConnection)
-@inlinedata(MysqlTransactionContext, DbTransactionContext)
-@inlinedata(MysqlTypeMapper, DbTypeMapper)
+@inlinedata(MySQLTransactionContext, DbConnection)
+@inlinedata(MySQLTransactionContext, DbTransactionContext)
+@inlinedata(MySQLTypeMapper, DbTypeMapper)
 def protocols_runtime_test(candidate: type, proto: type) -> None:
     """Assert verious types can be runtime-checked for their equivalent Protocol(s)"""
     if not issubclass(candidate, proto):

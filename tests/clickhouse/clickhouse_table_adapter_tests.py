@@ -59,7 +59,7 @@ def basic_verification() -> None:
             assert data.example_text == 'updated'
 
             selected = []
-            for row in adapter.query(where='exampleText=%?', params=['updated']):
+            for row in adapter.query(where='exampleText=%?', parameters=['updated']):
                 selected.append(row)
             assert len(selected) > 0
 

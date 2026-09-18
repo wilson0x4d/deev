@@ -6,10 +6,10 @@ from __future__ import annotations
 import hanaro
 
 from ..entities import EntitySpec, IndexOrder
-from .sqlite_type_mapper import SqliteTypeMapper
+from .sqlite_type_mapper import SQLiteTypeMapper
 
 
-class SqliteDDLGenerator():
+class SQLiteDDLGenerator():
     """
     Generates DDL statements for SQLite tables from entity specifications.
 
@@ -61,7 +61,7 @@ class SqliteDDLGenerator():
         :param table_name: Optional table name override.
         :return: List of DDL statements including ``CREATE TABLE`` and ``CREATE INDEX``.
         """
-        db_type_mapper = SqliteTypeMapper(entity_spec)
+        db_type_mapper = SQLiteTypeMapper(entity_spec)
         ddl = list[str]()
         table_name = entity_spec.table_name if table_name is None else table_name
         if len(entity_spec.primary_key) == 1:
@@ -91,4 +91,4 @@ class SqliteDDLGenerator():
         return ddl
 
 
-__all__ = ['SqliteDDLGenerator']
+__all__ = ['SQLiteDDLGenerator']

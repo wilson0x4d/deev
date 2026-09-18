@@ -219,7 +219,7 @@ The transaction context detects DDL statements and manages savepoints defensivel
 SQLite
 ~~~~~~
 
-SQLite also implicitly commits before DDL statements — the same concern as MySQL applies here. The :class:`~deev.sqlite.SqliteTransactionContext` handles this by catching ``sqlite3.OperationalError`` on savepoint release and falling back to a full ``COMMIT`` when DDL has killed all savepoints.
+SQLite also implicitly commits before DDL statements — the same concern as MySQL applies here. The :class:`~deev.sqlite.SQLiteTransactionContext` handles this by catching ``sqlite3.OperationalError`` on savepoint release and falling back to a full ``COMMIT`` when DDL has killed all savepoints.
 
 **Parameter syntax:** SQLite uses ``?`` placeholders natively. The deev transaction context automatically translates the normalized ``%?`` syntax to ``?``, so you always write ``%?`` in migrations regardless of provider.
 

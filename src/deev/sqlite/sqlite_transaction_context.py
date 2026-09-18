@@ -13,12 +13,12 @@ from ..common.db_connection import DbConnection
 from ..common.db_context import DbContext
 from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
-from ..common.db_params import DbParams
+from ..common.db_parameters import DbParameters
 from ..common.db_transaction_context import DbTransactionContext
-from .sqlite_proxy_connection import SqliteProxyConnection
+from .sqlite_proxy_connection import SQLiteProxyConnection
 
 
-class SqliteTransactionContext(DbTransactionContext):
+class SQLiteTransactionContext(DbTransactionContext):
 
     __ambient_transaction_id: ContextVar = ContextVar('ambient_transacton_id', default=None)
     __transaction_id: UUID
@@ -30,8 +30,8 @@ class SqliteTransactionContext(DbTransactionContext):
 
     def __init__(self, context: DbContext, *, owns_context: bool | None = None):
         self.__owns_context = owns_context is True
-        self.__is_deev_context = isinstance(context, (SqliteProxyConnection, SqliteTransactionContext))
-        self.__context = context if self.__is_deev_context else SqliteProxyConnection(context)  # type: ignore[arg-type]
+        self.__is_deev_context = isinstance(context, (SQLiteProxyConnection, SQLiteTransactionContext))
+        self.__context = context if self.__is_deev_context else SQLiteProxyConnection(context)  # type: ignore[arg-type]
         self.__sql_arg_expect = '%?'
         self.__sql_arg_subst = '?'
         self.__transaction_id = uuid4()
@@ -73,8 +73,8 @@ class SqliteTransactionContext(DbTransactionContext):
             self.__transaction_state = 2
         elif prefix in ['COMM', 'ROLL']:
             self.__transaction_state = 3
-            if SqliteTransactionContext.__ambient_transaction_id.get() == self.__transaction_id:
-                SqliteTransactionContext.__ambient_transaction_id.set(None)
+            if SQLiteTransactionContext.__ambient_transaction_id.get() == self.__transaction_id:
+                SQLiteTransactionContext.__ambient_transaction_id.set(None)
         elif self.__transaction_state == 0:
             self.__transaction_state = 1
 
@@ -91,8 +91,8 @@ class SqliteTransactionContext(DbTransactionContext):
         self.__transaction_state = 1
         assert self.__context is not None, 'no context'
         self.__cursor = self.__context.cursor()
-        if SqliteTransactionContext.__ambient_transaction_id.get() is None:
-            SqliteTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
+        if SQLiteTransactionContext.__ambient_transaction_id.get() is None:
+            SQLiteTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
             self.__cursor.execute('BEGIN TRANSACTION')
         else:
             self.__cursor.execute(f'SAVEPOINT TID_{self.__transaction_id.hex};')
@@ -114,7 +114,7 @@ class SqliteTransactionContext(DbTransactionContext):
 
     def commit(self) -> None:
         assert self.__cursor is not None, 'no cursor'
-        if SqliteTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
+        if SQLiteTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
             try:
                 self.__cursor.execute('COMMIT')
             except sqlite3.OperationalError:
@@ -140,12 +140,12 @@ class SqliteTransactionContext(DbTransactionContext):
         assert self.__context is not None, 'no context'
         return self.__context.cursor()
 
-    def execute(self, sql: str, params: DbParams | None = None) -> DbCursor:
+    def execute(self, sql: str, parameters: DbParameters | None = None) -> DbCursor:
         """
         An `execute` method that more closely conforms to PEP 249.
 
         :param sql: A string containing the SQL statement to execute.
-        :param params: A tuple containing the params to substitute into the SQL statement.
+        :param parameters A tuple containing the parameters to substitute into the SQL statement.
         :return: The cursor object the caller can use to retrieve results.
         """
         assert self.__cursor is not None, 'no cursor'
@@ -154,34 +154,34 @@ class SqliteTransactionContext(DbTransactionContext):
         sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
         self.__cursor.execute(
             sql,
-            tuple(params) if params is not None else tuple())
+            tuple(parameters) if parameters is not None else tuple())
         return cast(DbCursor, self.__cursor)
 
-    def execute_nonquery(self, sql: str, params: DbParams | None = None) -> None:
+    def execute_nonquery(self, sql: str, parameters: DbParameters | None = None) -> None:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__cursor is not None, 'no cursor'
         sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
         self.__cursor.execute(
             sql,
-            tuple(params) if params is not None else tuple())
+            tuple(parameters) if parameters is not None else tuple())
         self.__update_transaction_state(sql)
 
-    def execute_reader(self, sql: str, params: DbParams | None = None) -> Generator[Any, None, None]:
+    def execute_reader(self, sql: str, parameters: DbParameters | None = None) -> Generator[Any, None, None]:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__cursor is not None, 'no cursor'
         self.__update_transaction_state(sql)
-        params = tuple(params) if params is not None else tuple()
+        parameters = tuple(parameters) if parameters is not None else tuple()
         sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
-        self.__cursor.execute(sql, params)
+        self.__cursor.execute(sql, parameters)
         self.__update_transaction_state(sql)
         row = self.__cursor.fetchone()
         while row is not None:
             yield row
             row = self.__cursor.fetchone()
 
-    def execute_scalar(self, sql: str, params: DbParams | None = None) -> Any:
+    def execute_scalar(self, sql: str, parameters: DbParameters | None = None) -> Any:
         if self.__transaction_state == 3:
             raise DbError('Cannot use a transaction that has already been committed or rolled back.')
         assert self.__cursor is not None, 'no cursor'
@@ -189,7 +189,7 @@ class SqliteTransactionContext(DbTransactionContext):
         sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
         self.__cursor.execute(
             sql,
-            tuple(params) if params is not None else tuple()
+            tuple(parameters) if parameters is not None else tuple()
         )
         self.__update_transaction_state(sql)
         row = self.__cursor.fetchone()
@@ -204,11 +204,11 @@ class SqliteTransactionContext(DbTransactionContext):
 
     def rollback(self) -> None:
         assert self.__cursor is not None, 'no cursor'
-        if SqliteTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
+        if SQLiteTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
             self.__cursor.execute('ROLLBACK TRANSACTION')
         else:
             self.__cursor.execute(f'ROLLBACK TO SAVEPOINT TID_{self.__transaction_id.hex}')
         self.__update_transaction_state('ROLLBACK')
 
 
-__all__ = ['SqliteTransactionContext']
+__all__ = ['SQLiteTransactionContext']
