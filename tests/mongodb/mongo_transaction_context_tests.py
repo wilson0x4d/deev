@@ -219,10 +219,10 @@ def transaction_context_manager_no_double_rollback() -> None:
         # Override rollback to count calls
         original_rollback = tx.rollback
 
-        def counting_rollback():
+        def counting_rollback() -> None:
             rollback_count[0] += 1
             return original_rollback()
-        tx.rollback = counting_rollback  # type: ignore[method-assign]
+        tx.rollback = counting_rollback  # type: ignore[method-assign, assignment]
 
         try:
             tx.__exit__(RuntimeError, RuntimeError("test"), None)

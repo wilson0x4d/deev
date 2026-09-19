@@ -14,12 +14,13 @@ from pymongo.asynchronous.client_session import AsyncClientSession
 from pymongo.asynchronous.collection import AsyncCollection
 
 from ..common.async_db_cursor import AsyncDbCursor
+from ..common.async_db_cursor import AsyncDbCursor, AsyncDbCursorDescription
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
 from .utils import infer_description_fields, parse_sql_where
 
 
-class AsyncMongoProxyCursor:
+class AsyncMongoProxyCursor(AsyncDbCursor):
     """
     Async DB-API 2.0 compliant cursor interface for MongoDB.
     Translates SQL-like statements to native MongoDB operations via the
@@ -47,17 +48,24 @@ class AsyncMongoProxyCursor:
         self.__row_count = 0
 
     @property
-    def description(self) -> Sequence[tuple[Any, Any, int | None, int | None, int | None, int | None, bool]] | None:
+    def description(self) -> AsyncDbCursorDescription:
         if self.__result_set is not None and len(self.__result_set) > 0:
             first_doc = self.__result_set[0]
             fields = list(self.__description_fields) if self.__description_fields else list(first_doc.keys())
+            from ..common.description_field import DescriptionField
+
             return tuple(
-                (
-                    name,
-                    *self._describe_field(name, first_doc),
-                    True,
+                DescriptionField(
+                    name=name,
+                    type_code=f[0],
+                    display_size=f[1],
+                    internal_size=f[2],
+                    precision=f[3],
+                    scale=f[4],
+                    null_ok=1,
                 )
                 for name in fields
+                for f in (self._describe_field(name, first_doc),)
             )
         return None
 

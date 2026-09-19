@@ -41,13 +41,27 @@ class AsyncDbTransactionContext(Protocol):
     def connection(self) -> AsyncDbConnection:
         ...
 
+    @property
+    def transaction_name(self) -> str | None:
+        ...
+
+    @property
+    def savepoints(self) -> tuple[str, ...]:
+        ...
+
     async def cursor(self) -> AsyncDbCursor:
+        ...
+
+    async def begin_transaction(self, name: str | None = None) -> Self:
         ...
 
     async def commit(self) -> None:
         ...
 
-    async def execute(self, sql: str, parameters: DbParameters | None = ...) -> AsyncDbCursor:
+    async def create_savepoint(self, name: str | None = None) -> Self:
+        ...
+
+    async def execute(self, sql: str, parameters: DbParameters | None = ..., raw: bool = ...) -> AsyncDbCursor:
         ...
 
     async def execute_script(self, sql: str) -> None:
@@ -62,7 +76,13 @@ class AsyncDbTransactionContext(Protocol):
     async def execute_scalar(self, sql: str, parameters: DbParameters | None = ...) -> Any:
         ...
 
-    async def rollback(self) -> None:
+    async def rollback(self, name: str | None = None) -> None:
+        ...
+
+    async def rollback_savepoint(self, name: str | None = None) -> None:
+        ...
+
+    async def close(self) -> None:
         ...
 
     @classmethod

@@ -7,16 +7,17 @@ import asyncio
 from contextvars import ContextVar
 from types import TracebackType
 from typing import Any, AsyncGenerator, Literal, Self, cast
+from uuid import uuid4
 
 import pymongo
 from pymongo.asynchronous.client_session import AsyncClientSession
 from pymongo.asynchronous.collection import AsyncCollection
-from uuid import UUID, uuid4
 
 from ..common.async_db_connection import AsyncDbConnection
 from ..common.async_db_transaction_context import AsyncDbTransactionContext
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
+from ..common.tlc_parser import extract_begin_name, extract_rollback_name, extract_savepoint_name
 from .async_mongo_proxy_connection import AsyncMongoProxyConnection
 from .async_mongo_proxy_cursor import AsyncMongoProxyCursor
 
@@ -25,12 +26,14 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
 
     _DELEGATE_TXN_CACHE: dict[tuple[str | None, int], bool] = {}
 
-    __ambient_transaction_id: ContextVar[UUID | None] = ContextVar[UUID | None]('ambient_transaction_id', default=None)
+    __ambient_transaction_id: ContextVar[str | None] = ContextVar[str | None]('ambient_transaction_id', default=None)
     __context: AsyncDbConnection | AsyncDbTransactionContext | None
     __cursor: AsyncMongoProxyCursor | None
     __database_name: str
-    __transaction_id: UUID
-    __transaction_state: int
+    __savepoints: list[str]
+    __transaction_depth: int
+    __transaction_id: str
+    __transaction_name: str | None
     __delegate_mode: bool | None
 
     def __init__(self, context: AsyncDbConnection | AsyncDbTransactionContext, *, owns_context: bool | None = None):
@@ -39,8 +42,10 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
         mongo_database_name = getattr(context, 'mongo_database_name', None)
         assert mongo_database_name is not None, 'bad init'
         self.__context = context if self.__is_deev_context else AsyncMongoProxyConnection(context, mongo_database_name)  # type: ignore[arg-type]
-        self.__transaction_id = uuid4()
-        self.__transaction_state = 0
+        self.__transaction_id = uuid4().hex
+        self.__transaction_depth = 0
+        self.__savepoints: list[str] = []
+        self.__transaction_name: str | None = None
         self.__database_name = getattr(context, 'mongo_database_name', '')  # type: ignore[arg-type]
         self.__delegate_mode = AsyncMongoTransactionContext._DELEGATE_TXN_CACHE.get(
             AsyncMongoTransactionContext.__server_key(self.mongo_client), None
@@ -85,33 +90,85 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
         traceback: TracebackType | None = None
     ) -> Literal[False]:
         try:
-            if await self.__is_delegate_mode():
-                self.__transaction_state = 3
-                return False
-            if exc_type is not None and self.__transaction_state == 2:
-                await self.rollback()
-            elif self.__transaction_state == 2:
-                await self.rollback()
-                raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
-            elif self.__transaction_state <= 1:
+            if self.__transaction_depth > 0:
                 if exc_type is not None:
                     await self.rollback()
                 else:
-                    await self.commit()
-            return False
+                    await self.rollback()
+                    raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
         finally:
             await self.close()
+            self.__transaction_depth = -1
+        return False
 
-    def __update_transaction_state(self, sql: str) -> None:
-        sql = sql.lstrip().upper()
-        if sql.startswith(('CREATE ', 'DELETE ', 'DROP ', 'INSERT ', 'UPDATE ')):
-            self.__transaction_state = 2
-        elif sql.startswith(('COMMIT', 'ROLLBACK', 'SAVEPOINT')):
-            self.__transaction_state = 3
-            if AsyncMongoTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
-                AsyncMongoTransactionContext.__ambient_transaction_id.set(None)
-        elif self.__transaction_state == 0:
-            self.__transaction_state = 1
+    async def __preprocess_sql(self, sql: str) -> str | None:
+        """
+        Parse SQL to determine whether it is a transaction-control (TLC) keyword
+        or a regular SQL statement.
+
+        For MongoDB: all TLC keywords return None (scrubbed) since MongoDB has
+        no SQL transaction syntax. Side effects happen via mongo_session.
+        """
+        if self.__transaction_depth < 0:
+            raise DbError('Cannot use a transaction context that has been exited.')
+
+        sql_upper = sql.lstrip().upper()
+        prefix = sql_upper[:4]
+
+        if prefix == 'BEGI':
+            self.__transaction_depth += 1
+            self.__transaction_name = extract_begin_name(sql)
+            if self.__transaction_depth == 1 and not self.__delegate_mode:
+                await self.mongo_session.start_transaction()
+            return None
+
+        elif prefix == 'SAVE':
+            name_token = extract_savepoint_name(sql)
+            if name_token:
+                self.__savepoints.append(name_token)
+            return None
+
+        elif prefix == 'COMM':
+            if self.__transaction_depth == 0:
+                raise DbError('No active transaction to commit.')
+            self.__transaction_depth -= 1
+            if self.__transaction_depth == 0:
+                self.__savepoints.clear()
+                self.__transaction_name = None
+                self.__ambient_transaction_id.set(None)
+            if not self.__delegate_mode and self.__transaction_depth == 0:
+                await self.mongo_session.commit_transaction()
+            return None
+
+        elif prefix == 'ROLL':
+            if self.__transaction_depth == 0:
+                raise DbError('Cannot rollback, no transaction.')
+            self.__transaction_depth = 0
+            name = extract_rollback_name(sql)
+
+            if name:
+                if name in self.__savepoints:
+                    while self.__savepoints:
+                        sp = self.__savepoints.pop()
+                        if sp == name:
+                            break
+                    return None
+                elif name == self.__transaction_name:
+                    pass  # full rollback, depth reset below
+                else:
+                    raise DbError('Invalid Transaction Name')
+            else:
+                pass  # full rollback, depth reset below
+
+            self.__transaction_depth = 0
+            self.__savepoints.clear()
+            self.__transaction_name = None
+            self.__ambient_transaction_id.set(None)
+            if not self.__delegate_mode:
+                await self.mongo_session.abort_transaction()
+            return None
+
+        return sql
 
     @property
     def connection(self) -> AsyncDbConnection:
@@ -122,37 +179,55 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
 
     @property
     def mongo_client(self) -> pymongo.AsyncMongoClient[Any]:
-        # NOTE: this is a non-conformant property that we require for internal functionality, and it must be retained.
         return self.connection.mongo_client  # type: ignore
 
     @property
     def mongo_database(self) -> Any:
-        # NOTE: this is a non-conformant property that we require for migration scripts (QOL), and must be retained.
         return self.connection.mongo_client[self.__database_name]  # type: ignore
 
     @property
     def mongo_database_name(self) -> str:
-        # NOTE: this is a non-conformant property that we require for internal functionality, and it must be retained.
         return self.__database_name
 
     @property
     def mongo_session(self) -> AsyncClientSession:
-        # NOTE: keep this as-is unless you see a problem, then we should discuss first.
         if self.__cursor is None:
             raise DbError('Cursor not initialized.')
         return self.__cursor.mongo_session
 
-    async def begin_transaction(self) -> AsyncDbTransactionContext:
-        if self.__transaction_state != 0:
-            raise DbError(f'A transaction was already started in this context, cannot begin a new transaction. ({self.__transaction_state})')
-        self.__transaction_state = 1
+    @property
+    def transaction_name(self) -> str | None:
+        return self.__transaction_name
+
+    @property
+    def savepoints(self) -> tuple[str, ...]:
+        return tuple(self.__savepoints)
+
+    async def begin_transaction(self, name: str | None = None) -> Self:
         async with self.connection.mongo_client.start_session() as session:  # type: ignore[attr-defined, union-attr]
             self.__cursor = AsyncMongoProxyCursor(session, self.__database_name)
         if AsyncMongoTransactionContext.__ambient_transaction_id.get(None) is None:
-            AsyncMongoTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
-            if not await self.__is_delegate_mode():
-                raise DbError('AsyncMongoTransactionContext: begin_transaction requires async session setup.')
+            AsyncMongoTransactionContext.__ambient_transaction_id.set(name or self.__transaction_id)
+        sql = 'BEGIN TRANSACTION'
+        if name:
+            sql += f' {name}'
+        await self.execute(sql)
         return self  # type: ignore[return-type]
+
+    async def create_savepoint(self, name: str | None = None) -> Self:
+        if name is None:
+            name = f'TID_{uuid4().hex[:24]}'
+        sql = f'SAVE TRANSACTION {name}'
+        await self.execute(sql)
+        return self
+
+    async def rollback_savepoint(self, name: str | None = None) -> None:
+        if name is None:
+            if not self.__savepoints:
+                return
+            name = self.__savepoints[-1]
+        sql = f'ROLLBACK TRANSACTION {name}'
+        await self.execute(sql)
 
     async def close(self) -> None:
         try:
@@ -169,20 +244,20 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
         self.__context = None
 
     async def commit(self) -> None:
-        if self.__cursor is None:
-            raise DbError('Cursor not initialized.')
-        if not self.__delegate_mode and AsyncMongoTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
-            await self.mongo_session.commit_transaction()
-        self.__update_transaction_state('COMMIT')
+        await self.execute('COMMIT')
 
-    async def cursor(self) -> AsyncMongoProxyCursor:  # type: ignore[override]
+    async def cursor(self) -> AsyncMongoProxyCursor:
         if self.__cursor is None:
             raise DbError('Cursor not initialized.')
         return self.__cursor
 
-    async def execute(self, sql: str, parameters: DbParameters | None = None) -> AsyncMongoProxyCursor:  # type: ignore[override]
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+    async def execute(self, sql: str, parameters: DbParameters | None = None, raw: bool = False) -> AsyncMongoProxyCursor:
+        if not raw:
+            modified = await self.__preprocess_sql(sql)
+            if modified is None:
+                from ..common.noop_cursor import NoopCursor
+                return cast(AsyncMongoProxyCursor, NoopCursor())  # type: ignore[return-value]
+            sql = modified
         assert self.__cursor is not None
         await self.__cursor.execute(
             sql,
@@ -190,56 +265,36 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
         return self.__cursor  # type: ignore[return-value]
 
     async def execute_nonquery(self, sql: str, parameters: DbParameters | None = None) -> None:
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        await self.__cursor.execute(  # type: ignore[union-attr]
-            sql,
-            tuple(parameters) if parameters is not None else tuple())
-        self.__update_transaction_state(sql)
+        await self.execute(sql, parameters)
 
     async def execute_reader(self, sql: str, parameters: DbParameters | None = None) -> AsyncGenerator[tuple[Any, ...], None]:  # type: ignore[override]
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        self.__update_transaction_state(sql)
-        parameters = tuple(parameters) if parameters is not None else tuple()
-        assert self.__cursor is not None
-        await self.__cursor.execute(sql, parameters)
-        self.__update_transaction_state(sql)
-        row = await self.__cursor.fetchone()
+        cursor = await self.execute(sql, parameters)
+        row = await cursor.fetchone()
         while row is not None:
             yield row
-            row = await self.__cursor.fetchone()
+            row = await cursor.fetchone()
 
     async def execute_scalar(self, sql: str, parameters: DbParameters | None = None) -> Any:
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        self.__update_transaction_state(sql)
-        assert self.__cursor is not None and self.__cursor.rowcount >= 0
-        await self.__cursor.execute(
-            sql,
-            tuple(parameters) if parameters is not None else tuple()
-        )
-        self.__update_transaction_state(sql)
-        row = await self.__cursor.fetchone()
-        return None if row is None else row[0]
+        cursor = await self.execute(sql, parameters)
+        try:
+            row = await cursor.fetchone()
+            return None if row is None else row[0]
+        except Exception:
+            return cursor.rowcount
 
-    async def execute_script(self, sql: str) -> None:
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        self.__update_transaction_state("INSERT")
-        await self.mongo_session.database.command(sql)  # type: ignore[arg-type, attr-defined]
-
-    async def rollback(self) -> None:
-        self.__update_transaction_state('ROLLBACK')
-        if self.__cursor is None:
+    async def execute_script(self, sql: str, raw: str | None = None) -> None:
+        if raw is not None:
+            await self.execute(sql, raw=True)
             return
-        if AsyncMongoTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
-            try:
-                await self.mongo_session.abort_transaction()
-            except Exception:
-                pass
-        else:
-            pass
+        lines = sql.split('\n')
+        scrubbed = [line for line in lines if await self.__preprocess_sql(line) is not None]
+        joined = '\n'.join(scrubbed)
+        if joined:
+            await self.execute(joined, raw=True)
+
+    async def rollback(self, name: str | None = None) -> None:
+        sql = 'ROLLBACK' if name is None else f'ROLLBACK TRANSACTION {name}'
+        await self.execute(sql)
 
 
 __all__ = ['AsyncMongoTransactionContext']

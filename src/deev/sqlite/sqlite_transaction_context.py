@@ -7,7 +7,7 @@ import sqlite3
 from contextvars import ContextVar
 from types import TracebackType
 from typing import Any, Generator, Literal, Self, cast
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from ..common.db_connection import DbConnection
 from ..common.db_context import DbContext
@@ -15,18 +15,21 @@ from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
 from ..common.db_transaction_context import DbTransactionContext
+from ..common.tlc_parser import extract_begin_name, extract_rollback_name, extract_savepoint_name, is_rollback_to
 from .sqlite_proxy_connection import SQLiteProxyConnection
 
 
 class SQLiteTransactionContext(DbTransactionContext):
 
-    __ambient_transaction_id: ContextVar = ContextVar('ambient_transacton_id', default=None)
-    __transaction_id: UUID
+    __ambient_transaction_id: ContextVar[str | None] = ContextVar[str | None]('ambient_transaction_id', default=None)
     __context: DbContext | None
     __cursor: DbCursor | None
+    __savepoints: list[str]
     __sql_arg_expect: str
     __sql_arg_subst: str
-    __transaction_state: int
+    __transaction_depth: int
+    __transaction_id: str
+    __transaction_name: str | None
 
     def __init__(self, context: DbContext, *, owns_context: bool | None = None):
         self.__owns_context = owns_context is True
@@ -34,8 +37,10 @@ class SQLiteTransactionContext(DbTransactionContext):
         self.__context = context if self.__is_deev_context else SQLiteProxyConnection(context)  # type: ignore[arg-type]
         self.__sql_arg_expect = '%?'
         self.__sql_arg_subst = '?'
-        self.__transaction_id = uuid4()
-        self.__transaction_state = 0
+        self.__transaction_id = uuid4().hex
+        self.__transaction_depth = 0
+        self.__savepoints: list[str] = []
+        self.__transaction_name: str | None = None
         self.__cursor = None
 
     def __del__(self):
@@ -48,35 +53,101 @@ class SQLiteTransactionContext(DbTransactionContext):
     def __exit__(
         self,
         exc_type: type[BaseException] | None = None,
-        exc_value: BaseException | None = None,  # noqa: ARG001 - unused per context manager protocol
+        exc_value: BaseException | None = None,
         traceback: TracebackType | None = None
     ) -> Literal[False]:
         try:
-            if exc_type is not None and self.__transaction_state == 2:
-                self.rollback()
-            elif self.__transaction_state == 2:
-                self.rollback()
-                raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
-            elif self.__transaction_state <= 1:
+            if self.__transaction_depth > 0:
                 if exc_type is not None:
                     self.rollback()
                 else:
-                    self.commit()
+                    self.rollback()
+                    raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
         finally:
             self.close()
+            self.__transaction_depth = -1
+            self.__ambient_transaction_id.set(None)
         return False
 
-    def __update_transaction_state(self, sql: str) -> None:
-        sql = sql.lstrip().upper()
-        prefix = sql.strip()[:4]
-        if prefix in ['CREA', 'DELE', 'DROP', 'INSE', 'UPDA']:
-            self.__transaction_state = 2
-        elif prefix in ['COMM', 'ROLL']:
-            self.__transaction_state = 3
-            if SQLiteTransactionContext.__ambient_transaction_id.get() == self.__transaction_id:
-                SQLiteTransactionContext.__ambient_transaction_id.set(None)
-        elif self.__transaction_state == 0:
-            self.__transaction_state = 1
+    def __preprocess_sql(self, sql: str) -> str | None:
+        """
+        Parse SQL to determine whether it is a transaction-control (TLC) keyword
+        or a regular SQL statement.
+
+        For non-TLC statements: returns SQL unchanged.
+
+        For TLC keywords: updates internal state (depth, savepoints, transaction
+        name) and returns:
+          - Modified SQL if the DBMS supports this operation at the current depth.
+          - None if scrubbed because the DBMS does not support it.
+          - Raises DbError if operation is invalid.
+        """
+        if self.__transaction_depth < 0:
+            raise DbError('Cannot use a transaction context that has been exited.')
+
+        sql_upper = sql.lstrip().upper()
+        prefix = sql_upper[:4]
+
+        if prefix == 'BEGI':
+            self.__transaction_depth += 1
+            if self.__transaction_depth == 1:
+                self.__transaction_name = extract_begin_name(sql)
+                self.__ambient_transaction_id.set(self.__transaction_name or self.__transaction_id)
+            else:
+                return None
+            return sql
+
+        elif prefix == 'SAVE' or sql_upper.startswith('SAVEPOINT '):
+            name_token = extract_savepoint_name(sql)
+            if name_token:
+                self.__savepoints.append(name_token)
+            return sql
+
+        elif prefix == 'COMM':
+            if self.__transaction_depth == 0:
+                raise DbError('No active transaction to commit.')
+            self.__transaction_depth -= 1
+            if self.__transaction_depth == 0:
+                self.__savepoints.clear()
+                self.__transaction_name = None
+                self.__ambient_transaction_id.set(None)
+            if self.__transaction_depth == 0:
+                return 'COMMIT'
+            else:
+                return None
+
+        elif prefix == 'ROLL':
+            if self.__transaction_depth == 0:
+                raise DbError('Cannot rollback, no transaction.')
+            name = extract_rollback_name(sql)
+            is_savepoint_rollback = is_rollback_to(sql)
+
+            is_full_rollback = False
+
+            if name:
+                if name in self.__savepoints:
+                    while self.__savepoints:
+                        sp = self.__savepoints.pop()
+                        if sp == name:
+                            break
+                elif name == self.__transaction_name:
+                    is_full_rollback = True
+                else:
+                    raise DbError('Invalid Transaction Name')
+            else:
+                is_full_rollback = True
+
+            if is_full_rollback:
+                self.__transaction_depth = 0
+                self.__savepoints.clear()
+                self.__transaction_name = None
+                self.__ambient_transaction_id.set(None)
+
+            if is_savepoint_rollback:
+                return 'ROLLBACK TO SAVEPOINT ' + (name or '')
+            return 'ROLLBACK TRANSACTION'
+
+        return sql
 
     @property
     def connection(self) -> DbConnection:
@@ -85,130 +156,102 @@ class SQLiteTransactionContext(DbTransactionContext):
         else:
             return cast(DbConnection, self.__context)
 
-    def begin_transaction(self) -> DbTransactionContext:
-        if self.__transaction_state != 0:
-            raise DbError(f'A transaction was already started in this context, cannot begin a new transaction. ({self.__transaction_state})')
-        self.__transaction_state = 1
-        assert self.__context is not None, 'no context'
-        self.__cursor = self.__context.cursor()
-        if SQLiteTransactionContext.__ambient_transaction_id.get() is None:
-            SQLiteTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
-            self.__cursor.execute('BEGIN TRANSACTION')
-        else:
-            self.__cursor.execute(f'SAVEPOINT TID_{self.__transaction_id.hex};')
+    @property
+    def transaction_name(self) -> str | None:
+        return self.__transaction_name
+
+    @property
+    def savepoints(self) -> tuple[str, ...]:
+        return tuple(self.__savepoints)
+
+    def begin_transaction(self, name: str | None = None) -> Self:
+        sql = 'BEGIN TRANSACTION' if name is None else f'BEGIN TRANSACTION {name}'
+        self.execute(sql)
         return self
+
+    def create_savepoint(self, name: str | None = None) -> Self:
+        if name is None:
+            name = f'TID_{uuid4().hex[:24]}'
+        sql = f'SAVEPOINT {name}'
+        self.execute(sql)
+        return self
+
+    def rollback_savepoint(self, name: str | None = None) -> None:
+        if name is None:
+            if not self.__savepoints:
+                return
+            name = self.__savepoints[-1]
+        sql = f'ROLLBACK TO SAVEPOINT {name}'
+        self.execute(sql)
 
     def close(self) -> None:
         try:
             if self.__cursor is not None:
                 self.__cursor.close()
+                self.__cursor = None
         except Exception:
             pass
-        self.__cursor = None
         try:
             if self.__context is not None and self.__owns_context and hasattr(self.__context, 'close'):
                 self.__context.close()
+                self.__context = None
         except Exception:
             pass
-        self.__context = None
 
     def commit(self) -> None:
-        assert self.__cursor is not None, 'no cursor'
-        if SQLiteTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
-            try:
-                self.__cursor.execute('COMMIT')
-            except sqlite3.OperationalError:
-                # DDL implicitly committed and ended the transaction
-                pass
-        else:
-            try:
-                self.__cursor.execute(f'RELEASE SAVEPOINT TID_{self.__transaction_id.hex}')
-            except sqlite3.OperationalError as e:
-                if 'no such savepoint' in str(e):
-                    # DDL implicitly committed all savepoints (SQLite behavior)
-                    # Try COMMIT to end the ambient transaction; fall back to pass
-                    try:
-                        self.__cursor.execute('COMMIT')
-                    except sqlite3.OperationalError:
-                        # Also no active transaction — DDL killed it
-                        pass
-                else:
-                    raise
-        self.__update_transaction_state('COMMIT')
+        self.execute('COMMIT')
 
     def cursor(self) -> DbCursor:
         assert self.__context is not None, 'no context'
         return self.__context.cursor()
 
-    def execute(self, sql: str, parameters: DbParameters | None = None) -> DbCursor:
-        """
-        An `execute` method that more closely conforms to PEP 249.
-
-        :param sql: A string containing the SQL statement to execute.
-        :param parameters A tuple containing the parameters to substitute into the SQL statement.
-        :return: The cursor object the caller can use to retrieve results.
-        """
-        assert self.__cursor is not None, 'no cursor'
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+    def execute(self, sql: str, parameters: DbParameters | None = None, raw: bool | None = False) -> DbCursor:
+        if not raw:
+            modified = self.__preprocess_sql(sql)
+            if modified is None:
+                from ..common.noop_cursor import NoopCursor
+                return NoopCursor()
+            sql = modified
         sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
+        assert self.__context is not None, 'no context'
+        if self.__cursor is None:
+            self.__cursor = self.__context.cursor()
         self.__cursor.execute(
             sql,
             tuple(parameters) if parameters is not None else tuple())
         return cast(DbCursor, self.__cursor)
 
     def execute_nonquery(self, sql: str, parameters: DbParameters | None = None) -> None:
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        assert self.__cursor is not None, 'no cursor'
-        sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
-        self.__cursor.execute(
-            sql,
-            tuple(parameters) if parameters is not None else tuple())
-        self.__update_transaction_state(sql)
+        self.execute(sql, parameters)
 
     def execute_reader(self, sql: str, parameters: DbParameters | None = None) -> Generator[Any, None, None]:
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        assert self.__cursor is not None, 'no cursor'
-        self.__update_transaction_state(sql)
-        parameters = tuple(parameters) if parameters is not None else tuple()
-        sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
-        self.__cursor.execute(sql, parameters)
-        self.__update_transaction_state(sql)
-        row = self.__cursor.fetchone()
+        cursor = self.execute(sql, parameters)
+        row = cursor.fetchone()
         while row is not None:
             yield row
-            row = self.__cursor.fetchone()
+            row = cursor.fetchone()
 
     def execute_scalar(self, sql: str, parameters: DbParameters | None = None) -> Any:
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        assert self.__cursor is not None, 'no cursor'
-        self.__update_transaction_state(sql)
-        sql = sql.replace(self.__sql_arg_expect, self.__sql_arg_subst)
-        self.__cursor.execute(
-            sql,
-            tuple(parameters) if parameters is not None else tuple()
-        )
-        self.__update_transaction_state(sql)
-        row = self.__cursor.fetchone()
-        return None if row is None else row[0]
+        cursor = self.execute(sql, parameters)
+        try:
+            row = cursor.fetchone()
+            return None if row is None else row[0]
+        except sqlite3.ProgrammingError:
+            return cursor.rowcount
 
-    def execute_script(self, sql: str) -> None:
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        assert self.__cursor is not None, 'no cursor'
-        self.__update_transaction_state("INSERT")
-        self.__cursor.execute(sql)
+    def execute_script(self, sql: str, raw: str | None = None) -> None:
+        if raw is not None:
+            self.execute(sql, raw=True)
+            return
+        lines = sql.split('\n')
+        scrubbed = [line for line in lines if self.__preprocess_sql(line) is not None]
+        joined = '\n'.join(scrubbed)
+        if joined:
+            self.execute(joined, raw=True)
 
-    def rollback(self) -> None:
-        assert self.__cursor is not None, 'no cursor'
-        if SQLiteTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
-            self.__cursor.execute('ROLLBACK TRANSACTION')
-        else:
-            self.__cursor.execute(f'ROLLBACK TO SAVEPOINT TID_{self.__transaction_id.hex}')
-        self.__update_transaction_state('ROLLBACK')
+    def rollback(self, name: str | None = None) -> None:
+        sql = 'ROLLBACK' if name is None else f'ROLLBACK TRANSACTION {name}'
+        self.execute(sql)
 
 
 __all__ = ['SQLiteTransactionContext']

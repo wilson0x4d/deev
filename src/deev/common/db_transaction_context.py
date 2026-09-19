@@ -38,7 +38,18 @@ class DbTransactionContext(Protocol):
     def connection(self) -> DbConnection:
         ...
 
+    @property
+    def transaction_name(self) -> str | None:
+        ...
+
+    @property
+    def savepoints(self) -> tuple[str, ...]:
+        ...
+
     def cursor(self) -> DbCursor:
+        ...
+
+    def begin_transaction(self, name: str | None = None) -> Self:
         ...
 
     def commit(self) -> None:
@@ -59,7 +70,13 @@ class DbTransactionContext(Protocol):
     def execute_scalar(self, sql: str, parameters: DbParameters | None = ...) -> Any:
         ...
 
-    def rollback(self) -> None:
+    def rollback(self, name: str | None = None) -> None:
+        ...
+
+    def rollback_savepoint(self, name: str | None = None) -> None:
+        ...
+
+    def close(self) -> None:
         ...
 
     @classmethod

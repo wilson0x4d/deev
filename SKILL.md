@@ -389,7 +389,7 @@ def undo(tx: ClickHouseTransactionContext) -> None:
 
 | Name | Purpose |
 |------|---------|
-| `splat` | Extract entity field values from object (params: `attrs`, `to_sql`, `to_bson`) |
+| `splat` | Extract entity field values from object (parameters: `attrs`, `to_sql`, `to_bson`) |
 | `hydrate` | Create entity instances from dicts |
 | `configure_serialization` | Customize JSON serialization |
 | `DeevJsonEncoder` | Custom JSON encoder for deev types |
@@ -403,7 +403,7 @@ def undo(tx: ClickHouseTransactionContext) -> None:
 
 | Name | Purpose |
 |------|---------|
-| `validate` | Validate entity instance (params: `attrs`) |
+| `validate` | Validate entity instance (parameters: `attrs`) |
 | `ValidationError` | Exception raised on validation failure |
 
 ### From `deev.utils`

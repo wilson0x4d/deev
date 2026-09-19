@@ -18,6 +18,7 @@ from ..common.async_db_cursor import AsyncDbCursor
 from ..common.async_db_transaction_context import AsyncDbTransactionContext
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
+from ..common.tlc_parser import extract_begin_name, extract_rollback_name, extract_savepoint_name
 from .async_clickhouse_proxy_connection import AsyncClickHouseProxyConnection
 
 
@@ -30,20 +31,24 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
     transactional semantics. For example, when swapping providers.
     """
 
-    __ambient_transaction_id: ContextVar = ContextVar('ambient_transaction_id', default=None)
+    __ambient_transaction_id: ContextVar[str | None] = ContextVar[str | None]('ambient_transaction_id', default=None)
     __context: AsyncDbContext | None
     __cursor: Any | None
     __logger: logging.Logger
-    __transaction_id: UUID
-    __transaction_state: int
+    __savepoints: list[str]
+    __transaction_depth: int
+    __transaction_id: str
+    __transaction_name: str | None
 
     def __init__(self, context: AsyncDbContext, *, owns_context: bool | None = None) -> None:
         self.__owns_context = owns_context is True
         self.__is_deev_context = isinstance(context, (AsyncClickHouseProxyConnection, AsyncClickHouseTransactionContext))
         self.__context = context if self.__is_deev_context else AsyncClickHouseProxyConnection(context)  # type: ignore[arg-type]
         self.__logger = hanaro.get_logger()
-        self.__transaction_id = uuid4()
-        self.__transaction_state = 0
+        self.__transaction_id = uuid4().hex
+        self.__transaction_depth = 0
+        self.__savepoints: list[str] = []
+        self.__transaction_name: str | None = None
         self.__cursor = None
 
     def __del__(self) -> None:
@@ -69,20 +74,80 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None
     ) -> Literal[False]:
-        await self.close()
+        try:
+            if self.__transaction_depth > 0:
+                if exc_type is not None:
+                    await self.rollback()
+                else:
+                    await self.rollback()
+                    raise DbError('Detected uncommitted transaction, rolling back. You must explicitly call commit or rollback.')
+        finally:
+            await self.close()
+            self.__transaction_depth = -1
         return False
 
-    def __update_transaction_state(self, sql: str) -> None:
-        sql = sql.lstrip().upper()
-        prefix = sql.strip()[:4]
-        if prefix in ['CREA', 'DELE', 'DROP', 'INSE', 'UPDA', 'ALTE', 'ALT']:
-            self.__transaction_state = 2
-        elif prefix in ['COMM', 'ROLL']:
-            self.__transaction_state = 3
-            if AsyncClickHouseTransactionContext.__ambient_transaction_id.get(None) == self.__transaction_id:
-                AsyncClickHouseTransactionContext.__ambient_transaction_id.set(None)
-        elif self.__transaction_state == 0:
-            self.__transaction_state = 1
+    def __preprocess_sql(self, sql: str) -> str | None:
+        """
+        Parse SQL to determine whether it is a transaction-control (TLC) keyword
+        or a regular SQL statement.
+
+        For ClickHouse: all TLC keywords return None (scrubbed) since ClickHouse
+        has no transaction support. Depth tracking is for diagnostics/consistency.
+        """
+        if self.__transaction_depth < 0:
+            raise DbError('Cannot use a transaction context that has been exited.')
+
+        sql_upper = sql.lstrip().upper()
+        prefix = sql_upper[:4]
+
+        if prefix == 'BEGI':
+            self.__transaction_depth += 1
+            self.__transaction_name = extract_begin_name(sql)
+            return None
+
+        elif prefix == 'SAVE' or sql_upper.startswith('SAVEPOINT '):
+            name_token = extract_savepoint_name(sql)
+            if name_token:
+                self.__savepoints.append(name_token)
+            return None
+
+        elif prefix == 'COMM':
+            if self.__transaction_depth == 0:
+                raise DbError('No active transaction to commit.')
+            self.__transaction_depth -= 1
+            if self.__transaction_depth == 0:
+                self.__savepoints.clear()
+                self.__transaction_name = None
+                self.__ambient_transaction_id.set(None)
+            return None
+
+        elif prefix == 'ROLL':
+            if self.__transaction_depth == 0:
+                raise DbError('Cannot rollback, no transaction.')
+            self.__transaction_depth = 0
+            name = extract_rollback_name(sql)
+
+            if name:
+                if name in self.__savepoints:
+                    while self.__savepoints:
+                        sp = self.__savepoints.pop()
+                        if sp == name:
+                            break
+                    return None
+                elif name == self.__transaction_name:
+                    pass  # full rollback, depth reset below
+                else:
+                    raise DbError('Invalid Transaction Name')
+            else:
+                pass  # full rollback, depth reset below
+
+            self.__transaction_depth = 0
+            self.__savepoints.clear()
+            self.__transaction_name = None
+            self.__ambient_transaction_id.set(None)
+            return None
+
+        return sql
 
     @property
     def connection(self) -> AsyncDbConnection:
@@ -98,15 +163,39 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
             return self.__context.clickhouse_client  # type: ignore[return-value]
         return None
 
-    async def begin_transaction(self) -> AsyncDbTransactionContext:
-        if self.__transaction_state != 0:
-            raise DbError(f'A transaction was already started in this context, cannot begin a new transaction. ({self.__transaction_state})')
+    @property
+    def transaction_name(self) -> str | None:
+        return self.__transaction_name
+
+    @property
+    def savepoints(self) -> tuple[str, ...]:
+        return tuple(self.__savepoints)
+
+    async def begin_transaction(self, name: str | None = None) -> Self:
         assert self.__context is not None, 'no context'
-        self.__transaction_state = 1
         self.__cursor = await self.__context.cursor()
         if AsyncClickHouseTransactionContext.__ambient_transaction_id.get(None) is None:
-            AsyncClickHouseTransactionContext.__ambient_transaction_id.set(self.__transaction_id)
+            AsyncClickHouseTransactionContext.__ambient_transaction_id.set(name or self.__transaction_id)
+        sql = 'BEGIN TRANSACTION'
+        if name:
+            sql += f' {name}'
+        await self.execute(sql)
         return self
+
+    async def create_savepoint(self, name: str | None = None) -> Self:
+        if name is None:
+            name = f'TID_{uuid4().hex[:24]}'
+        sql = f'SAVE TRANSACTION {name}'
+        await self.execute(sql)
+        return self
+
+    async def rollback_savepoint(self, name: str | None = None) -> None:
+        if name is None:
+            if not self.__savepoints:
+                return
+            name = self.__savepoints[-1]
+        sql = f'ROLLBACK TRANSACTION {name}'
+        await self.execute(sql)
 
     async def close(self) -> None:
         try:
@@ -123,20 +212,19 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
         self.__context = None
 
     async def commit(self) -> None:
-        assert self.__context is not None, 'no context'
-        try:
-            await self.__context.commit()
-        except Exception:
-            pass
-        self.__update_transaction_state('COMMIT')
+        await self.execute('COMMIT')
 
     async def cursor(self) -> AsyncDbCursor:
         assert self.__context is not None, 'no context'
         return await self.__context.cursor()
 
-    async def execute(self, sql: str, parameters: DbParameters | None = None) -> AsyncDbCursor:  # type: ignore[override]
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
+    async def execute(self, sql: str, parameters: DbParameters | None = None, raw: bool = False) -> AsyncDbCursor:
+        if not raw:
+            modified = self.__preprocess_sql(sql)
+            if modified is None:
+                from ..common.noop_cursor import NoopCursor
+                return cast(AsyncDbCursor, NoopCursor())  # type: ignore[return-value]
+            sql = modified
         assert self.__context is not None, 'no context'
         if self.__cursor is None:
             self.__cursor = await self.__context.cursor()
@@ -145,63 +233,36 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
         return cast(AsyncDbCursor, self.__cursor)
 
     async def execute_nonquery(self, sql: str, parameters: DbParameters | None = None) -> None:
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        assert self.__context is not None, 'no context'
-        if self.__cursor is None:
-            self.__cursor = await self.__context.cursor()
-        assert self.__cursor is not None
-        await self.__cursor.execute(sql, parameters)
-        self.__update_transaction_state(sql)
+        await self.execute(sql, parameters)
 
     async def execute_reader(self, sql: str, parameters: DbParameters | None = None) -> AsyncGenerator[tuple[Any, ...], None]:  # type: ignore[override]
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        assert self.__context is not None, 'no context'
-        self.__update_transaction_state(sql)
-        if self.__cursor is None:
-            self.__cursor = await self.__context.cursor()
-        assert self.__cursor is not None
-        await self.__cursor.execute(sql, parameters)
-        self.__update_transaction_state(sql)
-        row = await self.__cursor.fetchone()
+        cursor = await self.execute(sql, parameters)
+        row = await cursor.fetchone()
         while row is not None:
             yield row
-            row = await self.__cursor.fetchone()
+            row = await cursor.fetchone()
 
     async def execute_scalar(self, sql: str, parameters: DbParameters | None = None) -> Any:
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        self.__update_transaction_state(sql)
-        assert self.__context is not None, 'no context'
-        if self.__cursor is None:
-            self.__cursor = await self.__context.cursor()
-        assert self.__cursor is not None
-        await self.__cursor.execute(sql, parameters)
-        self.__update_transaction_state(sql)
-        row = await self.__cursor.fetchone()
-        return None if row is None else row[0]
-
-    async def execute_script(self, sql: str) -> None:
-        if self.__transaction_state == 3:
-            raise DbError('Cannot use a transaction that has already been committed or rolled back.')
-        self.__update_transaction_state("INSERT")
-        assert self.__context is not None, 'no context'
-        if self.__cursor is None:
-            self.__cursor = await self.__context.cursor()
-        assert self.__cursor is not None
-        stmts = [e.strip() for e in sql.split(';\n')]
-        for stmt in stmts:
-            if len(stmt) > 0:
-                await self.__cursor.execute(stmt)
-
-    async def rollback(self) -> None:
-        assert self.__context is not None, 'no context'
+        cursor = await self.execute(sql, parameters)
         try:
-            await self.__context.rollback()
+            row = await cursor.fetchone()
+            return None if row is None else row[0]
         except Exception:
-            pass
-        self.__update_transaction_state('ROLLBACK')
+            return cursor.rowcount
+
+    async def execute_script(self, sql: str, raw: str | None = None) -> None:
+        if raw is not None:
+            await self.execute(sql, raw=True)
+            return
+        lines = sql.split('\n')
+        scrubbed = [line for line in lines if self.__preprocess_sql(line) is not None]
+        joined = '\n'.join(scrubbed)
+        if joined:
+            await self.execute(joined, raw=True)
+
+    async def rollback(self, name: str | None = None) -> None:
+        sql = 'ROLLBACK' if name is None else f'ROLLBACK TRANSACTION {name}'
+        await self.execute(sql)
 
 
 __all__ = ['AsyncClickHouseTransactionContext']
