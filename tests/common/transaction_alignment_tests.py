@@ -84,6 +84,7 @@ def noop_cursor_instantiated_fresh_per_call() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_nested_begin_increments_depth() -> None:
     import appsettings2
     from deev.utils import connect
@@ -101,6 +102,7 @@ def mssql_nested_begin_increments_depth() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_nested_begin_via_method_works() -> None:
     import appsettings2
     from deev.utils import connect
@@ -159,6 +161,7 @@ def sqlite_execute_scalar_scrubbed_returns_none() -> None:
 
 @fact
 @trait('mysql')
+@trait('integration')
 def mysql_execute_scrubbed_nested_begin_returns_noop() -> None:
     import appsettings2
     from deev.utils import connect, create_database, drop_database
@@ -182,6 +185,7 @@ def mysql_execute_scrubbed_nested_begin_returns_noop() -> None:
 
 @fact
 @trait('mysql')
+@trait('integration')
 def mysql_execute_reader_scrubbed_yields_nothing() -> None:
     import appsettings2
     from deev.utils import connect, create_database, drop_database
@@ -208,6 +212,7 @@ def mysql_execute_reader_scrubbed_yields_nothing() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_commit_at_depth_zero_raises() -> None:
     import appsettings2
     from deev.utils import connect
@@ -232,6 +237,7 @@ def mssql_commit_at_depth_zero_raises() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_rollback_at_depth_zero_raises() -> None:
     import appsettings2
     from deev.utils import connect
@@ -272,6 +278,7 @@ def sqlite_commit_at_depth_zero_raises() -> None:
 
 @fact
 @trait('mysql')
+@trait('integration')
 def mysql_commit_at_depth_zero_raises() -> None:
     import appsettings2
     from deev.utils import connect, create_database, drop_database
@@ -302,6 +309,7 @@ def mysql_commit_at_depth_zero_raises() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_rollback_at_depth_minus_one_raises() -> None:
     import appsettings2
     from deev.utils import connect
@@ -324,6 +332,7 @@ def mssql_rollback_at_depth_minus_one_raises() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_execute_commit_at_depth_zero_via_commit_method_raises() -> None:
     import appsettings2
     from deev.utils import connect
@@ -351,6 +360,7 @@ def mssql_execute_commit_at_depth_zero_via_commit_method_raises() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_sql_passthrough_as_is() -> None:
     import appsettings2
     from deev.utils import connect
@@ -396,6 +406,7 @@ def sqlite_preserves_transaction_name() -> None:
 
 @fact
 @trait('mysql')
+@trait('integration')
 def mysql_strips_transaction_name_from_start_transaction() -> None:
     import appsettings2
     from deev.utils import connect, create_database, drop_database
@@ -418,6 +429,7 @@ def mysql_strips_transaction_name_from_start_transaction() -> None:
 
 @fact
 @trait('mysql')
+@trait('integration')
 def mysql_begin_work_no_name() -> None:
     import appsettings2
     from deev.utils import connect, create_database, drop_database
@@ -441,6 +453,7 @@ def mysql_begin_work_no_name() -> None:
 
 @fact
 @trait('mysql')
+@trait('integration')
 def mysql_begin_no_name() -> None:
     import appsettings2
     from deev.utils import connect, create_database, drop_database
@@ -464,6 +477,7 @@ def mysql_begin_no_name() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_provider_always_sends_commit() -> None:
     import appsettings2
     from deev.utils import connect
@@ -501,6 +515,7 @@ def sqlite_provider_scrubs_commit_at_depth_greater_than_one() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_create_savepoint_adds_to_savepoints_list() -> None:
     import appsettings2
     from deev.utils import connect
@@ -520,6 +535,7 @@ def mssql_create_savepoint_adds_to_savepoints_list() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_rollback_savepoint_unwinds_list() -> None:
     import appsettings2
     from deev.utils import connect
@@ -541,6 +557,7 @@ def mssql_rollback_savepoint_unwinds_list() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_transaction_name_property_returns_correct_value() -> None:
     import appsettings2
     from deev.utils import connect
@@ -559,6 +576,7 @@ def mssql_transaction_name_property_returns_correct_value() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_savepoints_property_returns_tuple() -> None:
     import appsettings2
     from deev.utils import connect
@@ -594,6 +612,7 @@ def sqlite_savepoints_property_returns_tuple() -> None:
 
 @fact
 @trait('mysql')
+@trait('integration')
 def mysql_savepoints_property_returns_tuple() -> None:
     import appsettings2
     from deev.utils import connect, create_database, drop_database
@@ -622,6 +641,7 @@ def mysql_savepoints_property_returns_tuple() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_rollback_invalid_name_raises() -> None:
     import appsettings2
     from deev.utils import connect
@@ -643,6 +663,7 @@ def mssql_rollback_invalid_name_raises() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_rollback_to_transaction_name_do_full_rollback() -> None:
     import appsettings2
     from deev.utils import connect
@@ -665,6 +686,7 @@ def mssql_rollback_to_transaction_name_do_full_rollback() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_execute_commit_triggers_same_guard_as_commit_method() -> None:
     import appsettings2
     from deev.utils import connect
@@ -689,6 +711,7 @@ def mssql_execute_commit_triggers_same_guard_as_commit_method() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_execute_rollback_at_depth_zero_raises() -> None:
     import appsettings2
     from deev.utils import connect
@@ -716,6 +739,7 @@ def mssql_execute_rollback_at_depth_zero_raises() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_exit_raises_on_uncommitted_transaction() -> None:
     import appsettings2
     from deev.utils import connect
@@ -734,6 +758,7 @@ def mssql_exit_raises_on_uncommitted_transaction() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_exit_rollback_on_exception() -> None:
     import appsettings2
     from deev.utils import connect
@@ -848,6 +873,7 @@ def noops_are_fresh_per_call() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mssql_exit_clears_ambient_transaction_id() -> None:
     import appsettings2
     from deev.utils import connect
@@ -888,6 +914,7 @@ def sqlite_exit_clears_ambient_transaction_id() -> None:
 
 @fact
 @trait('mysql')
+@trait('integration')
 def mysql_exit_clears_ambient_transaction_id() -> None:
     import appsettings2
     from deev.utils import connect, create_database, drop_database
@@ -914,6 +941,7 @@ def mysql_exit_clears_ambient_transaction_id() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def clickhouse_exit_clears_ambient_transaction_id() -> None:
     import appsettings2
     from deev.utils import connect, create_database, drop_database
@@ -937,6 +965,7 @@ def clickhouse_exit_clears_ambient_transaction_id() -> None:
 
 @fact
 @trait('mssql')
+@trait('integration')
 def mongo_exit_clears_ambient_transaction_id() -> None:
     import appsettings2
     from deev.utils import connect, create_database, drop_database
