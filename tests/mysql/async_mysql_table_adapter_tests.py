@@ -30,7 +30,7 @@ async def async_adapter_basic_crud() -> None:
     cxnstring.database = f'deev_test_{uuid4().hex}'
     create_database(cxnstring)
     try:
-        @entity
+        @entity(table_name='tbl_AABC')
         class BasicEntity:
             id: int = field(autoincrement=True, primary_key=True, default=0)
             example: int | None = None
@@ -120,7 +120,7 @@ async def async_adapter_query_and_delete() -> None:
     cxnstring.database = f'deev_test_{uuid4().hex}'
     create_database(cxnstring)
     try:
-        @entity
+        @entity(table_name='tbl_my_aaqad')
         class QueryEntity:
             id: int = field(autoincrement=True, primary_key=True, default=0)
             name: str | None = None
@@ -165,7 +165,7 @@ async def async_adapter_upsert() -> None:
     cxnstring.database = f'deev_test_{uuid4().hex}'
     create_database(cxnstring)
     try:
-        @entity
+        @entity(table_name='tbl_my_aaups')
         class UpsertEntity:
             id: int = field(autoincrement=True, primary_key=True, default=0)
             name: str | None = None
@@ -210,7 +210,7 @@ async def async_adapter_primary_key_property() -> None:
     cxnstring.database = f'deev_test_{uuid4().hex}'
     create_database(cxnstring)
     try:
-        @entity
+        @entity(table_name='tbl_my_aapkp')
         class PKEntity:
             id: int = field(autoincrement=True, primary_key=True, default=0)
             value: str | None = None
@@ -240,7 +240,7 @@ async def async_adapter_uuid_field_roundtrip() -> None:
     cxnstring.database = f'deev_test_{uuid4().hex}'
     create_database(cxnstring)
     try:
-        @entity
+        @entity(table_name='tbl_my_aaufr')
         class UuidEntity:
             id: int = field(autoincrement=True, primary_key=True, default=0)
             ref_uuid: UUID | None = None
@@ -278,7 +278,7 @@ async def async_adapter_datetime_roundtrip() -> None:
     cxnstring.database = f'deev_test_{uuid4().hex}'
     create_database(cxnstring)
     try:
-        @entity
+        @entity(table_name='tbl_my_aadtr')
         class DateTimeEntity:
             id: int = field(autoincrement=True, primary_key=True, default=0)
             created_at: datetime | None = None

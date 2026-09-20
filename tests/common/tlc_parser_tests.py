@@ -9,6 +9,7 @@ from deev.common.tlc_parser import (
     extract_begin_name,
     extract_rollback_name,
     extract_savepoint_name,
+    extract_start_name,
     is_rollback_to,
 )
 
@@ -62,6 +63,45 @@ def begin_multiple_spaces_between_tokens() -> None:
 @trait('common')
 def begin_mixed_case_keyword() -> None:
     assert extract_begin_name('BeGiN TrAnSaCtIoN my_txn') == 'my_txn'
+
+
+# --- extract_start_name tests ---
+
+
+@fact
+@trait('common')
+def start_transaction_name_extracted() -> None:
+    assert extract_start_name('START TRANSACTION my_txn') == 'my_txn'
+
+
+@fact
+@trait('common')
+def start_transaction_no_name_returns_none() -> None:
+    assert extract_start_name('START TRANSACTION') is None
+
+
+@fact
+@trait('common')
+def start_case_insensitive_keyword_preserves_name_case() -> None:
+    assert extract_start_name('start transaction MySavePoint') == 'MySavePoint'
+
+
+@fact
+@trait('common')
+def start_leading_whitespace_stripped() -> None:
+    assert extract_start_name('  START TRANSACTION my_txn') == 'my_txn'
+
+
+@fact
+@trait('common')
+def start_multiple_spaces_between_tokens() -> None:
+    assert extract_start_name('START  TRANSACTION   my_txn') == 'my_txn'
+
+
+@fact
+@trait('common')
+def start_mixed_case_keyword() -> None:
+    assert extract_start_name('StArT TrAnSaCtIoN my_txn') == 'my_txn'
 
 
 # --- extract_savepoint_name tests ---
@@ -188,6 +228,66 @@ def rollback_leading_whitespace_stripped() -> None:
 @trait('common')
 def rollback_case_insensitive_keyword_preserves_name_case() -> None:
     assert extract_rollback_name('rollback transaction MyName') == 'MyName'
+
+
+@fact
+@trait('common')
+def rollback_trans_no_trailing_space_returns_none() -> None:
+    assert extract_rollback_name('ROLLBACK TRAN') is None
+
+
+@fact
+@trait('common')
+def rollback_trans_lowercase_no_trailing_space_returns_none() -> None:
+    assert extract_rollback_name('ROLLBACK tran') is None
+
+
+@fact
+@trait('common')
+def rollback_to_trans_no_name_returns_none() -> None:
+    assert extract_rollback_name('ROLLBACK TO TRAN') is None
+
+
+@fact
+@trait('common')
+def rollback_to_savepoint_no_name_returns_none() -> None:
+    assert extract_rollback_name('ROLLBACK TO SAVEPOINT') is None
+
+
+@fact
+@trait('common')
+def rollback_transaction_no_name_returns_none() -> None:
+    assert extract_rollback_name('ROLLBACK TRANSACTION') is None
+
+
+@fact
+@trait('common')
+def rollback_multiple_spaces_between_tokens() -> None:
+    assert extract_rollback_name('ROLLBACK   my_txn') == 'my_txn'
+
+
+@fact
+@trait('common')
+def rollback_to_multiple_spaces() -> None:
+    assert extract_rollback_name('ROLLBACK  TO  my_sp') == 'my_sp'
+
+
+@fact
+@trait('common')
+def rollback_trans_multiple_spaces() -> None:
+    assert extract_rollback_name('ROLLBACK  TRAN  my_txn') == 'my_txn'
+
+
+@fact
+@trait('common')
+def rollback_to_savepoint_multiple_spaces() -> None:
+    assert extract_rollback_name('ROLLBACK  TO  SAVEPOINT  my_sp') == 'my_sp'
+
+
+@fact
+@trait('common')
+def rollback_bracketed_name_preserved() -> None:
+    assert extract_rollback_name('ROLLBACK TRANSACTION [my_sp]') == '[my_sp]'
 
 
 # --- is_rollback_to tests ---

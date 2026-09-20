@@ -40,7 +40,7 @@ def _make_mock_connection():
 @fact
 @trait('unit', 'mongodb')
 def pk_creates_unique_index() -> None:
-    @entity
+    @entity(table_name='tbl_mdb_pkcui')
     class PKEntity:
         id: str = field(primary_key=True)
         name: str

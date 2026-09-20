@@ -94,8 +94,12 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
         For ClickHouse: all TLC keywords return None (scrubbed) since ClickHouse
         has no transaction support. Depth tracking is for diagnostics/consistency.
         """
-        if self.__transaction_depth < 0:
-            raise DbError('Cannot use a transaction context that has been exited.')
+        if self.__transaction_depth == -1:
+            raise DbError('Cannot use a transaction context that has exited.')
+        elif self.__transaction_depth == -2:
+            raise DbError('Cannot use a transaction context that has been committed.')
+        elif self.__transaction_depth == -3:
+            raise DbError('Cannot use a transaction context that has been rolled back.')
 
         sql_upper = sql.lstrip().upper()
         prefix = sql_upper[:4]
@@ -119,12 +123,12 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
                 self.__savepoints.clear()
                 self.__transaction_name = None
                 self.__ambient_transaction_id.set(None)
+                self.__transaction_depth = -2
             return None
 
         elif prefix == 'ROLL':
             if self.__transaction_depth == 0:
                 raise DbError('Cannot rollback, no transaction.')
-            self.__transaction_depth = 0
             name = extract_rollback_name(sql)
 
             if name:
@@ -141,7 +145,7 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
             else:
                 pass  # full rollback, depth reset below
 
-            self.__transaction_depth = 0
+            self.__transaction_depth = -3
             self.__savepoints.clear()
             self.__transaction_name = None
             self.__ambient_transaction_id.set(None)
@@ -250,8 +254,8 @@ class AsyncClickHouseTransactionContext(AsyncDbTransactionContext):
         except Exception:
             return cursor.rowcount
 
-    async def execute_script(self, sql: str, raw: str | None = None) -> None:
-        if raw is not None:
+    async def execute_script(self, sql: str, raw: bool = False) -> None:
+        if raw is True:
             await self.execute(sql, raw=True)
             return
         lines = sql.split('\n')

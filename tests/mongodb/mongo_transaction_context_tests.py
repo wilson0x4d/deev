@@ -120,24 +120,15 @@ def transaction_execute_nonquery_works() -> None:
 @fact
 @trait('integration')
 @trait('mongodb')
-def transaction_context_manager_auto_commits_state1_on_success() -> None:
-    """A transaction that begins but never writes must auto-commit on __exit__."""
+def transaction_context_depth_after_commit_is_negative() -> None:
+    """After an explicit commit at depth 1, depth should be -2 (finalized)."""
     conn_str = get_mongodb_connectionstring()
-    caught_error: Exception | None = None
-    try:
-        with connect(conn_str) as connection:
-            tx = MongoTransactionContext(connection)
-            assert getattr(tx, '_MongoTransactionContext__transaction_state') == 0, "Initial state should be 0"
-            tx.begin_transaction()
-            assert getattr(tx, '_MongoTransactionContext__transaction_state') == 1, "After begin: state should be 1"
-            tx.__exit__(None, None, None)
-            assert getattr(tx, '_MongoTransactionContext__transaction_state') == 3, (
-                f"Expected state=3 after auto-commit, got {getattr(tx, '_MongoTransactionContext__transaction_state')}."
-            )
-    except Exception as e:
-        caught_error = e
-
-    assert caught_error is None, f"Expected no error but got {type(caught_error).__name__}: {caught_error}"
+    with connect(conn_str) as connection:
+        tx = MongoTransactionContext(connection)
+        tx.begin_transaction()
+        tx.commit()
+        depth = tx._MongoTransactionContext__transaction_depth  # type: ignore[attr-defined]
+        assert depth == -2, f'Expected depth -2 after commit, got {depth}'
 
 
 @fact
@@ -184,17 +175,15 @@ def transaction_context_var_name_correctly_spelled() -> None:
 @fact
 @trait('integration')
 @trait('mongodb')
-def transaction_context_manager_rollback_on_exception_with_state_one() -> None:
-    """When __exit__ receives an exception and the transaction is in state 1
-    (begun but no writes), it should rollback - not auto-commit."""
+def transaction_context_rollback_on_exception() -> None:
+    """When __exit__ receives an exception, it should rollback the transaction."""
     conn_str = get_mongodb_connectionstring()
     error_caught: Exception | None = None
 
     try:
         with connect(conn_str) as connection:
             tx = MongoTransactionContext(connection)
-            tx.begin_transaction()  # state -> 1
-            assert getattr(tx, '_MongoTransactionContext__transaction_state') == 1
+            tx.begin_transaction()
             raise RuntimeError("simulated crash")
     except RuntimeError as e:
         if 'simulated' in str(e):
@@ -242,3 +231,53 @@ def transaction_mongo_database_property_exists() -> None:
         tx = MongoTransactionContext(connection)
         mongo_database = getattr(tx, 'mongo_database', None)
         assert mongo_database is not None, 'mongo_database property should exist'
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def transaction_context_depth_after_rollback_is_negative() -> None:
+    """After a rollback at depth 1, depth should be -3 (finalized)."""
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        tx = MongoTransactionContext(connection)
+        tx.begin_transaction()
+        tx.rollback()
+        depth = tx._MongoTransactionContext__transaction_depth  # type: ignore[attr-defined]
+        assert depth == -3, f'Expected depth -3 after rollback, got {depth}'
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def transaction_cannot_reuse_after_commit() -> None:
+    """After commit sets depth to -2, begin_transaction should raise DbError."""
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        tx = MongoTransactionContext(connection)
+        tx.begin_transaction()
+        tx.commit()
+        try:
+            tx.begin_transaction()
+        except DbError as e:
+            assert 'Cannot use a transaction context' in str(e), f'Expected context error, got {e}'
+        else:
+            raise AssertionError('expected DbError after commit')
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def transaction_cannot_reuse_after_rollback() -> None:
+    """After rollback sets depth to -3, begin_transaction should raise DbError."""
+    conn_str = get_mongodb_connectionstring()
+    with connect(conn_str) as connection:
+        tx = MongoTransactionContext(connection)
+        tx.begin_transaction()
+        tx.rollback()
+        try:
+            tx.begin_transaction()
+        except DbError as e:
+            assert 'Cannot use a transaction context' in str(e), f'Expected context error, got {e}'
+        else:
+            raise AssertionError('expected DbError after rollback')

@@ -235,7 +235,7 @@ def resolve_mongodb_auth_source(connectionstring: ConnectionString) -> str:
     import pymongo
     from pymongo import errors as _pymongo_errors
 
-    cache_key = f"{connectionstring.server}:{connectionstring.database}:{connectionstring.user}"
+    cache_key = f'{connectionstring.server}:{connectionstring.database}:{connectionstring.user}'
     cached = _MONGODB_AUTH_SOURCE_CACHE.get(cache_key)
     if cached is not None:
         return cached

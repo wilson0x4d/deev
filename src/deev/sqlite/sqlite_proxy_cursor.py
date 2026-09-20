@@ -45,17 +45,14 @@ class SQLiteProxyCursor(DbCursor):
         return self.__cursor.rowcount
 
     def execute(self, operation: str, parameters: DbParameters | None = None) -> None:
-        if parameters is not None:
-            operation = operation.replace(self.__sql_arg_expect, self.__sql_arg_subst)
-        self.__logger.debug(f'execute({operation!r}, {parameters!r})')
-        if parameters is None:
+        if parameters is None or len(parameters) == 0:
             self.__cursor.execute(operation)
         else:
+            operation = operation.replace(self.__sql_arg_expect, self.__sql_arg_subst)
             self.__cursor.execute(operation, parameters)  # type: ignore[arg-type]
 
     def executemany(self, operation: str, seq_of_parameters: Sequence[DbParameters]) -> None:
         operation = operation.replace(self.__sql_arg_expect, self.__sql_arg_subst)
-        self.__logger.debug(f'execute({operation!r}, {seq_of_parameters!r})')
         self.__cursor.executemany(operation, seq_of_parameters)
 
     def fetchone(self) -> tuple[Any, ...] | None:

@@ -40,7 +40,6 @@ class MySQLTableAdapter(Generic[TEntity]):
     __initialized: bool
     __dbtype_mapper: DbTypeMapper
     __table_name: str | None
-    __transaction_state: int
 
     def __init__(
         self,
@@ -54,7 +53,6 @@ class MySQLTableAdapter(Generic[TEntity]):
         self.__create_table = create_table is True
         self.__initialized = False
         self.__table_name = table_name
-        self.__transaction_state = 0
 
     def __deferred_init(self) -> None:
         if not self.__initialized:

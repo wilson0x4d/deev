@@ -24,7 +24,7 @@ def basic_verification() -> None:
     cxnstring.database = f'deev_test_{uuid4().hex}'
     create_database(cxnstring)
     try:
-        @entity
+        @entity(table_name='tbl_my_bvt')
         class BasicEntity:
             id: int = field(autoincrement=True, primary_key=True, default=0)
             example: int | None = None

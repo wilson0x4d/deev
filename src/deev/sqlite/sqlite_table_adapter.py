@@ -39,7 +39,6 @@ class SQLiteTableAdapter(Generic[TEntity]):
     __initialized: bool
     __dbtype_mapper: DbTypeMapper
     __entity_spec: EntitySpec
-    __transaction_state: int
     __table_name: str | None
 
     def __init__(
@@ -54,7 +53,6 @@ class SQLiteTableAdapter(Generic[TEntity]):
         self.__create_table = create_table is True
         self.__initialized = False
         self.__table_name = table_name
-        self.__transaction_state = 0
 
     def __deferred_init(self) -> None:
         if not self.__initialized:

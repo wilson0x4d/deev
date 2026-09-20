@@ -161,7 +161,6 @@ class DbMigrator:
                 if migration_func is not None:
                     with begin_transaction(self.__connectionstring) as db_transaction:
                         migration_func(db_transaction)
-                        db_transaction.commit()
                         # NOTE: callee (migration_func) is responsible for calling commit (or rollback)
                     migrations_table.delete(id=applied_migrations.get(migration_name, 0))
                     migrations_table.commit()

@@ -30,6 +30,7 @@ def basic_verification() -> None:
             with MySQLTransactionContext(connection) as transaction:
                 result = transaction.execute_scalar('SELECT val FROM test WHERE id = %?', (guid,))
                 assert result == val
+                transaction.commit()
             # confirm updates work
             with MySQLTransactionContext(connection) as transaction:
                 val2 = uuid4().hex
@@ -38,6 +39,7 @@ def basic_verification() -> None:
             with MySQLTransactionContext(connection) as transaction:
                 result = transaction.execute_scalar('SELECT val FROM test WHERE id = %?', (guid,))
                 assert result == val2
+                transaction.commit()
             # confirm that we can update a record, rollback changes, and then read the original value back.
             with MySQLTransactionContext(connection) as transaction:
                 val3 = uuid4().hex
@@ -46,6 +48,7 @@ def basic_verification() -> None:
             with MySQLTransactionContext(connection) as transaction:
                 result = transaction.execute_scalar('SELECT val FROM test WHERE id = %?', (guid,))
                 assert result == val2
+                transaction.commit()
             # confirm deletions can be rolled back
             with MySQLTransactionContext(connection) as transaction:
                 transaction.execute_nonquery('DELETE FROM test WHERE id = %?', (guid,))
@@ -54,6 +57,7 @@ def basic_verification() -> None:
             with MySQLTransactionContext(connection) as transaction:
                 result = transaction.execute_scalar('SELECT val FROM test WHERE id = %?', (guid,))
                 assert result == val2
+                transaction.commit()
                 # confirm deletions can be rolled back
                 with MySQLTransactionContext(connection) as nested_transaction:
                     nested_transaction.execute_nonquery('DELETE FROM test WHERE id = %?', (guid,))

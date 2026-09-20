@@ -41,7 +41,6 @@ class ClickHouseTableAdapter(Generic[TEntity]):
     __initialized: bool
     __logger: logging.Logger
     __table_name: str | None
-    __transaction_state: int
 
     def __init__(
         self,
@@ -55,7 +54,6 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         self.__create_table = create_table is True
         self.__initialized = False
         self.__table_name = table_name
-        self.__transaction_state = 0
         self.__is_sync_replicas_enabled = sync_replicas is True and getattr(self.__context, 'is_replicated', False) is True
         self.__logger = hanaro.get_logger()
 

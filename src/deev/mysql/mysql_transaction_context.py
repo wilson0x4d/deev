@@ -17,7 +17,7 @@ from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
 from ..common.db_transaction_context import DbTransactionContext
-from ..common.tlc_parser import extract_begin_name, extract_rollback_name, extract_savepoint_name
+from ..common.tlc_parser import extract_begin_name, extract_rollback_name, extract_savepoint_name, extract_start_name
 from .mysql_proxy_connection import MySQLProxyConnection
 
 
@@ -84,8 +84,12 @@ class MySQLTransactionContext(DbTransactionContext):
 
         MySQL-specific: strips name from START TRANSACTION (MySQL doesn't support named transactions).
         """
-        if self.__transaction_depth < 0:
-            raise DbError('Cannot use a transaction context that has been exited.')
+        if self.__transaction_depth == -1:
+            raise DbError('Cannot use a transaction context that has exited.')
+        elif self.__transaction_depth == -2:
+            raise DbError('Cannot use a transaction context that has been committed.')
+        elif self.__transaction_depth == -3:
+            raise DbError('Cannot use a transaction context that has been rolled back.')
 
         sql_upper = sql.lstrip().upper()
         prefix = sql_upper[:4]
@@ -94,7 +98,12 @@ class MySQLTransactionContext(DbTransactionContext):
             if self.__transaction_depth > 0:
                 return None
             self.__transaction_depth += 1
-            self.__transaction_name = extract_begin_name(sql)
+            if prefix == 'STAR':
+                self.__transaction_name = extract_start_name(sql)
+            elif sql_upper.startswith('BEGIN WORK') or sql_upper.startswith('BEGIN '):
+                self.__transaction_name = None
+            else:
+                self.__transaction_name = extract_begin_name(sql)
             self.__ambient_transaction_id.set(self.__transaction_name or self.__transaction_id)
             return 'START TRANSACTION'
 
@@ -112,7 +121,7 @@ class MySQLTransactionContext(DbTransactionContext):
                 self.__savepoints.clear()
                 self.__transaction_name = None
                 self.__ambient_transaction_id.set(None)
-            if self.__transaction_depth == 0:
+                self.__transaction_depth = -2
                 return 'COMMIT'
             else:
                 return None
@@ -120,7 +129,6 @@ class MySQLTransactionContext(DbTransactionContext):
         elif prefix == 'ROLL':
             if self.__transaction_depth == 0:
                 raise DbError('Cannot rollback, no transaction.')
-            self.__transaction_depth = 0
             name = extract_rollback_name(sql)
 
             if name:
@@ -129,7 +137,7 @@ class MySQLTransactionContext(DbTransactionContext):
                         sp = self.__savepoints.pop()
                         if sp == name:
                             break
-                    return 'ROLLBACK'
+                    return f'ROLLBACK TO SAVEPOINT {name}'
                 elif name == self.__transaction_name:
                     pass  # full rollback, depth reset below
                 else:
@@ -137,7 +145,7 @@ class MySQLTransactionContext(DbTransactionContext):
             else:
                 pass  # full rollback, depth reset below
 
-            self.__transaction_depth = 0
+            self.__transaction_depth = -3
             self.__savepoints.clear()
             self.__transaction_name = None
             self.__ambient_transaction_id.set(None)
@@ -234,8 +242,8 @@ class MySQLTransactionContext(DbTransactionContext):
         except mysql.connector.ProgrammingError:
             return cursor.rowcount
 
-    def execute_script(self, sql: str, raw: str | None = None) -> None:
-        if raw is not None:
+    def execute_script(self, sql: str, raw: bool = False) -> None:
+        if raw is True:
             self.execute(sql, raw=True)
             return
         lines = sql.split('\n')

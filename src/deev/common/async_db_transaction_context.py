@@ -64,7 +64,7 @@ class AsyncDbTransactionContext(Protocol):
     async def execute(self, sql: str, parameters: DbParameters | None = ..., raw: bool = ...) -> AsyncDbCursor:
         ...
 
-    async def execute_script(self, sql: str) -> None:
+    async def execute_script(self, sql: str, raw: bool = ...) -> None:
         ...
 
     async def execute_nonquery(self, sql: str, parameters: DbParameters | None = ...) -> None:

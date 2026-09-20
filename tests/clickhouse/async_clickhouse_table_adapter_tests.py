@@ -61,7 +61,7 @@ async def async_adapter_basic_crud() -> None:
     cxnstring.database = test_db
     create_database(cxnstring)
     try:
-        @entity
+        @entity(table_name='tbl_AABC')
         class BasicEntity:
             id: str = field(primary_key=True)
             example: int | None = None
@@ -147,7 +147,7 @@ async def async_adapter_query_and_delete() -> None:
     cxnstring.database = test_db
     create_database(cxnstring)
     try:
-        @entity
+        @entity(table_name='tbl_ch_aaqad')
         class QueryEntity:
             id: str = field(primary_key=True)
             name: str | None = None
@@ -184,7 +184,7 @@ async def async_adapter_upsert() -> None:
     cxnstring.database = test_db
     create_database(cxnstring)
     try:
-        @entity
+        @entity(table_name='tbl_ch_aaups')
         class UpsertEntity:
             id: str = field(primary_key=True)
             name: str | None = None
@@ -221,7 +221,7 @@ async def async_adapter_primary_key_property() -> None:
     cxnstring.database = test_db
     create_database(cxnstring)
     try:
-        @entity
+        @entity(table_name='tbl_ch_aapkp')
         class PKEntity:
             id: str = field(primary_key=True)
             value: str | None = None
@@ -370,7 +370,7 @@ async def async_adapter_uuid_field_roundtrip() -> None:
     cxnstring.database = test_db
     create_database(cxnstring)
     try:
-        @entity
+        @entity(table_name='tbl_ch_aaufr')
         class UuidEntity:
             id: str = field(primary_key=True)
             ref_uuid: UUID | None = None

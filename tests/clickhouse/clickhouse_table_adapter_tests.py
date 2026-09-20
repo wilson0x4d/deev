@@ -21,7 +21,7 @@ def basic_verification() -> None:
     cxnstring.database = test_db
     create_database(cxnstring)
     try:
-        @entity
+        @entity(table_name='tbl_ch_bvt')
         class BasicEntity:
             id: str = field(primary_key=True)
             example: int | None = None

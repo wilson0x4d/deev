@@ -58,7 +58,7 @@ class DbTransactionContext(Protocol):
     def execute(self, sql: str, parameters: DbParameters | None = ...) -> DbCursor:
         ...
 
-    def execute_script(self, sql: str) -> None:
+    def execute_script(self, sql: str, raw: bool = ...) -> None:
         ...
 
     def execute_nonquery(self, sql: str, parameters: DbParameters | None = ...) -> None:

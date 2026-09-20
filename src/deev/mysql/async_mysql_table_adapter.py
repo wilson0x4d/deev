@@ -38,7 +38,6 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
     __entity_spec: EntitySpec
     __initialized: bool
     __table_name: str | None
-    __transaction_state: int
 
     def __init__(
         self,
@@ -52,7 +51,6 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
         self.__create_table = create_table is True
         self.__initialized = False
         self.__table_name = table_name
-        self.__transaction_state = 0
 
     async def __deferred_init(self) -> None:
         if not self.__initialized:

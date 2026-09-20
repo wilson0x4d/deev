@@ -109,8 +109,12 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
         For MongoDB: all TLC keywords return None (scrubbed) since MongoDB has
         no SQL transaction syntax. Side effects happen via mongo_session.
         """
-        if self.__transaction_depth < 0:
-            raise DbError('Cannot use a transaction context that has been exited.')
+        if self.__transaction_depth == -1:
+            raise DbError('Cannot use a transaction context that has exited.')
+        elif self.__transaction_depth == -2:
+            raise DbError('Cannot use a transaction context that has been committed.')
+        elif self.__transaction_depth == -3:
+            raise DbError('Cannot use a transaction context that has been rolled back.')
 
         sql_upper = sql.lstrip().upper()
         prefix = sql_upper[:4]
@@ -136,14 +140,14 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
                 self.__savepoints.clear()
                 self.__transaction_name = None
                 self.__ambient_transaction_id.set(None)
-            if not self.__delegate_mode and self.__transaction_depth == 0:
+                self.__transaction_depth = -2
+            if not self.__delegate_mode and self.__transaction_depth == -2:
                 await self.mongo_session.commit_transaction()
             return None
 
         elif prefix == 'ROLL':
             if self.__transaction_depth == 0:
                 raise DbError('Cannot rollback, no transaction.')
-            self.__transaction_depth = 0
             name = extract_rollback_name(sql)
 
             if name:
@@ -160,7 +164,7 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
             else:
                 pass  # full rollback, depth reset below
 
-            self.__transaction_depth = 0
+            self.__transaction_depth = -3
             self.__savepoints.clear()
             self.__transaction_name = None
             self.__ambient_transaction_id.set(None)
@@ -282,8 +286,8 @@ class AsyncMongoTransactionContext(AsyncDbTransactionContext):
         except Exception:
             return cursor.rowcount
 
-    async def execute_script(self, sql: str, raw: str | None = None) -> None:
-        if raw is not None:
+    async def execute_script(self, sql: str, raw: bool = False) -> None:
+        if raw is True:
             await self.execute(sql, raw=True)
             return
         lines = sql.split('\n')

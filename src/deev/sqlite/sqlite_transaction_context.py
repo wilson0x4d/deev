@@ -82,8 +82,12 @@ class SQLiteTransactionContext(DbTransactionContext):
           - None if scrubbed because the DBMS does not support it.
           - Raises DbError if operation is invalid.
         """
-        if self.__transaction_depth < 0:
-            raise DbError('Cannot use a transaction context that has been exited.')
+        if self.__transaction_depth == -1:
+            raise DbError('Cannot use a transaction context that has exited.')
+        elif self.__transaction_depth == -2:
+            raise DbError('Cannot use a transaction context that has been committed.')
+        elif self.__transaction_depth == -3:
+            raise DbError('Cannot use a transaction context that has been rolled back.')
 
         sql_upper = sql.lstrip().upper()
         prefix = sql_upper[:4]
@@ -111,7 +115,7 @@ class SQLiteTransactionContext(DbTransactionContext):
                 self.__savepoints.clear()
                 self.__transaction_name = None
                 self.__ambient_transaction_id.set(None)
-            if self.__transaction_depth == 0:
+                self.__transaction_depth = -2
                 return 'COMMIT'
             else:
                 return None
@@ -122,8 +126,6 @@ class SQLiteTransactionContext(DbTransactionContext):
             name = extract_rollback_name(sql)
             is_savepoint_rollback = is_rollback_to(sql)
 
-            is_full_rollback = False
-
             if name:
                 if name in self.__savepoints:
                     while self.__savepoints:
@@ -131,21 +133,20 @@ class SQLiteTransactionContext(DbTransactionContext):
                         if sp == name:
                             break
                 elif name == self.__transaction_name:
-                    is_full_rollback = True
+                    pass  # full rollback, depth reset below
                 else:
                     raise DbError('Invalid Transaction Name')
             else:
-                is_full_rollback = True
-
-            if is_full_rollback:
-                self.__transaction_depth = 0
-                self.__savepoints.clear()
-                self.__transaction_name = None
-                self.__ambient_transaction_id.set(None)
+                pass  # full rollback, depth reset below
 
             if is_savepoint_rollback:
                 return 'ROLLBACK TO SAVEPOINT ' + (name or '')
-            return 'ROLLBACK TRANSACTION'
+            else:
+                self.__transaction_depth = -3
+                self.__savepoints.clear()
+                self.__transaction_name = None
+                self.__ambient_transaction_id.set(None)
+                return 'ROLLBACK TRANSACTION'
 
         return sql
 
@@ -239,8 +240,8 @@ class SQLiteTransactionContext(DbTransactionContext):
         except sqlite3.ProgrammingError:
             return cursor.rowcount
 
-    def execute_script(self, sql: str, raw: str | None = None) -> None:
-        if raw is not None:
+    def execute_script(self, sql: str, raw: bool = False) -> None:
+        if raw is True:
             self.execute(sql, raw=True)
             return
         lines = sql.split('\n')

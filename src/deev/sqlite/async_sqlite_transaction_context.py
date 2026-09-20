@@ -126,7 +126,7 @@ class AsyncSQLiteTransactionContext(AsyncDbTransactionContext):
     async def execute_scalar(self, sql: str, parameters: DbParameters | None = None) -> Any:
         return self.__get_inner_ctx().execute_scalar(sql, parameters)
 
-    async def execute_script(self, sql: str, raw: str | None = None) -> None:
+    async def execute_script(self, sql: str, raw: bool = False) -> None:
         self.__get_inner_ctx().execute_script(sql, raw)
 
     async def rollback(self, name: str | None = None) -> None:

@@ -40,7 +40,6 @@ class MongoTableAdapter(Generic[TEntity]):
     __initialized: bool
     __dbtype_mapper: DbTypeMapper
     __table_name: str | None
-    __transaction_state: int
 
     def __init__(
         self,
@@ -54,7 +53,6 @@ class MongoTableAdapter(Generic[TEntity]):
         self.__create_table = create_table is True
         self.__initialized = False
         self.__table_name = table_name
-        self.__transaction_state = 0
 
         self.__database_name = self.__context.mongo_database_name  # type: ignore[missing-attribute, union-attr]
 
