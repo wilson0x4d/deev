@@ -32,7 +32,7 @@ def connect(
     """
     Create a PEP 249 :class:`DbConnection` to a database.
 
-    Supported providers: ``sqlite3``, ``sqlite``, ``mysql.connector``, ``mongodb``, ``clickhouse``.
+    Supported providers: ``sqlite3``, ``sqlite``, ``mysql.connector``, ``mongodb``, ``mssql``, ``clickhouse``.
 
     :param connectionstring: A DSN string or :class:`ConnectionString` object.
     :param connect_timeout: Connection timeout in seconds. Only used when *connectionstring* does not specify ``Connection Timeout``.
@@ -88,6 +88,29 @@ def connect(
                 cur.close()
                 conn.commit()
             return MySQLProxyConnection(conn)
+        case 'mssql':
+            from deev.mssql.mssql_proxy_connection import MSSQLProxyConnection
+            import mssql_python
+            if connectionstring.server is None:
+                raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
+            conn_str = str(connectionstring)
+            # Replace Provider= and timeout keys mssql_python doesn't recognise
+            _MSSQL_STRIP_KEYS = {'Provider', 'Connection Timeout', 'Command Timeout'}
+            _conn_parts = []
+            for part in conn_str.split(';'):
+                if not part:
+                    continue
+                key = part.split('=', 1)[0]
+                if key not in _MSSQL_STRIP_KEYS:
+                    # mssql_python expects host,port not host:port
+                    if key == 'Server':
+                        part = part.replace(':', ',')
+                    _conn_parts.append(part)
+            conn_str = ';'.join(_conn_parts)
+            mssql_conn = mssql_python.connect(conn_str)
+            if effective_command_timeout is not None:
+                mssql_conn.timeout = effective_command_timeout
+            return MSSQLProxyConnection(mssql_conn)
         case 'sqlite3' | 'sqlite':
             from deev.sqlite.sqlite_proxy_connection import SQLiteProxyConnection
             import sqlite3
@@ -131,7 +154,7 @@ async def connect_async(
     """
     Create a PEP 249 :class:`AsyncDbConnection` to a database.
 
-    Supported providers: ``mongodb``, ``mysql.connector``, ``sqlite3``, ``sqlite``, ``clickhouse``.
+    Supported providers: ``mongodb``, ``mysql.connector``, ``mssql``, ``sqlite3``, ``sqlite``, ``clickhouse``.
 
     :param connectionstring: A DSN string or :class:`ConnectionString` object.
     :param connect_timeout: Connection timeout in seconds. Only used when *connectionstring* does not specify ``Connection Timeout``.
@@ -184,6 +207,27 @@ async def connect_async(
                 ),
                 **kwargs
             )
+        case 'mssql':
+            from deev.mssql.async_mssql_proxy_connection import AsyncMSSQLProxyConnection
+            import mssql_python
+            if connectionstring.server is None:
+                raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
+            conn_str = str(connectionstring)
+            _MSSQL_STRIP_KEYS = {'Provider', 'Connection Timeout', 'Command Timeout'}
+            _conn_parts = []
+            for part in conn_str.split(';'):
+                if not part:
+                    continue
+                key = part.split('=', 1)[0]
+                if key not in _MSSQL_STRIP_KEYS:
+                    if key == 'Server':
+                        part = part.replace(':', ',')
+                    _conn_parts.append(part)
+            conn_str = ';'.join(_conn_parts)
+            sync_conn = mssql_python.connect(conn_str)
+            if effective_command_timeout is not None:
+                sync_conn.timeout = effective_command_timeout
+            return AsyncMSSQLProxyConnection(sync_conn)
         case 'sqlite3' | 'sqlite':
             from deev.sqlite.sqlite_proxy_connection import SQLiteProxyConnection
             from deev.sqlite.async_sqlite_proxy_connection import AsyncSQLiteProxyConnection
@@ -279,7 +323,11 @@ def resolve_mongodb_auth_source(connectionstring: ConnectionString) -> str:
     )
 
 
-def create_database(connectionstring: ConnectionString | str) -> None:
+def create_database(
+    connectionstring: ConnectionString | str,
+    *,
+    connect_timeout: int = 15,
+) -> None:
     """
     Create a database if it does not yet exist, and initialize migration tracking structures for supported providers.
 
@@ -290,6 +338,7 @@ def create_database(connectionstring: ConnectionString | str) -> None:
         connectionstring = ConnectionString(connectionstring)
     if connectionstring.database is None:
         raise DbError(f'ConnectionString is missing `database` component: {connectionstring}')
+    effective_connect_timeout = connectionstring.connect_timeout if connectionstring.connect_timeout is not None else connect_timeout
     match connectionstring.provider:
         case 'mongodb':
             auth_source = resolve_mongodb_auth_source(connectionstring)
@@ -320,7 +369,8 @@ def create_database(connectionstring: ConnectionString | str) -> None:
                 port=port_number,
                 user=connectionstring.user,
                 password=connectionstring.password,
-                use_pure=True
+                use_pure=True,
+                connection_timeout=effective_connect_timeout
             )
             try:
                 cursor = connection.cursor()
@@ -329,6 +379,33 @@ def create_database(connectionstring: ConnectionString | str) -> None:
                 connection.commit()
             finally:
                 connection.close()
+        case 'mssql':
+            if connectionstring.server is None:
+                raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
+            import mssql_python
+            conn_str = str(connectionstring)
+            # Strip Database= and Provider/timeout keys for server-level connection
+            _MSSQL_STRIP_KEYS = {'Provider', 'Connection Timeout', 'Command Timeout', 'Database'}
+            _conn_parts = []
+            for part in conn_str.split(';'):
+                if not part:
+                    continue
+                key = part.split('=', 1)[0]
+                if key not in _MSSQL_STRIP_KEYS:
+                    if key == 'Server':
+                        part = part.replace(':', ',')
+                    _conn_parts.append(part)
+            conn_str = ';'.join(_conn_parts)
+            conn = mssql_python.connect(conn_str)
+            conn.setautocommit(True)
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = N'{connectionstring.database}') CREATE DATABASE [{connectionstring.database}];"
+                )
+                cursor.close()
+            finally:
+                conn.close()
         case 'sqlite3' | 'sqlite':
             # the only thing we do is ensure the target directory exists and make a connection attempt to validate
             if connectionstring.database is None:
@@ -386,7 +463,39 @@ def drop_database(
         raise DbError(f'ConnectionString is missing `database` component: {connectionstring}')
     cluster = connectionstring.parameters.get('cluster', None) if cluster is None else cluster
     effective_connect_timeout = connectionstring.connect_timeout if connectionstring.connect_timeout is not None else connect_timeout
+    cursor: Any
     match connectionstring.provider:
+        case 'mssql':
+            if connectionstring.server is None:
+                raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
+            import mssql_python
+            conn_str = str(connectionstring)
+            # Strip Database= and Provider/timeout keys for server-level connection
+            _MSSQL_STRIP_KEYS = {'Provider', 'Connection Timeout', 'Command Timeout', 'Database'}
+            _conn_parts = []
+            for part in conn_str.split(';'):
+                if not part:
+                    continue
+                key = part.split('=', 1)[0]
+                if key not in _MSSQL_STRIP_KEYS:
+                    if key == 'Server':
+                        part = part.replace(':', ',')
+                    _conn_parts.append(part)
+            conn_str = ';'.join(_conn_parts)
+            conn = mssql_python.connect(conn_str)
+            conn.setautocommit(True)
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"IF EXISTS (SELECT 1 FROM sys.databases WHERE name = N'{connectionstring.database}') "
+                    f'BEGIN '
+                    f'  ALTER DATABASE [{connectionstring.database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; '
+                    f'  DROP DATABASE [{connectionstring.database}]; '
+                    f'END; '
+                )
+                cursor.close()
+            finally:
+                conn.close()
         case 'mysql.connector' | 'mysql':
             if connectionstring.server is None:
                 raise DbError(f'ConnectionString is missing `server` component: {connectionstring}')
@@ -537,6 +646,12 @@ def generate_entity_ddl(
                 return mysql_ddl_generator.generate_table_ddl(
                     entity_spec=entity_spec
                 )
+            case 'MSSQLProxyConnection' | 'MSSQLTransactionContext':
+                import deev.mssql
+                mssql_ddl_generator = deev.mssql.MSSQLDDLGenerator()
+                return mssql_ddl_generator.generate_table_ddl(
+                    entity_spec=entity_spec
+                )
             case 'SQLiteProxyConnection' | 'SQLiteTransactionContext':
                 import deev.sqlite
                 sqlite_ddl_generator = deev.sqlite.SQLiteDDLGenerator()
@@ -548,14 +663,14 @@ def generate_entity_ddl(
             case 'ClickHouseProxyConnection' | 'ClickHouseTransactionContext':
                 import deev.clickhouse
                 from deev.clickhouse.utils import resolve_clickhouse_table_engine
-                
+
                 engine = entity_spec.extra_args.get('engine')
                 if engine is None:
                     db_engine = dbcontext.clickhouse_client.command(  # type: ignore[union-attr]
                         'SELECT engine_full FROM system.databases WHERE name = currentDatabase()'
                     )
                     engine = resolve_clickhouse_table_engine(str(db_engine).strip()) if db_engine else 'MergeTree'
-                
+
                 clickhouse_ddl_generator = deev.clickhouse.ClickHouseDDLGenerator()
                 return clickhouse_ddl_generator.generate_table_ddl(
                     entity_spec=entity_spec,
@@ -652,6 +767,9 @@ def db_table_adapter_factory(
             import deev.clickhouse
             kwargs['sync_replicas'] = True
             return deev.clickhouse.ClickHouseTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+        case 'MSSQLProxyConnection' | 'MSSQLTransactionContext':
+            import deev.mssql
+            return deev.mssql.MSSQLTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
         case 'MongoProxyConnection' | 'MongoTransactionContext':
             import deev.mongodb
             return deev.mongodb.MongoTableAdapter[entity_type](db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
@@ -694,6 +812,9 @@ def async_db_table_adapter_factory(
         case 'AsyncClickHouseProxyConnection' | 'AsyncClickHouseTransactionContext':
             import deev.clickhouse
             return deev.clickhouse.AsyncClickHouseTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
+        case 'AsyncMSSQLProxyConnection' | 'AsyncMSSQLTransactionContext':
+            import deev.mssql
+            return deev.mssql.AsyncMSSQLTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
         case 'AsyncMongoProxyConnection' | 'AsyncMongoTransactionContext':
             import deev.mongodb
             return deev.mongodb.AsyncMongoTableAdapter[entity_type](async_db_context, table_name=table_name, create_table=create_table, **kwargs)  # type: ignore[arg-type, valid-type, return-value]
@@ -800,6 +921,9 @@ def begin_transaction(dbcontext_or_connectionstring: DbContext | ConnectionStrin
         case 'MySQLProxyConnection' | 'MySQLConnectionAbstract' | 'PooledMySQLConnection' | 'MySQLTransactionContext':
             import deev.mysql
             return deev.mysql.MySQLTransactionContext(dbcontext, owns_context=owns_context)
+        case 'MSSQLProxyConnection' | 'MSSQLTransactionContext':
+            import deev.mssql
+            return deev.mssql.MSSQLTransactionContext(dbcontext, owns_context=owns_context)
         case 'SQLiteProxyConnection' | 'SQLiteTransactionContext':
             import deev.sqlite
             return deev.sqlite.SQLiteTransactionContext(dbcontext, owns_context=owns_context)
@@ -810,7 +934,7 @@ def begin_transaction(dbcontext_or_connectionstring: DbContext | ConnectionStrin
             raise DbError(f'Unsupported object: {dbcontext}')
 
 
-async def begin_transaction_async(dbcontext_or_connectionstring: AsyncDbContext | ConnectionString | str) -> AsyncDbTransactionContext:
+async def begin_transaction_async(dbcontext_or_connectionstring: AsyncDbContext | ConnectionString) -> AsyncDbTransactionContext:
     """
     Begin an async transaction on the given connection or context.
 
@@ -831,6 +955,9 @@ async def begin_transaction_async(dbcontext_or_connectionstring: AsyncDbContext 
         case 'AsyncMySQLProxyConnection' | 'AsyncMySQLTransactionContext':
             import deev.mysql
             return deev.mysql.AsyncMySQLTransactionContext(dbcontext, owns_context=owns_context)
+        case 'AsyncMSSQLProxyConnection' | 'AsyncMSSQLTransactionContext':
+            import deev.mssql
+            return deev.mssql.AsyncMSSQLTransactionContext(dbcontext, owns_context=owns_context)
         case 'AsyncSQLiteProxyConnection' | 'AsyncSQLiteTransactionContext':
             import deev.sqlite
             return deev.sqlite.AsyncSQLiteTransactionContext(dbcontext, owns_context=owns_context)
@@ -848,6 +975,7 @@ __all__ = [
     'connect',
     'connect_async',
     'create_database',
+    'drop_database',
     'create_table_adapter',
     'create_table_adapter_async',
     'db_table_adapter_factory',

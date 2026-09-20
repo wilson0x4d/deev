@@ -27,6 +27,9 @@ clickhouse = [
 mongodb = [
     "pymongo"
 ]
+mssql = [
+    "mssql-python (>=1.15.0)"
+]
 mysql = [
     "mysql-connector-python"
 ]

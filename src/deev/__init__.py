@@ -36,6 +36,7 @@ __all__ = [
     'field',
     'hydrate',
     'mongodb',
+    'mssql',
     'mysql',
     'splat',
     'translation',

@@ -269,7 +269,51 @@ def to_sqlobject(value: Any, hint: type) -> Any:
         return value
 
 
-def splat(entity: object, attrs: list[str] | None = None, to_sql: bool = False, to_bson: bool = False) -> dict[str, Any]:
+def to_mssql_object(value: Any, hint: type) -> Any:
+    """
+    Convert a Python value to a SQL Server-compatible representation.
+
+    Like :func:`to_sqlobject` but for SQL Server's ``UNIQUEIDENTIFIER`` type,
+    which stores UUIDs in standard hyphenated format (``str(uuid)``) instead of hex.
+
+    Handles conversion of ``datetime`` to UTC datetime, ``UUID`` to hyphenated string,
+    ``dict``/``list``/``set``/``tuple`` to JSON, ``bool`` to int, ``timedelta`` to microseconds,
+    ``Enum`` to value, and ``Decimal`` to string.
+
+    :param value: The Python value to convert.
+    :param hint: The type hint for the field.
+    :return: A SQL Server-compatible value.
+    """
+    if value in (None, NoneType, 'null', 'NULL'):
+        return None
+    hint = deunionize(hint)
+    if get_origin(hint) in (Mapping, dict, list, set, tuple):
+        value = __to_json(value)
+        return value if value != 'null' and value != '' else None
+    elif hint == UUID:
+        return str(value)
+    elif hint == datetime:
+        if value.tzinfo is not None:
+            return value.astimezone(timezone.utc)
+        else:
+            return value.replace(tzinfo=timezone.utc)
+    elif hint == date:
+        return value.isoformat()
+    elif hint == time:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return _utc_z_time(value)
+    elif hint == timedelta:
+        return value.days * 86_400_000_000 + value.seconds * 1_000_000 + value.microseconds
+    elif hint == bool:
+        return int(value is True)
+    elif inspect.isclass(hint) and issubclass(hint, Enum):
+        return value.value
+    else:
+        return value
+
+
+def splat(entity: object, attrs: list[str] | None = None, to_sql: bool = False, to_bson: bool = False, to_mssql: bool = False) -> dict[str, Any]:
     """
     Splatter entity attributes/fields into a dict.
 
@@ -277,6 +321,7 @@ def splat(entity: object, attrs: list[str] | None = None, to_sql: bool = False, 
     :param attrs: Specify which attrs/fields to splatter, otherwise splatter all.
     :param to_sql: If True, destination values need to be mapped to sql objects.
     :param to_bson: If True, destination values need to be mapped to bson-compatible objects (for MongoDB).
+    :param to_mssql: If True, destination values need to be mapped to SQL Server objects.
     :return: The resulting splat.
     """
     result = dict[str, Any]()
@@ -295,7 +340,9 @@ def splat(entity: object, attrs: list[str] | None = None, to_sql: bool = False, 
                 # if attr_value is None and field_spec is not None and field_spec.nullable is not True:
                 #     # NOTE: twe do NOT translate NULLs unless spec'd to do so.
                 #     continue
-                if to_sql:
+                if to_mssql:
+                    result[attr_name] = to_mssql_object(attr_value, attr_hint)
+                elif to_sql:
                     result[attr_name] = to_sqlobject(attr_value, attr_hint)
                 elif to_bson:
                     result[attr_name] = to_bsonobject(attr_value)
@@ -306,7 +353,7 @@ def splat(entity: object, attrs: list[str] | None = None, to_sql: bool = False, 
     return result
 
 
-def hydrate(entity: object | type, data: dict[str, Any], attrs: list[str] | None = None, from_sql: bool = False, from_bson: bool = False) -> Any:
+def hydrate(entity: object | type, data: dict[str, Any], attrs: list[str] | None = None, from_sql: bool = False, from_mssql: bool = False, from_bson: bool = False) -> Any:
     """
     Hydrates an entity in-place from a "splat."
 
@@ -314,6 +361,7 @@ def hydrate(entity: object | type, data: dict[str, Any], attrs: list[str] | None
     :param data: The data to hydrate.
     :param attrs: Specify which attrs/props to hydrate, otherwise hydrates all.
     :param from_sql: If True, source values are presumed to be sql objects that need to be mapped to python objects.
+    :param from_mssql: If True, source values are presumed to be SQL Server objects that need to be mapped to python objects.
     :param from_bson: If True, source values are presumed to be BSON objects from MongoDB (UUIDs are already UUID objects).
     :return: The original entity, hydrated.
     """
@@ -343,6 +391,7 @@ __all__ = [
     'hydrate',
     'splat',
     'to_bsonobject',
+    'to_mssql_object',
     'to_pyobject',
     'to_sqlobject',
 ]

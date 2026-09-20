@@ -14,6 +14,7 @@ _DSN_TO_PROVIDER: dict[str, str] = {
     'mongodb': 'mongodb',
     'mongodb+srv': 'mongodb',
     'clickhouse': 'clickhouse',
+    'mssql': 'mssql',
 }
 
 

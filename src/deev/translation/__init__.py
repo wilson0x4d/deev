@@ -9,6 +9,7 @@ from .utils import (
     hydrate,
     splat,
     to_bsonobject,
+    to_mssql_object,
     to_pyobject,
     to_sqlobject,
 )
@@ -22,6 +23,7 @@ __all__ = [
     'hydrate',
     'splat',
     'to_bsonobject',
+    'to_mssql_object',
     'to_pyobject',
     'to_sqlobject',
 ]
