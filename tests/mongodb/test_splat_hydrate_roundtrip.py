@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 from deev.entities import entity, field
 from deev.translation import hydrate, splat
+from deev.translation.utils import to_bsonobject
 from punit import fact
 
 
@@ -467,3 +468,196 @@ def splat_hydrate_roundtrip_with_negative_timedelta() -> None:
 
     assert isinstance(entity2.duration, timedelta), f'duration should be timedelta, got {type(entity2.duration)}'
     assert entity2.duration == original_duration, f'expected {original_duration}, got {entity2.duration}'
+
+
+@fact
+def to_bsonobject_serializes_timedelta_to_microseconds_int() -> None:
+    """Verify to_bsonobject converts timedelta to microseconds as int for BSON."""
+    td = timedelta(days=1, hours=2, minutes=3, seconds=4, microseconds=5)
+    result = to_bsonobject(td)
+    assert isinstance(result, int), f'to_bsonobject should return int, got {type(result)}'
+    expected = 1 * 86_400_000_000 + 2 * 3_600_000_000 + 3 * 60_000_000 + 4 * 1_000_000 + 5
+    assert result == expected, f'expected {expected}, got {result}'
+
+
+@fact
+def splat_to_bson_serializes_timedelta_to_int() -> None:
+    """Verify splat with to_bson=True converts timedelta to microseconds int."""
+
+    @entity
+    class TestEntity:
+        id: UUID = field(primary_key=True)
+        duration: timedelta = timedelta(seconds=0)
+
+    entity1 = TestEntity(id=uuid4(), duration=timedelta(days=1, hours=2, minutes=3, seconds=4, microseconds=5))
+    d = splat(entity1, to_bson=True)
+    assert 'duration' in d, f'duration should be in dict, got {list(d.keys())}'
+    assert isinstance(d['duration'], int), f'duration should be int for BSON, got {type(d["duration"])}'
+
+
+@fact
+def splat_to_bson_preserves_uuid_as_uuid_object() -> None:
+    """Verify splat with to_bson=True keeps UUID as UUID object (not string)."""
+
+    @entity
+    class TestEntity:
+        id: UUID = field(primary_key=True)
+        value: str = ''
+
+    entity1 = TestEntity(id=uuid4(), value='hello')
+    d = splat(entity1, to_bson=True)
+    assert 'id' in d, f'id should be in dict, got {list(d.keys())}'
+    assert isinstance(d['id'], UUID), f'id should be UUID for BSON, got {type(d["id"])}'
+
+
+@fact
+def splat_to_bson_converts_set_to_list() -> None:
+    """Verify splat with to_bson=True converts set to list."""
+
+    @entity
+    class TestEntity:
+        id: str = field(primary_key=True)
+        tags: set[str] = field(default=set())
+
+    entity1 = TestEntity(id='test-set', tags={'a', 'b', 'c'})
+    d = splat(entity1, to_bson=True)
+    assert 'tags' in d, f'tags should be in dict, got {list(d.keys())}'
+    assert isinstance(d['tags'], list), f'tags should be list for BSON, got {type(d["tags"])}'
+
+
+@fact
+def splat_to_bson_with_timedelta_and_uuid() -> None:
+    """Verify splat with to_bson=True handles timedelta + UUID together."""
+
+    @entity
+    class TestEntity:
+        id: UUID = field(primary_key=True)
+        duration: timedelta = timedelta(seconds=0)
+        name: str = ''
+
+    original_id = uuid4()
+    original_duration = timedelta(hours=1, minutes=30)
+    entity1 = TestEntity(id=original_id, duration=original_duration, name='test')
+    d = splat(entity1, to_bson=True)
+    assert isinstance(d['id'], UUID), f'id should be UUID, got {type(d["id"])}'
+    assert d['id'] == original_id
+    assert isinstance(d['duration'], int), f'duration should be int, got {type(d["duration"])}'
+    assert d['name'] == 'test'
+
+
+@fact
+def hydrate_from_bson_reconstructs_timedelta_from_int() -> None:
+    """Verify hydrate with from_bson=True converts int back to timedelta."""
+
+    @entity
+    class TestEntity:
+        id: str = field(primary_key=True)
+        duration: timedelta = timedelta(seconds=0)
+
+    original_duration = timedelta(days=2, hours=5, minutes=10, seconds=20, microseconds=500)
+    expected_microseconds = 2 * 86_400_000_000 + 5 * 3_600_000_000 + 10 * 60_000_000 + 20 * 1_000_000 + 500
+    d = {'id': 'test', 'duration': expected_microseconds}
+    entity2 = hydrate(TestEntity, d, from_bson=True)
+
+    assert isinstance(entity2.duration, timedelta), f'duration should be timedelta, got {type(entity2.duration)}'
+    assert entity2.duration == original_duration, f'expected {original_duration}, got {entity2.duration}'
+
+
+@fact
+def splat_hydrate_bson_roundtrip_timedelta() -> None:
+    """Full BSON roundtrip: entity → splat(to_bson) → hydrate(from_bson) → should match."""
+
+    @entity
+    class TestEntity:
+        id: UUID = field(primary_key=True)
+        name: str = ''
+        duration: timedelta = timedelta(seconds=0)
+
+    original_id = uuid4()
+    original_duration = timedelta(days=1, hours=1, minutes=1, seconds=1, microseconds=1)
+    entity1 = TestEntity(id=original_id, name='bson entity', duration=original_duration)
+
+    d = splat(entity1, to_bson=True)
+    entity2 = hydrate(TestEntity, d, from_bson=True)
+
+    assert isinstance(entity2.id, UUID), f'id should be UUID, got {type(entity2.id)}'
+    assert entity2.id == original_id
+    assert entity2.name == 'bson entity'
+    assert isinstance(entity2.duration, timedelta), f'duration should be timedelta, got {type(entity2.duration)}'
+    assert entity2.duration == original_duration, f'expected {original_duration}, got {entity2.duration}'
+
+
+@fact
+def splat_hydrate_bson_roundtrip_timedelta_zero() -> None:
+    """BSON roundtrip with zero timedelta."""
+
+    @entity
+    class TestEntity:
+        id: str = field(primary_key=True)
+        duration: timedelta = timedelta(days=1)
+
+    entity1 = TestEntity(id='test-zero', duration=timedelta(seconds=0))
+
+    d = splat(entity1, to_bson=True)
+    entity2 = hydrate(TestEntity, d, from_bson=True)
+
+    assert isinstance(entity2.duration, timedelta), f'duration should be timedelta, got {type(entity2.duration)}'
+    assert entity2.duration == timedelta(seconds=0), f'expected zero timedelta, got {entity2.duration}'
+
+
+@fact
+def splat_hydrate_bson_roundtrip_timedelta_negative() -> None:
+    """BSON roundtrip with negative timedelta."""
+
+    @entity
+    class TestEntity:
+        id: str = field(primary_key=True)
+        duration: timedelta = timedelta(seconds=0)
+
+    original_duration = timedelta(days=-1, hours=-2, minutes=-3)
+    entity1 = TestEntity(id='test-negative', duration=original_duration)
+
+    d = splat(entity1, to_bson=True)
+    entity2 = hydrate(TestEntity, d, from_bson=True)
+
+    assert isinstance(entity2.duration, timedelta), f'duration should be timedelta, got {type(entity2.duration)}'
+    assert entity2.duration == original_duration, f'expected {original_duration}, got {entity2.duration}'
+
+
+@fact
+def splat_hydrate_bson_roundtrip_timedelta_nullable_none() -> None:
+    """BSON roundtrip with nullable timedelta that is None."""
+
+    @entity
+    class TestEntity:
+        id: str = field(primary_key=True)
+        optional_duration: timedelta | None = None
+
+    entity1 = TestEntity(id='test-null', optional_duration=None)
+
+    d = splat(entity1, to_bson=True)
+    entity2 = hydrate(TestEntity, d, from_bson=True)
+
+    assert entity2.optional_duration is None, f'expected None, got {entity2.optional_duration}'
+
+
+@fact
+def to_bsonobject_handles_all_complex_types() -> None:
+    """Verify to_bsonobject handles all complex types correctly."""
+    original_uuid = uuid4()
+    original_datetime = datetime(2024, 6, 15, 10, 30, 45, tzinfo=timezone.utc)
+    original_date = date(2024, 6, 15)
+    original_time = time(10, 30, 45)
+    original_decimal = Decimal('123.45')
+    original_timedelta = timedelta(days=1, hours=2, minutes=3)
+    original_enum = Color.BLUE
+    original_set = {'a', 'b'}
+
+    assert isinstance(to_bsonobject(original_uuid), UUID)
+    assert isinstance(to_bsonobject(original_datetime), str)
+    assert isinstance(to_bsonobject(original_date), str)
+    assert isinstance(to_bsonobject(original_time), str)
+    assert isinstance(to_bsonobject(original_decimal), str)
+    assert isinstance(to_bsonobject(original_timedelta), int)
+    assert to_bsonobject(original_enum) == 'blue'
+    assert isinstance(to_bsonobject(original_set), list)
