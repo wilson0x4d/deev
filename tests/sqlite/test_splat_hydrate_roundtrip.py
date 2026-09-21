@@ -29,7 +29,7 @@ def splat_to_dict_serializes_uuid_to_string_for_json() -> None:
 
     entity1 = TestEntity(id=uuid4(), value='hello')
     d = splat(entity1, to_sql=False)
-    assert 'id' in d
+    assert 'id' in d, f'id should be in dict, got {list(d.keys())}'
     assert isinstance(d['id'], str), f'id should be str for JSON, got {type(d["id"])}'
 
 
@@ -44,7 +44,7 @@ def splat_to_dict_serializes_datetime_to_iso_for_json() -> None:
 
     entity1 = TestEntity(id='test-1', created_at=datetime(2024, 1, 15, 12, 30, 45, tzinfo=timezone.utc))
     d = splat(entity1, to_sql=False)
-    assert 'created_at' in d
+    assert 'created_at' in d, f'created_at should be in dict, got {list(d.keys())}'
     assert isinstance(d['created_at'], str), f'created_at should be str for JSON, got {type(d["created_at"])}'
 
 
@@ -59,7 +59,7 @@ def splat_to_dict_serializes_decimal_to_string_for_json() -> None:
 
     entity1 = TestEntity(id='test-1', price=Decimal('19.99'))
     d = splat(entity1, to_sql=False)
-    assert 'price' in d
+    assert 'price' in d, f'price should be in dict, got {list(d.keys())}'
     assert isinstance(d['price'], str), f'price should be str for JSON, got {type(d["price"])}'
 
 
@@ -74,7 +74,7 @@ def splat_to_dict_serializes_enum_to_value_for_json() -> None:
 
     entity1 = TestEntity(id='test-1', color=Color.BLUE)
     d = splat(entity1, to_sql=False)
-    assert 'color' in d
+    assert 'color' in d, f'color should be in dict, got {list(d.keys())}'
     assert isinstance(d['color'], str), f'color should be str for JSON, got {type(d["color"])}'
     assert d['color'] == 'blue'
 
@@ -96,7 +96,7 @@ def json_roundtrip_splat_dict_preserves_uuid() -> None:
     json_str = json.dumps(d)
     d_restored = json.loads(json_str)
 
-    assert 'id' in d_restored
+    assert 'id' in d_restored, f'id should be in restored dict, got {list(d_restored.keys())}'
     assert d_restored['id'] == str(original_id)
     assert d_restored['value'] == 'payload'
 
@@ -117,8 +117,7 @@ def json_roundtrip_splat_dict_preserves_datetime() -> None:
     json_str = json.dumps(d)
     d_restored = json.loads(json_str)
 
-    assert 'ts' in d_restored
-    # _to_json_value format: YYYY-MM-DDTHH:MM:SSZ (with or without microseconds)
+    assert 'ts' in d_restored, f'ts should be in restored dict, got {list(d_restored.keys())}'
     assert d_restored['ts'].startswith('2024-06-15')
     assert '10:30:00' in d_restored['ts']
     assert d_restored['ts'].endswith('Z')
@@ -139,7 +138,7 @@ def json_roundtrip_splat_dict_preserves_decimal() -> None:
     json_str = json.dumps(d)
     d_restored = json.loads(json_str)
 
-    assert 'amount' in d_restored
+    assert 'amount' in d_restored, f'amount should be in restored dict, got {list(d_restored.keys())}'
     assert d_restored['amount'] == '123.45'
 
 
@@ -156,7 +155,7 @@ def hydrate_from_dict_reconstructs_uuid_from_string() -> None:
     d = {'id': str(original_id), 'value': 'payload'}
     entity2 = hydrate(TestEntity, d, from_sql=False)
 
-    assert isinstance(entity2.id, UUID)
+    assert isinstance(entity2.id, UUID), f'id should be UUID, got {type(entity2.id)}'
     assert entity2.id == original_id
     assert entity2.value == 'payload'
 
@@ -174,7 +173,7 @@ def hydrate_from_dict_reconstructs_datetime_from_string() -> None:
     d = {'id': 'test', 'ts': ts.isoformat()}
     entity2 = hydrate(TestEntity, d, from_sql=False)
 
-    assert isinstance(entity2.ts, datetime)
+    assert isinstance(entity2.ts, datetime), f'ts should be datetime, got {type(entity2.ts)}'
     assert entity2.ts == ts
 
 
@@ -190,7 +189,7 @@ def hydrate_from_dict_reconstructs_decimal_from_string() -> None:
     d = {'id': 'test', 'amount': '123.45'}
     entity2 = hydrate(TestEntity, d, from_sql=False)
 
-    assert isinstance(entity2.amount, Decimal)
+    assert isinstance(entity2.amount, Decimal), f'amount should be Decimal, got {type(entity2.amount)}'
     assert entity2.amount == Decimal('123.45')
 
 
@@ -389,7 +388,7 @@ def splat_hydrate_roundtrip_entity_with_timedelta() -> None:
     class TestEntity:
         id: UUID = field(primary_key=True)
         name: str = ''
-        duration: timedelta = timedelta()
+        duration: timedelta = timedelta(seconds=0)
 
     original_id = uuid4()
     original_duration = timedelta(days=1, hours=1, minutes=1, seconds=1, microseconds=1)

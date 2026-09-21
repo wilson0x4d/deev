@@ -186,6 +186,8 @@ def _to_json_value(value: Any) -> Any:
         return list(value)
     elif isinstance(value, Enum):
         return value.value
+    elif isinstance(value, timedelta):
+        return value.days * 86_400_000_000 + value.seconds * 1_000_000 + value.microseconds
     # For lists, tuples, dicts: return as-is (preserves nested type round-trips)
     return value
 

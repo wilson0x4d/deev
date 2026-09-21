@@ -101,3 +101,37 @@ def basic_verification() -> None:
         assert os.path.exists(database_path)
         shutil.rmtree(database_path)
         assert not os.path.exists(database_path)
+
+
+@fact
+@trait('sqlite')
+@trait('integration')
+def timedelta_roundtrip() -> None:
+    appsettings = appsettings2.get_configuration()
+    cxnstring = ConnectionString(appsettings.connections.sqlite_test)
+    cxnstring.database = f'deev_test_{uuid4().hex}.db'
+    create_database(cxnstring)
+    try:
+        @entity(table_name='tbl_sl_tdr')
+        class TimedeltaEntity:
+            id: int = field(autoincrement=True, primary_key=True, default=0)
+            duration: timedelta | None = None
+
+        with connect(cxnstring) as connection:
+            adapter = SQLiteTableAdapter[TimedeltaEntity](connection, create_table=True)
+
+            target = timedelta(days=1, hours=2, minutes=3, seconds=4, microseconds=567)
+            entity1 = TimedeltaEntity(duration=target)
+            pk = adapter.create(entity1)
+            assert pk is not None
+            assert pk.get('id') is not None
+
+            result = adapter.read(**pk)
+            assert result is not None
+            assert result.duration is not None
+            assert result.duration == target
+    finally:
+        database_path = os.path.dirname(cxnstring.database if cxnstring.server is None else os.path.join(cxnstring.server, cxnstring.database))
+        assert os.path.exists(database_path)
+        shutil.rmtree(database_path)
+        assert not os.path.exists(database_path)

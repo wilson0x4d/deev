@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import appsettings2
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from deev import entity, field
 from deev.common import ConnectionString
 from deev.utils import connect, create_database
@@ -66,6 +66,43 @@ def basic_verification() -> None:
             adapter.delete(**entity_key)
             existence = adapter.exists(**entity_key)
             assert existence is False
+    finally:
+        try:
+            with connect(cxnstring) as connection:
+                connection.cursor().execute(f'DROP DATABASE IF EXISTS `{test_db}`')
+        except Exception:
+            pass
+
+
+@fact
+@trait('clickhouse')
+@trait('integration')
+def timedelta_roundtrip() -> None:
+    appsettings = appsettings2.get_configuration()
+    cxnstring = ConnectionString(appsettings.connections.clickhouse_test)
+    test_db = f'deev_test_{uuid4().hex}'
+    cxnstring.database = test_db
+    create_database(cxnstring)
+    try:
+        @entity(table_name='tbl_ch_tdr')
+        class TimedeltaEntity:
+            id: str = field(primary_key=True)
+            duration: timedelta | None = None
+
+        with connect(cxnstring) as connection:
+            assert isinstance(connection, ClickHouseProxyConnection)
+            adapter = ClickHouseTableAdapter[TimedeltaEntity](connection, create_table=True)
+
+            target = timedelta(days=1, hours=2, minutes=3, seconds=4, microseconds=567)
+            entity1 = TimedeltaEntity(id=uuid4().hex, duration=target)
+            pk = adapter.create(entity1)
+            assert pk is not None
+            assert pk.get('id') is not None
+
+            result = adapter.read(**pk)
+            assert result is not None
+            assert result.duration is not None
+            assert result.duration == target
     finally:
         try:
             with connect(cxnstring) as connection:

@@ -279,3 +279,29 @@ def multi_column_primary_key() -> None:
         adapter.delete(country_code=country_a, city_name='NYC')
         result2 = adapter.read(country_code=country_a, city_name='NYC')
         assert result2 is None
+
+
+@fact
+@trait('mssql')
+@trait('integration')
+def timedelta_roundtrip() -> None:
+    appsettings = appsettings2.get_configuration()
+    cxnstring = ConnectionString(appsettings.connections.mssql_test)
+    with connect(cxnstring) as connection:
+        @entity(table_name='tbl_ms_tdr')
+        class TimedeltaEntity:
+            id: int = field(autoincrement=True, primary_key=True, default=0)
+            duration: timedelta | None = None
+
+        adapter = MSSQLTableAdapter[TimedeltaEntity](connection, create_table=True)
+
+        target = timedelta(days=1, hours=2, minutes=3, seconds=4, microseconds=567)
+        entity1 = TimedeltaEntity(duration=target)
+        pk = adapter.create(entity1)
+        assert pk is not None
+        assert pk.get('id') is not None
+
+        result = adapter.read(**pk)
+        assert result is not None
+        assert result.duration is not None
+        assert result.duration == target
