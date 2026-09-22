@@ -9,6 +9,26 @@ from typing import (
 )
 
 from ..common.db_error import DbError
+from ..translation.utils import to_bsonobject
+
+
+def _serialize_param(value: Any) -> Any:
+    """Serialize a query parameter value for MongoDB storage format.
+
+    Converts ``datetime.date`` to midnight datetime, ``datetime.time`` to ISO string,
+    and passes through all other types unchanged (datetime, str, int, etc. are
+    already compatible with MongoDB storage).
+    """
+    if isinstance(value, dict) or isinstance(value, list):
+        return value  # MongoDB operators like {'$gte': ...} pass through
+    return to_bsonobject(value)
+
+
+def _resolve_param(value: Any) -> Any:
+    """Resolve a resolved parameter value, applying serialization."""
+    if isinstance(value, tuple):
+        return tuple(_serialize_param(v) for v in value)
+    return _serialize_param(value)
 
 
 def parse_sql_where(where_clause: str | None, parameters: tuple[Any, ...]) -> dict[str, Any]:
@@ -31,7 +51,7 @@ def parse_sql_where(where_clause: str | None, parameters: tuple[Any, ...]) -> di
         nonlocal param_idx
         if param_idx >= len(parameters):
             raise DbError('WHERE clause has more placeholders than provided parameters.')
-        val = parameters[param_idx]
+        val = _resolve_param(parameters[param_idx])
         param_idx += 1
         return val
 

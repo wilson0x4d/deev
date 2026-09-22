@@ -13,6 +13,7 @@ from ..common.db_parameters import DbParameters
 from ..common.db_type_mapper import DbTypeMapper
 from ..entities import EntitySpec, get_entity_spec
 from ..translation import hydrate, splat, to_pyobject
+from ..translation.utils import to_bsonobject
 from .utils import parse_sql_where
 from .mongo_type_mapper import MongoTypeMapper
 
@@ -205,7 +206,7 @@ class MongoTableAdapter(Generic[TEntity]):
             else dict[str, Any]()
         )
         if kwargs:
-            for k, v in kwargs.items():
+            for k, v in to_bsonobject(kwargs).items():
                 data[k] = v
         primary_key = {
             k: v
@@ -237,6 +238,7 @@ class MongoTableAdapter(Generic[TEntity]):
         Reads a record from the specified table with the key represented by `kwargs`.
         """
         self.__deferred_init()
+        kwargs = to_bsonobject(kwargs)
         primary_key = {
             k: v
             for k, v in kwargs.items()
@@ -264,6 +266,7 @@ class MongoTableAdapter(Generic[TEntity]):
 
     def delete(self, **kwargs: Any) -> None:
         self.__deferred_init()
+        kwargs = to_bsonobject(kwargs)
         primary_key = {
             k: v
             for k, v in kwargs.items()
@@ -274,6 +277,7 @@ class MongoTableAdapter(Generic[TEntity]):
 
     def exists(self, **kwargs: Any) -> bool:
         self.__deferred_init()
+        kwargs = to_bsonobject(kwargs)
         primary_key = {
             k: v
             for k, v in kwargs.items()

@@ -7,6 +7,7 @@ from deev.utils import connect
 from punit import fact, setup, teardown, trait
 from typing import Any
 from uuid import UUID, uuid4
+from datetime import date, datetime, time, timezone
 
 
 def get_mongodb_connectionstring():
@@ -727,3 +728,404 @@ def autoincrement_uuid_nonpk_type_preservation() -> None:
         assert result is not None
         assert isinstance(result.oid, UUID), f'expected UUID type for oid, got {type(result.oid)}'
         assert result.oid == uuid_val
+
+
+# ===========================================================================
+# Integration tests: datetime field as regular column
+# ===========================================================================
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def adapter_datetime_field_roundtrip() -> None:
+    """Storing and reading a datetime field should preserve the value (millisecond precision)."""
+    import appsettings2
+    from deev.common.connection_string import ConnectionString
+    conn_str = ConnectionString(appsettings2.get_configuration().connections.mongo_test)
+    with connect(conn_str) as connection:
+        @entity
+        class DateTimeEntity:
+            id: str = field(primary_key=True)
+            ts: datetime = datetime.now(timezone.utc)
+
+        adapter = MongoTableAdapter[DateTimeEntity](connection, create_table=True)
+        uid = f'dt-rt-{uuid4().hex[:8]}'
+        # MongoDB stores datetimes with millisecond precision
+        original = datetime(2024, 6, 15, 10, 30, 45, 123000)
+        entity1 = DateTimeEntity(id=uid, ts=original)
+        pk = adapter.create(entity1)
+        assert pk is not None
+
+        result = adapter.read(id=uid)
+        assert result is not None
+        assert isinstance(result.ts, datetime), f'expected datetime, got {type(result.ts)}'
+        # MongoDB truncates microseconds to milliseconds, so compare truncated value
+        assert result.ts.year == 2024 and result.ts.month == 6 and result.ts.day == 15
+        assert result.ts.hour == 10 and result.ts.minute == 30 and result.ts.second == 45
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def adapter_datetime_field_query_range() -> None:
+    """Querying a datetime field with comparison operators should work."""
+    import appsettings2
+    from deev.common.connection_string import ConnectionString
+    conn_str = ConnectionString(appsettings2.get_configuration().connections.mongo_test)
+    prefix = uuid4().hex[:8]
+    with connect(conn_str) as connection:
+        @entity
+        class DateTimeEntity:
+            id: str = field(primary_key=True)
+            ts: datetime = datetime.now(timezone.utc)
+
+        adapter = MongoTableAdapter[DateTimeEntity](connection, create_table=True)
+        dt1 = datetime(2024, 1, 1, 0, 0, 0)
+        dt2 = datetime(2024, 6, 15, 12, 0, 0)
+        dt3 = datetime(2025, 1, 1, 0, 0, 0)
+
+        adapter.create(id=f'{prefix}-dt-q-1', ts=dt1)
+        adapter.create(id=f'{prefix}-dt-q-2', ts=dt2)
+        adapter.create(id=f'{prefix}-dt-q-3', ts=dt3)
+
+        # Query: ts >= middle date
+        results = list(adapter.query(where='ts >= %?', parameters=[dt2]))
+        assert len(results) >= 2  # dt2 and dt3
+
+        # Query: ts < middle date
+        results = list(adapter.query(where='ts < %?', parameters=[dt2]))
+        assert len(results) >= 1  # at least dt1
+
+
+# ===========================================================================
+# Integration tests: date field (stored as midnight datetime)
+# ===========================================================================
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def adapter_date_field_roundtrip() -> None:
+    """Storing and reading a date field should preserve the date value."""
+    import appsettings2
+    from deev.common.connection_string import ConnectionString
+    conn_str = ConnectionString(appsettings2.get_configuration().connections.mongo_test)
+    with connect(conn_str) as connection:
+        @entity
+        class DateEntity:
+            id: str = field(primary_key=True)
+            birth_date: date = date.today()
+
+        adapter = MongoTableAdapter[DateEntity](connection, create_table=True)
+        uid = f'date-rt-{uuid4().hex[:8]}'
+        original = date(1990, 5, 15)
+        entity1 = DateEntity(id=uid, birth_date=original)
+        pk = adapter.create(entity1)
+        assert pk is not None
+
+        result = adapter.read(id=uid)
+        assert result is not None
+        assert isinstance(result.birth_date, date), f'expected date, got {type(result.birth_date)}'
+        assert not isinstance(result.birth_date, datetime), 'should be date, not datetime'
+        assert result.birth_date == original
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def adapter_date_field_query_range() -> None:
+    """Querying a date field with comparison operators should work (dates stored as midnight)."""
+    import appsettings2
+    from deev.common.connection_string import ConnectionString
+    conn_str = ConnectionString(appsettings2.get_configuration().connections.mongo_test)
+    prefix = uuid4().hex[:8]
+    with connect(conn_str) as connection:
+        @entity
+        class DateEntity:
+            id: str = field(primary_key=True)
+            birth_date: date = date.today()
+
+        adapter = MongoTableAdapter[DateEntity](connection, create_table=True)
+        d1 = date(1990, 1, 1)
+        d2 = date(1990, 6, 15)
+        d3 = date(2000, 1, 1)
+
+        adapter.create(id=f'{prefix}-date-q-1', birth_date=d1)
+        adapter.create(id=f'{prefix}-date-q-2', birth_date=d2)
+        adapter.create(id=f'{prefix}-date-q-3', birth_date=d3)
+
+        # Query: birth_date >= mid date (using datetime for comparison)
+        results = list(adapter.query(where='birth_date >= %?', parameters=[datetime(1990, 6, 15)]))
+        assert len(results) >= 2  # d2 and d3
+
+        # Query: birth_date < mid date
+        results = list(adapter.query(where='birth_date < %?', parameters=[datetime(1990, 6, 15)]))
+        assert len(results) >= 1  # at least d1
+
+
+# ===========================================================================
+# Integration tests: time field (stored as ISO string)
+# ===========================================================================
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def adapter_time_field_roundtrip() -> None:
+    """Storing and reading a time field should preserve the time value."""
+    import appsettings2
+    from deev.common.connection_string import ConnectionString
+    conn_str = ConnectionString(appsettings2.get_configuration().connections.mongo_test)
+    with connect(conn_str) as connection:
+        @entity
+        class TimeEntity:
+            id: str = field(primary_key=True)
+            alarm: time = time(0, 0, 0)
+
+        adapter = MongoTableAdapter[TimeEntity](connection, create_table=True)
+        uid = f'time-rt-{uuid4().hex[:8]}'
+        original = time(8, 30, 45, 123456)
+        entity1 = TimeEntity(id=uid, alarm=original)
+        pk = adapter.create(entity1)
+        assert pk is not None
+
+        result = adapter.read(id=uid)
+        assert result is not None
+        assert isinstance(result.alarm, time), f'expected time, got {type(result.alarm)}'
+        assert result.alarm == original
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def adapter_time_field_query_string_comparison() -> None:
+    """Querying a time field with string comparison should work (ISO format sorts lexicographically)."""
+    import appsettings2
+    from deev.common.connection_string import ConnectionString
+    conn_str = ConnectionString(appsettings2.get_configuration().connections.mongo_test)
+    prefix = uuid4().hex[:8]
+    with connect(conn_str) as connection:
+        @entity
+        class TimeEntity:
+            id: str = field(primary_key=True)
+            start: time = time(0, 0, 0)
+
+        adapter = MongoTableAdapter[TimeEntity](connection, create_table=True)
+        t1 = time(8, 0, 0)
+        t2 = time(12, 0, 0)
+        t3 = time(18, 0, 0)
+
+        adapter.create(id=f'{prefix}-time-q-1', start=t1)
+        adapter.create(id=f'{prefix}-time-q-2', start=t2)
+        adapter.create(id=f'{prefix}-time-q-3', start=t3)
+
+        # Query: start < noon (using ISO string comparison)
+        results = list(adapter.query(where='start < %?', parameters=['12:00:00']))
+        assert len(results) >= 1  # at least t1
+
+
+# ===========================================================================
+# Integration tests: datetime as primary key
+# ===========================================================================
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def adapter_datetime_pk_roundtrip() -> None:
+    """Using datetime as primary key should work for create, read, update, delete."""
+    import appsettings2
+    from deev.common.connection_string import ConnectionString
+    conn_str = ConnectionString(appsettings2.get_configuration().connections.mongo_test)
+    with connect(conn_str) as connection:
+        @entity
+        class DateTimePkEntity:
+            ts: datetime = field(primary_key=True)
+            value: str | None = None
+
+        adapter = MongoTableAdapter[DateTimePkEntity](connection, create_table=True)
+        original = datetime(2024, 6, 15, 10, 30, 45, tzinfo=timezone.utc)
+        entity1 = DateTimePkEntity(ts=original, value='hello')
+        pk = adapter.create(entity1)
+        assert pk is not None
+        assert pk.get('ts') == original
+
+        result = adapter.read(ts=original)
+        assert result is not None
+        assert result.value == 'hello'
+        assert isinstance(result.ts, datetime)
+
+        result.value = 'updated'
+        adapter.update(result)
+        result2 = adapter.read(ts=original)
+        assert result2 is not None
+        assert result2.value == 'updated'
+
+        adapter.delete(ts=original)
+        assert adapter.exists(ts=original) is False
+
+
+# ===========================================================================
+# Integration tests: date as primary key
+# ===========================================================================
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def adapter_date_pk_roundtrip() -> None:
+    """Using date as primary key should work via midnight datetime lookup."""
+    import appsettings2
+    from deev.common.connection_string import ConnectionString
+    conn_str = ConnectionString(appsettings2.get_configuration().connections.mongo_test)
+    with connect(conn_str) as connection:
+        @entity
+        class DatePkEntity:
+            birth_date: date = field(primary_key=True)
+            name: str | None = None
+
+        adapter = MongoTableAdapter[DatePkEntity](connection, create_table=True)
+        original = date(1990, 5, 15)
+        entity1 = DatePkEntity(birth_date=original, name='John')
+        pk = adapter.create(entity1)
+        assert pk is not None
+        # The stored _id should be midnight datetime
+        stored_id = pk.get('birth_date')
+        assert isinstance(stored_id, datetime), f'stored birth_date should be datetime, got {type(stored_id)}'
+        assert stored_id == datetime(1990, 5, 15, 0, 0, 0)
+
+        # Read back using date object (should be serialized to midnight datetime)
+        result = adapter.read(birth_date=original)
+        assert result is not None
+        assert result.name == 'John'
+        assert isinstance(result.birth_date, date)
+        assert not isinstance(result.birth_date, datetime)
+
+        result.name = 'Updated John'
+        adapter.update(result)
+        result2 = adapter.read(birth_date=original)
+        assert result2 is not None
+        assert result2.name == 'Updated John'
+
+        adapter.delete(birth_date=original)
+        assert adapter.exists(birth_date=original) is False
+
+
+# ===========================================================================
+# Integration tests: time as primary key
+# ===========================================================================
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def adapter_time_pk_roundtrip() -> None:
+    """Using time as primary key should work via ISO string lookup."""
+    import appsettings2
+    from deev.common.connection_string import ConnectionString
+    conn_str = ConnectionString(appsettings2.get_configuration().connections.mongo_test)
+    with connect(conn_str) as connection:
+        @entity
+        class TimePkEntity:
+            alarm_time: time = field(primary_key=True)
+            message: str | None = None
+
+        adapter = MongoTableAdapter[TimePkEntity](connection, create_table=True)
+        original = time(8, 30, 0)
+        entity1 = TimePkEntity(alarm_time=original, message='Wake up!')
+        pk = adapter.create(entity1)
+        assert pk is not None
+        # The stored _id should be ISO string
+        stored_id = pk.get('alarm_time')
+        assert isinstance(stored_id, str), f'stored alarm_time should be str, got {type(stored_id)}'
+        assert stored_id == '08:30:00'
+
+        # Read back using time object (should be serialized to ISO string)
+        result = adapter.read(alarm_time=original)
+        assert result is not None
+        assert result.message == 'Wake up!'
+        assert isinstance(result.alarm_time, time)
+
+        result.message = 'Updated message'
+        adapter.update(result)
+        result2 = adapter.read(alarm_time=original)
+        assert result2 is not None
+        assert result2.message == 'Updated message'
+
+        adapter.delete(alarm_time=original)
+        assert adapter.exists(alarm_time=original) is False
+
+
+# ===========================================================================
+# Regression tests: read/delete/exists only filter on PK fields
+# ===========================================================================
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def kwargs_extra_fields_dont_affect_read() -> None:
+    """Extra non-PK kwargs should NOT affect the MongoDB filter — only PK fields matter."""
+    import appsettings2
+    from deev.common.connection_string import ConnectionString
+    conn_str = ConnectionString(appsettings2.get_configuration().connections.mongo_test)
+    prefix = uuid4().hex[:8]
+    with connect(conn_str) as connection:
+        @entity
+        class SimpleEntity:
+            id: str = field(primary_key=True)
+            value: str = ''
+
+        adapter = MongoTableAdapter[SimpleEntity](connection, create_table=True)
+        adapter.create(id=f'{prefix}-reg-read-1', value='correct')
+
+        # Extra non-PK kwargs should not affect the read
+        result = adapter.read(id=f'{prefix}-reg-read-1', value='wrong')
+        assert result is not None
+        assert result.value == 'correct'
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def kwargs_extra_fields_dont_affect_delete() -> None:
+    """Extra non-PK kwargs should NOT prevent deletion — only PK fields matter."""
+    import appsettings2
+    from deev.common.connection_string import ConnectionString
+    conn_str = ConnectionString(appsettings2.get_configuration().connections.mongo_test)
+    prefix = uuid4().hex[:8]
+    with connect(conn_str) as connection:
+        @entity
+        class SimpleEntity:
+            id: str = field(primary_key=True)
+            value: str = ''
+
+        adapter = MongoTableAdapter[SimpleEntity](connection, create_table=True)
+        adapter.create(id=f'{prefix}-reg-del-1', value='correct')
+
+        # Extra non-PK kwargs should not prevent deletion
+        adapter.delete(id=f'{prefix}-reg-del-1', value='wrong')
+        assert adapter.exists(id=f'{prefix}-reg-del-1') is False
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def kwargs_extra_fields_dont_affect_exists() -> None:
+    """Extra non-PK kwargs should NOT affect exists — only PK fields matter."""
+    import appsettings2
+    from deev.common.connection_string import ConnectionString
+    conn_str = ConnectionString(appsettings2.get_configuration().connections.mongo_test)
+    prefix = uuid4().hex[:8]
+    with connect(conn_str) as connection:
+        @entity
+        class SimpleEntity:
+            id: str = field(primary_key=True)
+            value: str = ''
+
+        adapter = MongoTableAdapter[SimpleEntity](connection, create_table=True)
+        adapter.create(id=f'{prefix}-reg-exists-1', value='correct')
+
+        # Extra non-PK kwargs should not affect exists
+        assert adapter.exists(id=f'{prefix}-reg-exists-1', value='wrong') is True

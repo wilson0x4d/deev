@@ -106,10 +106,13 @@ def to_pyobject(value: Any, hint: type) -> Any:
 
     Handles type coercion for ``int``, ``float``, ``bool``, ``UUID``, ``datetime``,
     ``date``, ``time``, ``timedelta``, ``Decimal``, ``Enum``, and complex types
-    (``dict``, ``list``, ``set``, ``tuple``) deserialized from JSON.
+    (``dict``, ``list``, ``set``, ``tuple``) deserialized from JSON or BSON.
+
+    For container types with element hints (e.g. ``list[date]``, ``dict[str, time]``),
+    each element is recursively converted using the appropriate element type hint.
 
     :param value: The raw value from the database.
-    :param hint: The type hint for the field (e.g. ``Optional[str]``).
+    :param hint: The type hint for the field (e.g. ``Optional[str]`` or ``list[date]``).
     :return: The value converted to the appropriate Python type.
     """
     if value in (None, NoneType, 'null', 'NULL'):
@@ -132,6 +135,8 @@ def to_pyobject(value: Any, hint: type) -> Any:
         if value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
         return value
+    elif hint == date and isinstance(value, datetime):
+        return value.date()
     elif hint == date and isinstance(value, str):
         return date.fromisoformat(value)
     elif hint == time and isinstance(value, str):
@@ -139,6 +144,8 @@ def to_pyobject(value: Any, hint: type) -> Any:
         if tm.tzinfo is not None:
             return tm.replace(tzinfo=timezone.utc)
         return tm
+    elif hint == time and isinstance(value, time):
+        return value
     elif hint == timedelta and isinstance(value, int):
         return timedelta(microseconds=value)
     elif hint == Decimal:
@@ -158,6 +165,33 @@ def to_pyobject(value: Any, hint: type) -> Any:
             if not isinstance(d, org):
                 d = hint(d)  # type: ignore[call-arg]
             return d
+        elif org in (list, tuple, set):
+            args = get_args(hint)
+            if args:
+                element_hint = args[0]
+                if isinstance(value, (list, tuple, set)):
+                    if element_hint is not Any:
+                        if org is tuple:
+                            return tuple(to_pyobject(v, element_hint) for v in value)
+                        elif org is set:
+                            return {to_pyobject(v, element_hint) for v in value}
+                        else:
+                            return [to_pyobject(v, element_hint) for v in value]
+                    else:
+                        return value
+            else:
+                return value
+        elif org in (Mapping, dict):
+            args = get_args(hint)
+            if len(args) >= 2:
+                key_hint, value_hint = args[0], args[1]
+                if isinstance(value, dict):
+                    if key_hint is not Any and value_hint is not Any:
+                        return {to_pyobject(k, key_hint): to_pyobject(v, value_hint) for k, v in value.items()}
+                    else:
+                        return value
+            else:
+                return value
         else:
             return value
 
@@ -192,43 +226,63 @@ def _to_json_value(value: Any) -> Any:
     return value
 
 
-def to_bsonobject(value: Any) -> Any:
+def to_bsonobject(value: Any, hint: type | None = None) -> Any:
     """
     Convert a value for MongoDB BSON storage.
 
-    Similar to :func:`_to_json_value` but with these differences:
-    - UUIDs are left as Python ``UUID`` objects (PyMongo handles native BSON binary)
+    Unlike :func:`_to_json_value`, this leaves types that BSON supports natively
+    as their Python equivalents — PyMongo handles the rest:
+
+    - ``datetime.datetime`` is passed through as-is (BSON native Date, 8 bytes)
+    - ``datetime.date`` is converted to a midnight ``datetime`` for storage
+    - ``datetime.time`` is converted to an ISO 8601 string ("HH:MM:SS.ffffff")
+    - ``uuid.UUID`` is left as a Python ``UUID`` object (BSON binary)
     - ``set`` values are converted to ``list`` (BSON arrays)
-    - ``Enum`` values are converted to their ``.value`` attribute
-    - ``Enum`` is not present in ``_to_json_value``
+    - ``list``/``tuple``/``dict`` are recursively serialized element-by-element
+
+    When ``hint`` is provided, container element hints are extracted and used
+    to convert each element (e.g. ``list[date]`` converts each element via
+    ``to_bsonobject(v, date)`` rather than relying on runtime ``isinstance``).
 
     :param value: The Python value to convert.
+    :param hint: Optional type hint (e.g. ``list[date]``).
     :return: A BSON-compatible value.
     """
     if value in (None, NoneType, 'null', 'NULL'):
         return None
     if isinstance(value, datetime):
-        if value.tzinfo is not None:
-            return _utc_z(value)
-        else:
-            return value.isoformat()
+        return value
     elif isinstance(value, date):
-        return value.isoformat()
+        return datetime(value.year, value.month, value.day)
     elif isinstance(value, time):
-        if value.tzinfo is not None:
-            return _utc_z_time(value)
-        else:
-            return value.isoformat()
+        return value.isoformat()
     elif isinstance(value, Decimal):
         return str(value)
     # UUID: leave as UUID object — PyMongo handles native BSON binary
     elif isinstance(value, set):
-        return list(value)
+        return [to_bsonobject(v) for v in value]
     elif isinstance(value, Enum):
         return value.value
     elif isinstance(value, timedelta):
         return value.days * 86_400_000_000 + value.seconds * 1_000_000 + value.microseconds
-    # For lists, tuples, dicts: return as-is (preserves nested type round-trips)
+    elif isinstance(value, list):
+        args = get_args(hint) if hint else ()
+        if args:
+            element_hint = args[0]
+            return [to_bsonobject(v, element_hint) for v in value]
+        return [to_bsonobject(v) for v in value]
+    elif isinstance(value, tuple):
+        args = get_args(hint) if hint else ()
+        if args:
+            element_hint = args[0]
+            return tuple(to_bsonobject(v, element_hint) for v in value)
+        return tuple(to_bsonobject(v) for v in value)
+    elif isinstance(value, dict):
+        args = get_args(hint) if hint else ()
+        if len(args) >= 2:
+            key_hint, value_hint = args[0], args[1]
+            return {to_bsonobject(k, key_hint): to_bsonobject(v, value_hint) for k, v in value.items()}
+        return {k: to_bsonobject(v) for k, v in value.items()}
     return value
 
 
@@ -349,7 +403,7 @@ def splat(entity: object, attrs: list[str] | None = None, to_sql: bool = False, 
                 elif to_sql:
                     result[attr_name] = to_sqlobject(attr_value, attr_hint)
                 elif to_bson:
-                    result[attr_name] = to_bsonobject(attr_value)
+                    result[attr_name] = to_bsonobject(attr_value, attr_hint)
                 else:
                     result[attr_name] = _to_json_value(attr_value)
             elif field_spec.nullable:
