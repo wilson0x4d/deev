@@ -1,15 +1,16 @@
 # SPDX-FileCopyrightText: © 2026 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
-from deev.entities import IndexOptions, IndexOrder
 from collections import defaultdict
+from deev.entities import IndexOptions, IndexOrder
 import pymongo
-from typing import Any, Generator, Generic, TypeVar, cast, get_args, get_origin
+from typing import Any, Generator, TypeVar, cast, get_args, get_origin
 
 from ..common.db_context import DbContext
-from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
+from ..common.db_table_adapter import DbTableAdapter
+from ..common.db_transaction_context import DbTransactionContext
 from ..common.db_type_mapper import DbTypeMapper
 from ..entities import EntitySpec, get_entity_spec
 from ..translation import hydrate, splat, to_pyobject
@@ -20,7 +21,7 @@ from .mongo_type_mapper import MongoTypeMapper
 TEntity = TypeVar('TEntity')
 
 
-class MongoTableAdapter(Generic[TEntity]):
+class MongoTableAdapter(DbTableAdapter[TEntity]):
     """
     MongoDB implementation of :class:`DbTableAdapter`.
 
@@ -32,10 +33,10 @@ class MongoTableAdapter(Generic[TEntity]):
     :param create_table: Whether to create indexes on first operation.
     :param table_name: Optional collection name override.
     """
+
     __column_names: str
-    __context: DbContext
+    __context: DbContext | DbTransactionContext
     __create_table: bool
-    __cursor: DbCursor
     __database_name: str
     __entity_spec: EntitySpec
     __initialized: bool
@@ -44,7 +45,7 @@ class MongoTableAdapter(Generic[TEntity]):
 
     def __init__(
         self,
-        context: DbContext,
+        context: DbContext | DbTransactionContext,
         *,
         create_table: bool | None = False,
         table_name: str | None = None
@@ -63,13 +64,13 @@ class MongoTableAdapter(Generic[TEntity]):
             self.__entity_spec = get_entity_spec(entity_type)
             self.__column_names = ', '.join([f'`{k}`' for k in self.__entity_spec.fields.keys()])
             self.__dbtype_mapper = MongoTypeMapper(self.__entity_spec)
-            self.__cursor = self.__context.cursor()
             self.__initialized = True
             if self.__create_table is True:
                 self.create_table()
 
     @property
     def primary_key(self) -> tuple[str, ...]:
+        self.__deferred_init()
         return self.__entity_spec.primary_key
 
     @property
@@ -110,10 +111,10 @@ class MongoTableAdapter(Generic[TEntity]):
 
     def __get_database(self) -> pymongo.database.Database[Any]:
         """Return the pymongo database from the cursor's session."""
-        mongo_session = getattr(self.__context.cursor(), 'mongo_session', None)  # type: ignore[union-attr]
-        if mongo_session is None:
-            raise DbError('Cursor does not have a mongo_session attribute.')
-        return mongo_session._client[self.__database_name]  # type: ignore[attr-defined]
+        mongo_client = cast(pymongo.MongoClient[Any], getattr(self.__context, 'mongo_client', None))
+        if mongo_client is None:
+            raise DbError('Context does not have a mongo_client attribute.')
+        return mongo_client[self.__database_name]
 
     def _get_collection(self) -> pymongo.collection.Collection[Any]:
         """Get the MongoDB collection for this adapter."""
@@ -128,7 +129,8 @@ class MongoTableAdapter(Generic[TEntity]):
         db = connection.get_database(self.__database_name)
         cursor = self.__context.cursor()
         mongo_session = cast(pymongo.client_session.ClientSession, getattr(cursor, 'mongo_session', None))
-        if collection_name not in db.list_collection_names():
+        collection_names = db.list_collection_names()
+        if collection_name not in collection_names:
             collection: pymongo.collection.Collection[Any]
             if len(self.primary_key) > 0:
                 collection = db[collection_name]
@@ -185,7 +187,7 @@ class MongoTableAdapter(Generic[TEntity]):
     def __get_autoincrement(self) -> int:
         return cast(dict[str, Any], (
             cast(pymongo.MongoClient[Any], getattr(self.__context, 'mongo_client', None))
-            .get_database(self.__database_name)["_deev"]  # type: ignore[missing-attribute]
+            .get_database(self.__database_name)['_deev']  # type: ignore[missing-attribute]
             .find_one_and_update(
                 {'_id': self.__table_name if self.__table_name is not None else self.__entity_spec.table_name},
                 {'$inc': {'autoincrement': 1}},
@@ -244,7 +246,6 @@ class MongoTableAdapter(Generic[TEntity]):
             for k, v in kwargs.items()
             if k in self.__entity_spec.primary_key
         }
-        result: dict[str, Any]
         collection = self._get_collection()
         raw_doc = collection.find_one(primary_key)
         if raw_doc is None:
@@ -332,12 +333,10 @@ class MongoTableAdapter(Generic[TEntity]):
         self.__deferred_init()
         if parameters is None:
             parameters = ()
-        where_clause = where
-        where_filter: dict[str, Any] = parse_sql_where(where_clause, tuple(parameters)) if where_clause else {}
-        raw_orderby = orderby
+        where_filter: dict[str, Any] = parse_sql_where(where, tuple(parameters)) if where else {}
         sort_spec: list[tuple[str, int]] | None = None
-        if raw_orderby is not None and len(raw_orderby) > 0:
-            sort_entries = [s.strip() for s in raw_orderby.split(',')]
+        if orderby is not None and len(orderby) > 0:
+            sort_entries = [s.strip() for s in orderby.split(',')]
             sort_spec = []
             for entry in sort_entries:
                 parts = entry.rsplit(None, 1)
@@ -350,8 +349,7 @@ class MongoTableAdapter(Generic[TEntity]):
             cursor = cursor.sort(sort_spec)
         if limit is not None and limit > 0:
             cursor = cursor.limit(limit)
-        results = list(cursor)
-        for result in results:
+        for result in cursor:
             doc = {k: v for k, v in result.items() if k != '_id'}
             yield hydrate(self.__entity_spec.entity_type, doc, from_bson=True)  # type: ignore[arg-type]
 

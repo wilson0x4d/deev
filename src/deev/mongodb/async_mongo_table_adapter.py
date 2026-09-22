@@ -1,10 +1,13 @@
 # SPDX-FileCopyrightText: © 2026 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
-from deev.entities import IndexOptions, IndexOrder
+import asyncio
 from collections import defaultdict
+from deev.entities import IndexOptions, IndexOrder
 import pymongo
-from pymongo.asynchronous.collection import AsyncCollection
+import pymongo.asynchronous.client_session
+import pymongo.asynchronous.collection
+import pymongo.asynchronous.database
 from typing import Any, AsyncGenerator, TypeVar, cast, get_args, get_origin
 
 from ..common.async_db_connection import AsyncDbConnection
@@ -26,7 +29,9 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
     """
     Async MongoDB implementation of :class:`AsyncDbTableAdapter`.
 
-    Uses native async PyMongo driver. Collections are created implicitly on first insert.
+    Provides typed CRUD operations with MongoDB-native document operations.
+    Collections are created implicitly on first insert. ``create_table()`` creates indexes.
+    Uses ``%?`` placeholder syntax in ``query()`` translated via :func:`parse_sql_where`.
 
     :param context: An :class:`AsyncMongoProxyConnection` or :class:`AsyncMongoTransactionContext`.
     :param create_table: Whether to create indexes on first operation.
@@ -36,7 +41,6 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
     __column_names: str
     __context: AsyncDbConnection | AsyncDbTransactionContext
     __create_table: bool
-    __cursor: Any
     __database_name: str
     __entity_spec: EntitySpec
     __initialized: bool
@@ -58,40 +62,33 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
 
         self.__database_name = self.__context.mongo_database_name  # type: ignore[missing-attribute, union-attr]
 
-    def __ensure_init(self) -> None:
+    def __deferred_init(self) -> None:
         if not self.__initialized:
             entity_type = self.__get_typearg(self)
             self.__entity_spec = get_entity_spec(entity_type)
             self.__column_names = ', '.join([f'`{k}`' for k in self.__entity_spec.fields.keys()])
             self.__dbtype_mapper = MongoTypeMapper(self.__entity_spec)
             self.__initialized = True
-
-    def __ensure_cursor_init(self) -> None:
-        if not self.__initialized or self.__cursor is None:
-            self.__ensure_init()
-            self.__cursor = None
-
-    async def __deferred_init(self) -> None:
-        if not self.__initialized:
-            self.__ensure_init()
-            self.__cursor = await self.__context.cursor()
-            self.__initialized = True
             if self.__create_table is True:
-                await self.create_table()
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                if loop and loop.is_running():
+                    loop.create_task(self.create_table())
+                else:
+                    asyncio.run(self.create_table())
 
     @property
     def primary_key(self) -> tuple[str, ...]:
-        self.__ensure_init()
+        self.__deferred_init()
         return self.__entity_spec.primary_key
 
     @property
-    def mongo_collection(self) -> AsyncCollection[Any]:
+    def mongo_collection(self) -> pymongo.asynchronous.collection.AsyncCollection[Any]:
         # NOTE: this is a non-conformant property that we require for migration scripts (QOL), and must be retained.
-        self.__ensure_init()
-        mongo_database = getattr(self.__context, 'mongo_database', None)  # type: ignore
-        if mongo_database is None:
-            raise DbError('Context does not have a mongo_database attribute.')
-        return mongo_database[  # type: ignore
+        self.__deferred_init()
+        return self.__context.mongo_database[  # type: ignore
             self.__table_name
             if self.__table_name is not None
             else self.__entity_spec.table_name
@@ -123,31 +120,29 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         """Return the table/collection name (from explicit override or entity spec)."""
         return self.__table_name if self.__table_name is not None else self.__entity_spec.table_name
 
-    def __get_database(self) -> Any:
-        """Return the pymongo database from the cursor's session."""
-        if self.__cursor is None:
-            raise DbError('Cursor has not been initialized. Call __deferred_init first.')
-        mongo_session = getattr(self.__cursor, 'mongo_session', None)
-        if mongo_session is None:
-            raise DbError('Cursor does not have a mongo_session attribute.')
-        return mongo_session._client[self.__database_name]  # type: ignore[attr-defined]
+    def __get_database(self) -> pymongo.asynchronous.database.AsyncDatabase[Any]:
+        """Return the pymongo database from the context's mongo_client."""
+        mongo_client = cast(pymongo.AsyncMongoClient[Any], getattr(self.__context, 'mongo_client', None))
+        if mongo_client is None:
+            raise DbError('Context does not have a mongo_client attribute.')
+        return mongo_client[self.__database_name]
 
-    def _get_collection(self) -> AsyncCollection[Any]:
+    def _get_collection(self) -> pymongo.asynchronous.collection.AsyncCollection[Any]:
         """Get the MongoDB collection for this adapter."""
         db = self.__get_database()
-        return db[self.__get_collection_name()]  # type: ignore[return-value]
+        return db[self.__get_collection_name()]
 
     async def create_table(self) -> None:
         """Utility method for creating the target table."""
-        await self.__deferred_init()
+        self.__deferred_init()
         collection_name = self.__get_collection_name()
-        connection = cast(Any, getattr(self.__context, 'mongo_client', None))
+        connection = cast(pymongo.AsyncMongoClient[Any], getattr(self.__context, 'mongo_client', None))
         db = connection.get_database(self.__database_name)
         cursor = await self.__context.cursor()
-        mongo_session = cast(Any, getattr(cursor, 'mongo_session', None))
+        mongo_session = cast(pymongo.asynchronous.client_session.AsyncClientSession, getattr(cursor, 'mongo_session', None))
         collection_names = await db.list_collection_names()
         if collection_name not in collection_names:
-            collection: AsyncCollection[Any]
+            collection: pymongo.asynchronous.collection.AsyncCollection[Any]
             if len(self.primary_key) > 0:
                 collection = db[collection_name]  # type: ignore
             else:
@@ -163,10 +158,11 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
             if len(primary_key) > 0:
                 await collection.create_index(
                     primary_key,
-                    session=mongo_session,  # type: ignore
+                    session=mongo_session,
                     unique=True,
                     name='pk'
                 )
+            # create indexes for all entity fields with `index` attributes
             index_groups = defaultdict[str, list[tuple[str, IndexOptions]]](list)
             index_attrs = defaultdict[str, dict[str, Any]](dict)
             for field_name, field_spec in self.__entity_spec.fields.items():
@@ -183,22 +179,22 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
                 ]
                 await collection.create_index(
                     keys=keys,
-                    session=mongo_session,  # type: ignore
+                    session=mongo_session,
                     comment=index_name,
                     **(index_attrs[index_name])
                 )
         self.__create_table = False
 
     async def commit(self) -> None:
-        await self.__context.commit()  # type: ignore[misc]
+        await self.__context.commit()
 
     async def rollback(self) -> None:
-        await self.__context.rollback()  # type: ignore[misc]
+        await self.__context.rollback()
 
     async def __get_autoincrement(self) -> int:
         return cast(dict[str, Any], (
-            cast(Any, getattr(self.__context, 'mongo_client', None))
-            .get_database(self.__database_name)["_deev"]  # type: ignore[missing-attribute]
+            cast(pymongo.AsyncMongoClient[Any], getattr(self.__context, 'mongo_client', None))
+            .get_database(self.__database_name)['_deev']  # type: ignore[missing-attribute]
             .find_one_and_update(
                 {'_id': self.__table_name if self.__table_name is not None else self.__entity_spec.table_name},
                 {'$inc': {'autoincrement': 1}},
@@ -212,7 +208,7 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         Creates a new record in the specified table with the provided attributes/values.
         :returns: the primary key of the created entity.
         """
-        await self.__deferred_init()
+        self.__deferred_init()
         data = (
             splat(entity, to_sql=False, to_bson=True)  # type: ignore[arg-type]
             if entity is not None
@@ -228,8 +224,10 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         }
         collection = self._get_collection()
         if self.__entity_spec.has_autoincrement:
+            # special handling for auto-increment columns
             if self.__entity_spec.primary_key[0] in data.keys():
                 data.pop(self.__entity_spec.primary_key[0])
+            # also requires an expensive operation
             pk_field = self.__entity_spec.primary_key[0]
             increment = await self.__get_autoincrement()
             await collection.insert_one(
@@ -248,7 +246,7 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         """
         Reads a record from the specified table with the key represented by `kwargs`.
         """
-        await self.__deferred_init()
+        self.__deferred_init()
         kwargs = to_bsonobject(kwargs)
         primary_key = {
             k: v
@@ -263,7 +261,7 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         return hydrate(self.__entity_spec.entity_type, doc, from_bson=True)  # type: ignore[arg-type]
 
     async def update(self, entity: TEntity) -> None:
-        await self.__deferred_init()
+        self.__deferred_init()
         entity_data = splat(entity, to_sql=False, to_bson=True)  # type: ignore[arg-type]
         primary_key = {
             k: v
@@ -275,7 +273,7 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         await collection.update_one(primary_key, {'$set': update_fields})
 
     async def delete(self, **kwargs: Any) -> None:
-        await self.__deferred_init()
+        self.__deferred_init()
         kwargs = to_bsonobject(kwargs)
         primary_key = {
             k: v
@@ -286,7 +284,7 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         await collection.delete_one(primary_key)
 
     async def exists(self, **kwargs: Any) -> bool:
-        await self.__deferred_init()
+        self.__deferred_init()
         kwargs = to_bsonobject(kwargs)
         primary_key = {
             k: v
@@ -296,7 +294,7 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         return await self._get_collection().find_one(primary_key) is not None
 
     async def upsert(self, entity: TEntity) -> dict[str, Any]:
-        await self.__deferred_init()
+        self.__deferred_init()
         data = splat(entity, to_sql=False, to_bson=True)  # type: ignore[arg-type]
         primary_key = {
             k: v
@@ -305,8 +303,10 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         }
         collection = self._get_collection()
         if self.__entity_spec.has_autoincrement:
+            # special handling for auto-increment columns (while implemented, you absolutely should not be using this)
             if self.__entity_spec.primary_key[0] in data.keys():
                 data.pop(self.__entity_spec.primary_key[0])
+            # also requires an expensive operation
             pk_field = self.__entity_spec.primary_key[0]
             increment = await self.__get_autoincrement()
             await collection.insert_one(
@@ -328,7 +328,16 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         orderby: str | None = None,
         limit: int | None = None
     ) -> AsyncGenerator[TEntity, None]:
-        await self.__deferred_init()
+        """
+        Query documents from the collection using SQL-style WHERE parsing.
+
+        :param where: SQL-style WHERE clause (translated to MongoDB filter via :func:`parse_sql_where`).
+        :param parameters Parameters for ``%?`` placeholders in ``where``.
+        :param orderby: Optional comma-separated field list with optional ``ASC``/``DESC`` suffixes.
+        :param limit: Optional maximum number of results.
+        :yields: Hydrated entity instances.
+        """
+        self.__deferred_init()
         if parameters is None:
             parameters = ()
         where_filter: dict[str, Any] = parse_sql_where(where, tuple(parameters)) if where else {}
@@ -342,12 +351,12 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
                 direction = parts[1].upper() if len(parts) > 1 else 'ASC'
                 sort_spec.append((field, -1 if direction == 'DESC' else 1))
         collection = self._get_collection()
-        async_cursor = collection.find(where_filter)
+        cursor = collection.find(where_filter)
         if sort_spec:
-            async_cursor = async_cursor.sort(sort_spec)
+            cursor = cursor.sort(sort_spec)
         if limit is not None and limit > 0:
-            async_cursor = async_cursor.limit(limit)
-        async for result in async_cursor:
+            cursor = cursor.limit(limit)
+        async for result in cursor:
             doc = {k: v for k, v in result.items() if k != '_id'}
             yield hydrate(self.__entity_spec.entity_type, doc, from_bson=True)  # type: ignore[arg-type]
 
