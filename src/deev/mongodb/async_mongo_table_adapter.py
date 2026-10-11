@@ -332,7 +332,7 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         Query documents from the collection using SQL-style WHERE parsing.
 
         :param where: SQL-style WHERE clause (translated to MongoDB filter via :func:`parse_sql_where`).
-        :param parameters Parameters for ``%?`` placeholders in ``where``.
+        :param parameters: Parameters for ``%?`` placeholders in ``where``.
         :param orderby: Optional comma-separated field list with optional ``ASC``/``DESC`` suffixes.
         :param limit: Optional maximum number of results.
         :yields: Hydrated entity instances.

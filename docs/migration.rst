@@ -19,7 +19,7 @@ Migrations are essential for:
 The ``db-migrate`` Tool
 -----------------------
 
-The ``db-migrate`` CLI (provided by deev) applies or undoes migrations across supported database providers: MySQL, SQLite, and MongoDB.
+The ``db-migrate`` CLI (provided by deev) applies or undoes migrations across supported database providers: SQLite, MySQL, MSSQL, MongoDB, and ClickHouse.
 
 Installation
 ~~~~~~~~~~~~
@@ -53,29 +53,43 @@ CLI Syntax
 .. code-block:: bash
 
     $ db-migrate apply -h
-    usage: db-migrate apply [-h] [--stop-at name] connectionstring [path]
+    usage: db-migrate apply [-h] migration-name connection [path]
 
     positional arguments:
-        connectionstring  Database connection string (name from config or literal ``key=value`` format).
-        path              Directory containing migration scripts (optional). If omitted, defaults to ``./migrations/<database_name>/``.
+        migration-name  The name of the migration at which apply should stop processing. Specify "all" to process all migrations.
+        connection      Database connection string (name from config or literal ``key=value`` format).
+        path            Directory containing migration scripts (optional). If omitted, a path is calculated from the connection argument, ie. ``./migrations/<database_name>/``.
 
     options:
-        -h, --help            show this help message
-        --stop-at name        Stop processing at the named migration. Use "all" to process every migration.
+        -h, --help        show this help message
 
 
 .. code-block:: bash
 
     $ db-migrate undo -h
-    usage: db-migrate undo [-h] [--stop-at name] connectionstring [path]
+    usage: db-migrate undo [-h] migration-name connection [path]
 
     positional arguments:
-        connectionstring  Database connection string (name from config or literal ``key=value`` format).
-        path              Directory containing migration scripts (optional). If omitted, defaults to ``./migrations/<database_name>/``.
+        migration-name  The name of the migration at which undo should stop processing. Specify "all" to process all migrations.
+        connection      Database connection string (name from config or literal ``key=value`` format).
+        path            Directory containing migration scripts (optional). If omitted, a path is calculated from the connection argument, ie. ``./migrations/<database_name>/``.
 
     options:
-        -h, --help            show this help message
-        --stop-at name        Stop undoing at the named migration. Use "all" to undo every applied migration.
+        -h, --help        show this help message
+
+
+.. code-block:: bash
+
+    $ db-migrate generate -h
+    usage: db-migrate generate [-h] type fqn connection
+
+    positional arguments:
+        type          The type of object to generate DDL for (entity or database).
+        fqn           The fully-qualified type name, ie. ``my_project.my_entities.MyEntity``.
+        connection    Database connection string (name from config or literal ``key=value`` format).
+
+    options:
+        -h, --help    show this help message
 
 
 Connection Strings
@@ -126,15 +140,15 @@ The migrator scans all ``*.py`` files in the migration directory and processes t
 Tracking Applied Migrations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-After each ``apply()``, the migrator records the migration name in a special table called ``_migrationdata`` (SQL) or collection ``_migrationdata`` (MongoDB). This allows the tool to identify which migrations have already been applied and skip them on subsequent runs.
+After each ``apply()``, the migrator records the migration name in a special table (or collection, for MongoDB and ClickHouse) called ``_migrationdata``. This allows the tool to identify which migrations have already been applied and skip them on subsequent runs.
 
 
 Implementing Migration Scripts
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``apply()`` and ``undo()`` functions each receive a :class:`~deev.common.DbTransactionContext` — a transaction context object exposing database operations. All changes within a single migration are wrapped in a transaction, which the migrator commits after the function returns (or rolls back if an exception propagates).
+The ``apply()`` and ``undo()`` functions each receive a transaction context (the provider's concrete ``*TransactionContext``, typed as the :class:`~deev.common.DbTransactionContext` protocol) exposing database operations. The migrator wraps each migration in a transaction scope, but **does not commit or roll back on the script's behalf**.
 
-**You must call ``commit()`` explicitly inside your migration.** The migrator does not commit on behalf of the migration script; if you forget to call ``commit()``, the migration context's exit handler will raise a ``DbError``.
+**You must call ``commit()`` explicitly inside every migration function.** If the context manager exits while a transaction is still open — i.e. the script never called ``commit()`` or ``rollback()`` — the context's exit handler rolls the work back and raises a ``DbError``. Likewise, if an exception propagates out of ``apply()`` or ``undo()`` before an explicit commit, the context rolls back on exit.
 
 
 Basic Example: Creating a Table
@@ -224,6 +238,18 @@ SQLite also implicitly commits before DDL statements — the same concern as MyS
 **Parameter syntax:** SQLite uses ``?`` placeholders natively. The deev transaction context automatically translates the normalized ``%?`` syntax to ``?``, so you always write ``%?`` in migrations regardless of provider.
 
 
+MSSQL
+~~~~~
+
+**Transactional DDL.** Unlike MySQL and SQLite, SQL Server supports transactional DDL — ``CREATE``, ``DROP``, ``ALTER`` statements do **not** implicitly commit, so a migration can mix schema and data changes atomically.
+
+* TSQL has no nested transactions. ``deev`` tracks transaction depth and **scrubs** nested ``COMMIT``/``BEGIN`` statements (they become no-ops); only the outermost transaction is real.
+* Savepoints use ``SAVE TRANSACTION`` and are tracked in LIFO order; ``ROLLBACK TRANSACTION <name>`` reverts to a specific one.
+* **Note:** DDL that is not transactionally safe (e.g. ``ALTER DATABASE``, some index operations) implicitly commits — avoid it mid-migration for the same reasons as MySQL/SQLite.
+
+**Parameter syntax:** ``%?`` translates to ``?`` (mssql-python placeholders).
+
+
 MongoDB
 ~~~~~~~
 
@@ -243,13 +269,25 @@ MongoDB
 * Collections are created implicitly on first insert — no ``CREATE COLLECTION`` statement exists in MongoDB.
 
 
+ClickHouse
+~~~~~~~~~~
+
+**No transactions.** ClickHouse does not support traditional ACID transactions. The :class:`~deev.clickhouse.ClickHouseTransactionContext` implements the same transaction interface as every other provider, but every transaction-control statement is a **no-op** (depth is tracked for diagnostics only). Write each migration so it is safe to re-run without rollback.
+
+* ``update()``/``delete()`` table-adapter methods issue ``ALTER TABLE ... UPDATE/DELETE`` mutations, which are asynchronous and rewrite data parts — keep them rare.
+* ``create_table()`` resolves the engine automatically (explicit arg → ``@entity(engine=...)`` → database engine from ``system.databases`` → ``MergeTree``); on replicated tables, ``sync_replicas()`` is invoked after writes.
+* On replicated databases, run ``SYSTEM SYNC DATABASE REPLICA <db>;`` after migrations if replicas must converge immediately (``db-migrate generate`` prints this for you).
+
+**Parameter syntax:** ``%?`` translates to named pyformat parameters.
+
+
 Migration Data Entity
 """""""""""""""""""""
 
 The ``_migrationdata`` entity differs by provider:
 
-* **MySQL / SQLite** — uses an integer auto-increment primary key.
-* **MongoDB** — uses a UUID primary key, since MongoDB does not support ``AUTO_INCREMENT``.
+* **SQLite / MySQL / MSSQL** — uses an integer auto-increment primary key.
+* **MongoDB / ClickHouse** — uses a UUID primary key, since neither supports ``AUTO_INCREMENT``.
 
 
 Transaction Behavior Summary
@@ -257,26 +295,28 @@ Transaction Behavior Summary
 
 The following table summarizes the transaction behavior across providers during migration execution:
 
-+--------------------------+----------------------------------+----------------------------------+-----------------------------------+
-| Aspect                   | MySQL                            | SQLite                           | MongoDB                           |
-+==========================+==================================+==================================+===================================+
-| DDL auto-commit          | **Yes** — implicit before        | **Yes** — implicit before        | N/A (no DDL)                      |
-|                          | ``CREATE``, ``DROP``,            | ``CREATE``, ``DROP``,            |                                   |
-|                          | ``ALTER``, etc.                  | ``ALTER``, etc.                  |                                   |
-+--------------------------+----------------------------------+----------------------------------+-----------------------------------+
-| Savepoint recovery       | Falls back to full               | Catches ``OperationalError``;    | N/A                               |
-| after DDL                | ``ROLLBACK`` on                  | falls back to full ``COMMIT``.   |                                   |
-|                          | rollback failure                 |                                  |                                   |
-+--------------------------+----------------------------------+----------------------------------+-----------------------------------+
-| Nested transactions      | ``SAVEPOINT TID_<uuid>``         | ``SAVEPOINT TID_<uuid>``         | NOP — parent handles              |
-| mechanism                |                                  |                                  | everything                        |
-+--------------------------+----------------------------------+----------------------------------+-----------------------------------+
-| Top-level commit         | ``self.__context.commit()``      | ``COMMIT``                       | ``mongo_session.                  |
-|                          |                                  |                                  | commit_transaction()``            |
-+--------------------------+----------------------------------+----------------------------------+-----------------------------------+
-| Parameter syntax         | Provider-native (via             | ``%?`` → ``?`` auto-translation  | Passed through                    |
-| in migrations            | mysql.connector)                 |                                  |                                   |
-+--------------------------+----------------------------------+----------------------------------+-----------------------------------+
++-------------------------+---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+| Aspect                  | MySQL                     | SQLite                    | MSSQL                     | MongoDB                   | ClickHouse                |
++=========================+===========================+===========================+===========================+===========================+===========================+
+| DDL auto-commit         | **Yes** — implicit before | **Yes** — implicit before | No — DDL is               | N/A (no DDL)              | N/A (no transactions)     |
+|                         | ``CREATE``, ``DROP``,     | ``CREATE``, ``DROP``,     | transactional             |                           |                           |
+|                         | ``ALTER``, etc.           | ``ALTER``, etc.           |                           |                           |                           |
++-------------------------+---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+| Savepoint recovery      | Falls back to full        | Catches                   | Not needed                | N/A                       | N/A                       |
+|                         | ``ROLLBACK`` on           | ``OperationalError``;     |                           |                           |                           |
+|                         | rollback failure          | falls back to full        |                           |                           |                           |
+|                         |                           | ``COMMIT``.               |                           |                           |                           |
++-------------------------+---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+| Nested transactions     | ``SAVEPOINT TID_<uuid>``  | ``SAVEPOINT TID_<uuid>``  | Nested commits scrubbed;  | NOP — parent handles      | NOP — all transaction     |
+|                         |                           |                           | savepoints via            | everything                | operations are no-ops     |
+|                         |                           |                           | ``SAVE TRANSACTION``      |                           |                           |
++-------------------------+---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+| Top-level commit        | ``connection.commit()``   | ``COMMIT``                | ``COMMIT TRANSACTION``    | ``commit_transaction()``  | No-op (nothing to         |
+|                         |                           |                           |                           |                           | commit)                   |
++-------------------------+---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
+| Parameter syntax        | Provider-native (via      | ``%?`` -> ``?``           | ``%?`` -> ``?``           | ``%?`` -> filter dict     | ``%?`` -> pyformat        |
+|                         | mysql.connector)          | auto-translation          | auto-translation          |                           | parameters                |
++-------------------------+---------------------------+---------------------------+---------------------------+---------------------------+---------------------------+
 
 
 Best Practices

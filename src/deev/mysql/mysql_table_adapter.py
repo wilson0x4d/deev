@@ -273,7 +273,7 @@ class MySQLTableAdapter(Generic[TEntity]):
         Query records from the table.
 
         :param where: Optional WHERE clause (without the ``WHERE`` keyword).
-        :param parameters Query parameters for placeholders in ``where``.
+        :param parameters: Query parameters for placeholders in ``where``.
         :param orderby: Optional ORDER BY clause (without the ``ORDER BY`` keyword).
         :param limit: Optional LIMIT value.
         :yields: Hydrated entity instances.

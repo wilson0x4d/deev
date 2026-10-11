@@ -32,9 +32,10 @@ TEntity = TypeVar('TEntity')
 
 class DbAdapter(DbConnection, ABC):
     """
-    Abstract base for database context adapters.
+    Abstract base for class-based database adapters.
 
-    Subclasses need only define table adapter properties.
+    A ``DbAdapter`` logically groups related table adapters for a single
+    database. Subclasses need only define table adapter properties.
     ``__init_subclass__`` auto-discovers ``DbTableAdapter`` properties
     and ``get_table_adapter`` lazily creates and caches adapters based
     on the connection string provider.
@@ -49,7 +50,7 @@ class DbAdapter(DbConnection, ABC):
 
     .. code-block:: python
 
-        class AssetsDbContext(DbAdapter):
+        class AssetsDbAdapter(DbAdapter):
             def __init__(self, connection_string: ConnectionString | str):
                 super().__init__(connection_string)
 

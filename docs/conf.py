@@ -14,7 +14,7 @@ if PROJECT_ROOT not in sys.path:
 
 project = 'deev'
 author = 'Shaun Wilson'
-copyright = f'2023 {author}'
+copyright = f'2023-2026 {author}'
 from deev import __version__
 release = f'{__version__}'
 
@@ -37,9 +37,11 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'furo'
-html_title = "deev&nbsp;<span style='font-size: small'>(דיב)</span><br><span style='font-size: x-small'>..an entity framework for Python.</span>"
+html_css_files = [
+    'custom.css',
+]
 html_static_path = ['_static']
+html_theme = 'furo'
 html_theme_options = {
     'analytics_anonymize_ip': False,
     'logo_only': False,
@@ -54,6 +56,7 @@ html_theme_options = {
     'includehidden': True,
     'titles_only': True
 }
+html_title = "deev&nbsp;<span style='font-size: small'>(דיב)</span><br><span style='font-size: x-small'>..an entity framework for Python.</span>"
 
 
 #

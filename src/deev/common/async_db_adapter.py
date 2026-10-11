@@ -32,9 +32,10 @@ TEntity = TypeVar('TEntity')
 
 class AsyncDbAdapter(AsyncDbConnection, ABC):
     """
-    Abstract base for async database context adapters.
+    Abstract base for class-based async database adapters.
 
-    Subclasses need only define table adapter properties.
+    An ``AsyncDbAdapter`` logically groups related table adapters for a
+    single database. Subclasses need only define table adapter properties.
     ``__init_subclass__`` auto-discovers ``AsyncDbTableAdapter`` properties
     and ``get_table_adapter`` lazily creates and caches adapters based
     on the connection string provider.
@@ -49,7 +50,7 @@ class AsyncDbAdapter(AsyncDbConnection, ABC):
 
     .. code-block:: python
 
-        class AssetsDbContext(AsyncDbAdapter):
+        class AssetsDbAdapter(AsyncDbAdapter):
             def __init__(self, connection_string: ConnectionString | str):
                 super().__init__(connection_string)
 

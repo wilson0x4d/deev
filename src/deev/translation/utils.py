@@ -66,6 +66,7 @@ def configure_serialization(  # pragma: no cover
     :param serializer: Custom serializer callable (``obj -> str``). Overrides encoder/decoder.
     :param deserializer: Custom deserializer callable (``str -> obj``). Overrides encoder/decoder.
     :raises RuntimeError: If encoder/decoder are set after a custom serializer/deserializer.
+
     .. note:: If custom ``serializer``/``deserializer`` are provided, ``encoder``/``decoder`` cannot be used.
     """
     global __json_encoder

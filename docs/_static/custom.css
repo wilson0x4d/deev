@@ -1,0 +1,6 @@
+.bottom-of-page .left-details {
+    display: none;
+}
+.bottom-of-page ::after {
+    content: "Copyright © 2023-2026 Shaun Wilson" !important;
+}

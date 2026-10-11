@@ -142,19 +142,21 @@ The ``db-migrate`` tool can be used to apply a migration script or undo a previo
     -h, --help  show this help message and exit
     --verbose   Enable verbose logging.
 
-.. note:: The ``generate`` subcommand is **alpha-quality** and subject to change without notice. Do not rely on its interface for production tooling.
+.. code-block:: bash
 
     $ db-migrate apply -h
-    usage: db-migrate apply [-h] [--stop-at name] connectionstring [path]
+    usage: db-migrate apply [-h] migration-name connection [path]
 
     positional arguments:
-    connectionstring  Database connection string.
-    path              Directory containing migration scripts (optional). If omitted, a path is calculated from the connectionstring argument, ie.
+    migration-name  The name of the migration at which apply should stop processing. Specify "all" to process all migrations.
+    connection      Database connection string (name from config or literal key=value format).
+    path            Directory containing migration scripts (optional). If omitted, a path is calculated from the connection argument, ie.
                         `./migrations/database_name/`.
 
     options:
-    -h, --help        show this help message and exit
-    --stop-at name    Stop processing at the named migration (use "all" to process all).
+    -h, --help      show this help message and exit
+
+.. note:: The ``generate`` subcommand is **alpha-quality** and subject to change without notice. Do not rely on its interface for production tooling.
 
 A migration script is a Python file which defines two functions ``apply(...)`` and ``undo(...)``, each receiving a ``DbTransactionContext`` you can use to modify the database transactionally.
 
@@ -202,8 +204,8 @@ Apply the change to the existing database:
 
 .. code-block:: bash
 
-    # apply schema change
-    db-migrate apply 'Server=./test_data/;Database=sqlite3/test.db;Provider=sqlite3' ./migrations/test_db/
+    # apply all pending migrations
+    db-migrate apply all 'Server=./test_data/;Database=sqlite3/test.db;Provider=sqlite3' ./migrations/test_db/
 
 The tool reports:
 
@@ -217,8 +219,8 @@ Undo the change after it has been applied:
 
 .. code-block:: bash
 
-    # undo schema change
-    db-migrate undo 'Server=./test_data/;Database=sqlite3/test.db;Provider=sqlite3' ./migrations/test_db/
+    # undo all applied migrations
+    db-migrate undo all 'Server=./test_data/;Database=sqlite3/test.db;Provider=sqlite3' ./migrations/test_db/
 
 The tool reports:
 

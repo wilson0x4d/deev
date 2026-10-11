@@ -18,8 +18,10 @@ Features
 - **Entity-based CRUD** — work with Python objects, not hand-crafted SQL.
 - **Validation** — entities are validated before persistence and on-demand.
 - **Transaction Contexts** — scope transactions with context managers, never leave a mismanaged state.
-- **Migrations** — version-controlled schema and data migrations via the ``db-migrate`` CLI or programmatically via the ``DbMigrate`` class.
-- **Multi-provider** — built-in providers for SQLite, MySQL, ClickHouse, and MongoDB.
+- **Migrations** — version-controlled schema and data migrations via the ``db-migrate`` CLI or programmatically via the ``DbMigrator`` class.
+- **Multi-provider** — built-in providers for SQLite, MySQL, MSSQL, MongoDB, and ClickHouse.
+- **Async API** — every provider has async connection, table adapter, and transaction variants.
+- **Database Adapters** — class-based adapters that group auto-discovered, typed table adapter properties for a single database (``DbAdapter`` / ``AsyncDbAdapter``).
 - **PEP 249 compatibility** — switch DBMS without refactoring data access code.
 - **Parameterized queries** — unified ``%?`` syntax across all providers.
 - **Connection strings** — Supports both DSN URIs (``sqlite://``, ``mysql://``) and OLEDB-style strings.
@@ -36,6 +38,10 @@ Contents
    Overview <self>
    Quick Start <quickstart>
    Database Migration <migration>
+   Transactions <transactions>
+   Validation <validation>
+   Async API <async>
+   Database Adapters <dbadapter>
    Reference <ref/index>
    SKILL <SKILL>
    MIT License <license>

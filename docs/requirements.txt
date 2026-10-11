@@ -7,5 +7,9 @@ pygments
 accessible-pygments
 
 # from pyproject.toml
+appsettings2
 hanaro
+clickhouse-connect[async]
+mssql-python
 mysql-connector-python
+pymongo
