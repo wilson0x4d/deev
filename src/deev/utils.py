@@ -37,6 +37,7 @@ def connect(
     :param connectionstring: A DSN string or :class:`ConnectionString` object.
     :param connect_timeout: Connection timeout in seconds. Only used when *connectionstring* does not specify ``Connection Timeout``.
     :param command_timeout: Command/operation timeout in seconds. Only used when *connectionstring* does not specify ``Command Timeout``.
+    :param kwargs: Additional keyword arguments forwarded to the underlying provider driver.
     :return: A :class:`DbConnection` implementing PEP 249.
     :raises DbError: If the provider is unsupported or connection fails.
     """
@@ -80,7 +81,8 @@ def connect(
                 use_pure=True,
                 connection_timeout=effective_connect_timeout,
                 read_timeout=effective_command_timeout,
-                write_timeout=effective_command_timeout
+                write_timeout=effective_command_timeout,
+                **kwargs
             )
             if effective_command_timeout is not None:
                 cur = conn.cursor()
@@ -107,7 +109,7 @@ def connect(
                         part = part.replace(':', ',')
                     _conn_parts.append(part)
             conn_str = ';'.join(_conn_parts)
-            mssql_conn = mssql_python.connect(conn_str)
+            mssql_conn = mssql_python.connect(conn_str, **kwargs)
             if effective_command_timeout is not None:
                 mssql_conn.timeout = effective_command_timeout
             return MSSQLProxyConnection(mssql_conn)
@@ -117,7 +119,7 @@ def connect(
             if connectionstring.database is None:
                 raise ValueError('Missing `database` value in Connection String.')
             db_path = connectionstring.database if connectionstring.server is None else os.path.join(connectionstring.server, connectionstring.database)
-            return SQLiteProxyConnection(sqlite3.connect(db_path, check_same_thread=False))
+            return SQLiteProxyConnection(sqlite3.connect(db_path, check_same_thread=False, **kwargs))
         case 'clickhouse':
             from deev.clickhouse.clickhouse_proxy_connection import ClickHouseProxyConnection
             from clickhouse_connect.dbapi.connection import Connection as ClickHouseDBAPIConnection
@@ -159,6 +161,7 @@ async def connect_async(
     :param connectionstring: A DSN string or :class:`ConnectionString` object.
     :param connect_timeout: Connection timeout in seconds. Only used when *connectionstring* does not specify ``Connection Timeout``.
     :param command_timeout: Command/operation timeout in seconds. Only used when *connectionstring* does not specify ``Command Timeout``.
+    :param kwargs: Additional keyword arguments forwarded to the underlying provider driver.
     :return: An :class:`AsyncDbConnection` implementing PEP 249.
     :raises DbError: If the provider is unsupported or connection fails.
     """
@@ -182,9 +185,9 @@ async def connect_async(
                     socketTimeoutMS=effective_command_timeout * 1000,
                     authSource=effective_auth_source,
                     uuidrepresentation='standard',
+                    **kwargs
                 ),
-                database_name=connectionstring.database,
-                **kwargs
+                database_name=connectionstring.database
             )
         case 'mysql.connector' | 'mysql':
             from deev.mysql.async_mysql_proxy_connection import AsyncMySQLProxyConnection
@@ -204,8 +207,8 @@ async def connect_async(
                     connection_timeout=effective_connect_timeout,
                     read_timeout=effective_command_timeout,
                     write_timeout=effective_command_timeout,
-                ),
-                **kwargs
+                    **kwargs
+                )
             )
         case 'mssql':
             from deev.mssql.async_mssql_proxy_connection import AsyncMSSQLProxyConnection
@@ -224,7 +227,7 @@ async def connect_async(
                         part = part.replace(':', ',')
                     _conn_parts.append(part)
             conn_str = ';'.join(_conn_parts)
-            sync_conn = mssql_python.connect(conn_str)
+            sync_conn = mssql_python.connect(conn_str, **kwargs)
             if effective_command_timeout is not None:
                 sync_conn.timeout = effective_command_timeout
             return AsyncMSSQLProxyConnection(sync_conn)
@@ -235,7 +238,7 @@ async def connect_async(
             if connectionstring.database is None:
                 raise ValueError('Missing `database` value in Connection String.')
             db_path = connectionstring.database if connectionstring.server is None else os.path.join(connectionstring.server, connectionstring.database)
-            return AsyncSQLiteProxyConnection(sqlite3.connect(db_path))
+            return AsyncSQLiteProxyConnection(sqlite3.connect(db_path, **kwargs))
         case 'clickhouse':
             from deev.clickhouse.async_clickhouse_proxy_connection import AsyncClickHouseProxyConnection
             import clickhouse_connect
@@ -254,8 +257,8 @@ async def connect_async(
                     database=connectionstring.database,
                     connect_timeout=effective_connect_timeout,
                     send_receive_timeout=effective_command_timeout,
-                ),
-                **kwargs
+                    **kwargs
+                )
             )
         case _:
             raise ValueError(f'Unsupported provider: {connectionstring.provider}')
