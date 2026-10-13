@@ -64,7 +64,7 @@ class AsyncMSSQLProxyCursor(AsyncDbCursor):
         return cast(list[tuple[Any, ...]], self.__cursor.fetchall())
 
     async def close(self) -> None:
-        await asyncio.to_thread(self.__cursor.close)
+        self.__cursor.close()
 
 
 __all__ = ['AsyncMSSQLProxyCursor']

@@ -35,13 +35,13 @@ class AsyncMSSQLProxyConnection(AsyncDbConnection):
         return AsyncMSSQLProxyCursor(self.__sync_conn.cursor(*args, **kwargs))  # type: ignore[arg-type]
 
     async def commit(self) -> None:
-        await asyncio.to_thread(self.__sync_conn.commit)
+        self.__sync_conn.commit()
 
     async def rollback(self) -> None:
-        await asyncio.to_thread(self.__sync_conn.rollback)
+        self.__sync_conn.rollback()
 
     async def close(self) -> None:
-        await asyncio.to_thread(self.__sync_conn.close)
+        self.__sync_conn.close()
 
     async def __aenter__(self) -> Self:
         return self
