@@ -72,10 +72,9 @@ def json_roundtrip_datetime_non_utc() -> None:
     tz = timezone(timedelta(hours=5))
     dt_val = datetime(2023, 7, 1, 10, 0, 0, tzinfo=tz)
     json_str: str = __to_json(dt_val)
-    assert 'T05:00' in json_str, f'Expected UTC conversion, got {json_str}'
-    assert 'Z' in json_str
+    assert '+05:00' in json_str, f'Expected the offset to be preserved, got {json_str}'
     actual: Any = __from_json(json_str)
-    assert actual == datetime(2023, 7, 1, 5, 0, 0, tzinfo=timezone.utc)
+    assert actual == dt_val
 
 
 @fact

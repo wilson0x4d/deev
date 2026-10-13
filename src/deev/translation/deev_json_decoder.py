@@ -8,6 +8,8 @@ import base64
 from typing import Any, Callable
 from uuid import UUID
 
+from .datetime_utils import ensure_utc_aware
+
 
 def _parse_datetime_iso(value: str) -> datetime:
     if value.endswith('Z'):
@@ -57,7 +59,8 @@ class DeevJsonDecoder(json.JSONDecoder):
                 remand = obj[tick_index + 1:]
                 match ident:
                     case 'dt':
-                        return _parse_datetime_iso(remand)
+                        # Naive values are treated as UTC; aware values pass through with their offset.
+                        return ensure_utc_aware(_parse_datetime_iso(remand))
                     case 'date':
                         return date.fromisoformat(remand)
                     case 'time':

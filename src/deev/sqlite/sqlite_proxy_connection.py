@@ -10,6 +10,7 @@ from typing import Any, Literal, Self
 from ..common.db_connection import DbConnection
 from ..common.db_cursor import DbCursor
 from .sqlite_proxy_cursor import SQLiteProxyCursor
+from .utils import register_datetime_adapter
 
 
 class SQLiteProxyConnection(DbConnection):
@@ -22,6 +23,7 @@ class SQLiteProxyConnection(DbConnection):
     __connection: Connection
 
     def __init__(self, provider_connection: Connection) -> None:
+        register_datetime_adapter()
         self.__connection = provider_connection
 
     @property

@@ -87,7 +87,8 @@ class ClickHouseTableAdapter(Generic[TEntity]):
     def __get_pyobject(self, key: str, value: Any) -> Any:
         return to_pyobject(
             value,
-            cast(type, self.__entity_spec.attrs.get(key))
+            cast(type, self.__entity_spec.attrs.get(key)),
+            from_chsql=True
         )
 
     def __get_typearg(self, obj: object) -> type:
@@ -212,7 +213,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         self.__deferred_init()
 
         data = (
-            splat(entity, to_sql=True)
+            splat(entity, to_chsql=True)
             if entity is not None
             else dict[str, Any]()
         )
@@ -259,7 +260,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
                 for key, value in rows[0].items():
                     if value is not None:
                         raw[key] = self.__get_pyobject(key, value)
-                return hydrate(self.__entity_spec.entity_type(), raw, from_sql=True)
+                return hydrate(self.__entity_spec.entity_type(), raw, from_chsql=True)
             return None
         except Exception as e:
             raise DbError(f'ClickHouse read failed: {e}') from e
@@ -273,7 +274,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         This should only be used for infrequent corrections, not in hot paths.
         """
         self.__deferred_init()
-        entity_data = splat(entity, to_sql=True)
+        entity_data = splat(entity, to_chsql=True)
 
         set_parts: list[str] = []
         pk_where_parts: list[str] = []
@@ -340,7 +341,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         for better upsert performance on large tables.
         """
         self.__deferred_init()
-        entity_data = splat(entity, to_sql=True)
+        entity_data = splat(entity, to_chsql=True)
         if self.__entity_spec.has_autoincrement and entity_data.get(self.__entity_spec.primary_key[0], None) is None:
             return self.create(entity)
         primary_key = {
@@ -370,7 +371,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         pk_values_list: list[dict[str, Any]] = []
 
         for entity in entities:
-            data = splat(entity, to_sql=True)
+            data = splat(entity, to_chsql=True)
             all_rows.extend(self.__to_columnar(data, column_names))
             pk_values_list.append({
                 k: v
@@ -419,7 +420,7 @@ class ClickHouseTableAdapter(Generic[TEntity]):
                 for key, value in row.items():
                     if value is not None:
                         raw[key] = self.__get_pyobject(key, value)
-                yield hydrate(self.__entity_spec.entity_type(), raw, from_sql=True)
+                yield hydrate(self.__entity_spec.entity_type(), raw, from_chsql=True)
         except Exception as e:
             raise DbError(f'ClickHouse query failed: {e}') from e
 

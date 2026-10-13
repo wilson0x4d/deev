@@ -243,23 +243,43 @@ Or auto-detect: `table = create_table_adapter(User, db_or_conn_str, create_table
 ### Key provider differences
 
 - **SQLite/MySQL:** tables must be created with `create_table()` (DDL) or `create_table=True`.
-- **MSSQL:** UUIDs stored as hyphenated strings (`UNIQUEIDENTIFIER`); autoincrement PKs use `OUTPUT INSERTED`. Extra OLEDB keys (e.g. `TrustServerCertificate`, `Encrypt`) are passed through to `mssql_python`.
+- **MSSQL:** UUIDs stored as hyphenated strings (`UNIQUEIDENTIFIER`); autoincrement PKs use `OUTPUT INSERTED`. Extra OLEDB keys (e.g. `TrustServerCertificate`, `Encrypt`) are passed through to `mssql_python`. The datetime column type is `DEEV__MSSQL__DATETIME_TYPE` (default `DATETIMEOFFSET`, used verbatim; other types switch reads/writes to UTC normalization — see the datetime policy above).
 - **MongoDB:** collections are created implicitly on first insert — no DDL needed. `create_table()` creates indexes. The `query()` WHERE clause supports `=`, `!=`/`<>`, `<`, `<=`, `>`, `>=`, `IN (...)`, `IS [NOT] NULL`, combined with `AND`/`OR`. Adapters expose a `mongo_collection` property for advanced operations; transaction contexts expose `mongo_client`, `mongo_database`, `mongo_session`.
 - **ClickHouse:** `create_table(engine=None, order_by=None, partition_by=None)` — engine resolution order: explicit `engine` arg → `@entity(engine=...)` extra arg → database engine from `system.databases` (Replicated → ReplicatedMergeTree, else MergeTree) → `MergeTree`. `update()` and `delete()` are mutations (asynchronous, rewrite data parts — expensive). `bulk_create()` uses native columnar insert. `sync_replicas()` forces replica sync (also applied automatically after writes when enabled). Adapters expose a `clickhouse_client` property.
 - **Parameter syntax:** all providers use `%?` placeholders, translated at runtime (SQLite → `?`, MySQL → `%s`, MSSQL → `?`).
 
 ### Translating entities ↔ dicts
 
-- `splat(entity, attrs=None, to_sql=False, to_bson=False, to_mssql=False)` — extract field values from entity. Optionally filter to specific attributes (`attrs`) or serialize for SQL/BSON/MSSQL storage.
-- `hydrate(entity_or_type, data, attrs=None, from_sql=False, from_mssql=False, from_bson=False)` — dict to entity (or hydrate an existing instance in place).
+- `splat(entity, attrs=None, to_sql=False, to_bson=False, to_mssql=False, to_mysql=False, to_chsql=False)` — extract field values from entity. Optionally filter to specific attributes (`attrs`) or serialize for a specific storage format (only one mapping flag at a time).
+- `hydrate(entity_or_type, data, attrs=None, from_sql=False, from_mssql=False, from_bson=False, from_mysql=False, from_chsql=False)` — dict to entity (or hydrate an existing instance in place; only one mapping flag at a time).
 - `configure_serialization(*, encoder, decoder, serializer, deserializer)` — customize JSON serialization.
-- `to_sqlobject(value, hint)` — convert Python value to SQL-storable form.
-- `to_mssql_object(value, hint)` — convert Python value to SQL Server-storable form (UUID → hyphenated string, unlike hex in `to_sqlobject`).
+- `to_sqlobject(value, hint)` — convert Python value to SQLite-storable form.
+- `to_mysql_object(value, hint)` / `to_chsql_object(value, hint)` — convert Python value to MySQL- / ClickHouse-storable form (datetimes normalized to UTC).
+- `to_mssql_object(value, hint)` — convert Python value to SQL Server-storable form (UUID → hyphenated string, unlike hex in `to_sqlobject`; datetime policy per `DEEV__MSSQL__DATETIME_TYPE`).
 - `to_bsonobject(value, hint=None)` — convert Python value to BSON-storable form (MongoDB).
-- `to_pyobject(value, hint)` — convert SQL/BSON value back to Python type.
+- `to_pyobject(value, hint, *, from_sql, from_mssql, from_bson, from_mysql, from_chsql)` — convert a stored value back to Python type; the `from_*` flags select the datetime read policy.
 - `deunionize(t)` — unwrap `Union[T, None]`/`Optional[T]` to `T` (returns input unchanged if not a Union type).
 
 Complex types (`list`, `dict`, `set`, `tuple`, `Decimal`, `UUID`, `datetime`, `date`, `time`, `timedelta`, `bytes`, `Enum`) are auto-serialized to JSON, with recursive element-hint conversion for containers like `list[date]`.
+
+### Datetime timezone policy
+
+Every `datetime` that passes through a deev read or write path is returned/stored **timezone-aware**. The policy has two uniform rules (applied identically on reads and writes):
+
+1. **Naive datetimes are always treated as UTC** — tagged via `replace(tzinfo=utc)`, never interpreted as local time, on any provider.
+2. **Aware datetimes keep their offset when the store can carry one** (SQLite, MSSQL `DATETIMEOFFSET`, deev JSON) **and are normalized to UTC** (`astimezone`) when it cannot (MySQL, ClickHouse, MongoDB, MSSQL with any other configured type).
+
+MSSQL's datetime column type is configurable via `DEEV__MSSQL__DATETIME_TYPE` (used **verbatim** in DDL, no validation; default `DATETIMEOFFSET`; e.g. set `DATETIME2(6)` for precision). The configured type selects which side of the policy applies:
+
+| Backend | Write (aware / naive) | Read |
+|---------|-----------------------|------|
+| SQLite | passes through / tagged UTC (offset stored) | aware as-is; naive → tagged UTC |
+| MSSQL (`DATETIMEOFFSET`, default) | passes through / tagged UTC | aware as-is; naive → tagged UTC |
+| MSSQL (other `DEEV__MSSQL__DATETIME_TYPE`) | → UTC / tagged UTC | → UTC |
+| MySQL, ClickHouse, MongoDB | → UTC (`astimezone`) / tagged UTC | → UTC |
+| JSON (flagless splat/encoder/decoder) | as-is (ISO-8601 with offset, `Z` for UTC) / tagged UTC | aware as-is; naive → tagged UTC |
+
+The MSSQL datetime type is resolved from configuration once per process and cached. Full details: `docs/datetime.rst`.
 
 ---
 
@@ -446,15 +466,19 @@ Note: `deev.mssql` is a provider submodule (import via `import deev.mssql`).
 
 | Name | Purpose |
 |------|---------|
-| `splat` | Extract entity field values (parameters: `attrs`, `to_sql`, `to_bson`, `to_mssql`) |
-| `hydrate` | Create/hydrate entity instances from dicts (parameters: `attrs`, `from_sql`, `from_mssql`, `from_bson`) |
+| `splat` | Extract entity field values (parameters: `attrs`, `to_sql`, `to_bson`, `to_mssql`, `to_mysql`, `to_chsql`) |
+| `hydrate` | Create/hydrate entity instances from dicts (parameters: `attrs`, `from_sql`, `from_mssql`, `from_bson`, `from_mysql`, `from_chsql`) |
 | `configure_serialization` | Customize JSON serialization |
 | `DeevJsonEncoder` | Custom JSON encoder for deev types |
 | `DeevJsonDecoder` | Custom JSON decoder for deev types |
-| `to_sqlobject` | Convert Python value to SQL-storable form |
-| `to_mssql_object` | Convert Python value to SQL Server-storable form |
+| `to_sqlobject` | Convert Python value to SQLite-storable form |
+| `to_mysql_object` | Convert Python value to MySQL-storable form (datetime → UTC) |
+| `to_chsql_object` | Convert Python value to ClickHouse-storable form (datetime → UTC) |
+| `to_mssql_object` | Convert Python value to SQL Server-storable form (datetime policy per `DEEV__MSSQL__DATETIME_TYPE`) |
 | `to_bsonobject` | Convert Python value to BSON-storable form |
-| `to_pyobject` | Convert SQL/BSON value back to Python type |
+| `to_pyobject` | Convert stored value back to Python type (parameters: `from_sql`, `from_mssql`, `from_bson`, `from_mysql`, `from_chsql`) |
+ | `get_mssql_datetime_type` | Configured MSSQL datetime type, verbatim (process-cached; default `DATETIMEOFFSET`) |
+ | `MSSQL_DATETIME_TYPE_CONFIG_KEY` | Name of the `DEEV__MSSQL__DATETIME_TYPE` configuration setting |
 | `deunionize` | Unwrap `Union[T, None]` to `T` |
 
 ### From `deev.validation`

@@ -77,7 +77,8 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
     def __get_pyobject(self, key: str, value: Any) -> Any:
         return to_pyobject(
             value,
-            cast(type, self.__entity_spec.attrs.get(key)))
+            cast(type, self.__entity_spec.attrs.get(key)),
+            from_mysql=True)
 
     def __get_typearg(self, obj: object) -> type:
         orig = getattr(obj, '__orig_class__', None)
@@ -121,7 +122,7 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
         await self.__deferred_init()
 
         data = (
-            splat(entity, to_sql=True)
+            splat(entity, to_mysql=True)
             if entity is not None
             else dict[str, Any]()
         )
@@ -179,13 +180,13 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
                 value = self.__get_pyobject(kvp[0][0], kvp[1])
                 if value is not None:
                     result[kvp[0][0]] = value
-            return hydrate(self.__entity_spec.entity_type(), result, from_sql=True)
+            return hydrate(self.__entity_spec.entity_type(), result, from_mysql=True)
         else:
             return None
 
     async def update(self, entity: TEntity) -> None:
         await self.__deferred_init()
-        entity_data = splat(entity, to_sql=True)
+        entity_data = splat(entity, to_mysql=True)
         primary_key = {
             k: (v.hex if type(v) is UUID else v)
             for k, v in entity_data.items()
@@ -233,7 +234,7 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
 
     async def upsert(self, entity: TEntity) -> dict[str, Any]:
         await self.__deferred_init()
-        entity_data = splat(entity, to_sql=True)
+        entity_data = splat(entity, to_mysql=True)
         pk_value = entity_data.get(self.__entity_spec.primary_key[0], None)
         if self.__entity_spec.has_autoincrement and pk_value in (None, 0):
             return await self.create(entity)
@@ -297,7 +298,7 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
                 value = self.__get_pyobject(kvp[0][0], kvp[1])
                 if value is not None:
                     result[kvp[0][0]] = value
-            yield hydrate(self.__entity_spec.entity_type(), result, from_sql=True)
+            yield hydrate(self.__entity_spec.entity_type(), result, from_mysql=True)
             row = await cursor.fetchone()
 
 

@@ -9,7 +9,7 @@ from uuid import UUID
 from ..common.db_error import DbError
 from ..common.db_type_mapper import DbTypeMapper
 from ..entities import EntitySpec
-from ..translation import deunionize
+from ..translation import deunionize, get_mssql_datetime_type
 
 
 class MSSQLTypeMapper(DbTypeMapper):
@@ -18,10 +18,12 @@ class MSSQLTypeMapper(DbTypeMapper):
     """
 
     __entity_spec: EntitySpec
+    __mssql_datetime_type: str
     __pytype_map: dict[Any, str]
 
     def __init__(self, entity_spec: EntitySpec) -> None:
         self.__entity_spec = entity_spec
+        self.__mssql_datetime_type = get_mssql_datetime_type()
         self.__pytype_map = {
             int: 'INT',
             float: 'FLOAT',
@@ -35,7 +37,7 @@ class MSSQLTypeMapper(DbTypeMapper):
             set: 'NVARCHAR(MAX)',
             UUID: 'UNIQUEIDENTIFIER',
             date: 'DATE',
-            datetime: 'DATETIME2(6)',
+            datetime: self.__mssql_datetime_type,
             time: 'TIME(6)',
             timedelta: 'BIGINT'
         }

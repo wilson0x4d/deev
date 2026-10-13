@@ -29,10 +29,20 @@ class TestPriority(IntEnum):
 
 @fact
 def when_datetime() -> None:
-    expected: datetime = datetime(2023, 4, 1, 12, 30, 45, 123456)
+    expected: datetime = datetime(2023, 4, 1, 12, 30, 45, 123456, tzinfo=timezone.utc)
     json_str: str = __to_json(expected)
     actual: Any = __from_json(json_str)
     assert actual == expected, 'datetime round-trip failed'
+
+
+@fact
+def when_datetime_naive_treated_as_utc() -> None:
+    expected: datetime = datetime(2023, 4, 1, 12, 30, 45, 123456)
+    json_str: str = __to_json(expected)
+    actual: Any = __from_json(json_str)
+    assert isinstance(actual, datetime), 'datetime round-trip failed'
+    assert actual.tzinfo is not None, 'naive datetimes must be returned timezone-aware'
+    assert actual == expected.replace(tzinfo=timezone.utc), 'naive datetimes must be treated as UTC'
 
 
 @fact
@@ -98,7 +108,7 @@ def when_bytes() -> None:
 @fact
 def when_complex_structure() -> None:
     expected: dict[str, Any] = {
-        'when': datetime(2023, 4, 1, 12, 30, 45, 123456),
+        'when': datetime(2023, 4, 1, 12, 30, 45, 123456, tzinfo=timezone.utc),
         'day': date(2023, 4, 1),
         'moment': time(12, 30, 45, 123456),
         'price': Decimal('99.99'),

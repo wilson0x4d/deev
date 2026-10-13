@@ -41,8 +41,9 @@ Contents
    Transactions <transactions>
    Validation <validation>
    Async API <async>
-   Database Adapters <dbadapter>
-   Reference <ref/index>
+    Database Adapters <dbadapter>
+    Python `datetime` Handling <datetime>
+    Reference <ref/index>
    SKILL <SKILL>
    MIT License <license>
    Contact <contact>

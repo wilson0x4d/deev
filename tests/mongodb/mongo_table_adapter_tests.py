@@ -7,7 +7,7 @@ from deev.utils import connect
 from punit import fact, setup, teardown, trait
 from typing import Any
 from uuid import UUID, uuid4
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 
 def get_mongodb_connectionstring():
@@ -752,7 +752,7 @@ def adapter_datetime_field_roundtrip() -> None:
         adapter = MongoTableAdapter[DateTimeEntity](connection, create_table=True)
         uid = f'dt-rt-{uuid4().hex[:8]}'
         # MongoDB stores datetimes with millisecond precision
-        original = datetime(2024, 6, 15, 10, 30, 45, 123000)
+        original = datetime(2024, 6, 15, 10, 30, 45, 123000, tzinfo=timezone.utc)
         entity1 = DateTimeEntity(id=uid, ts=original)
         pk = adapter.create(entity1)
         assert pk is not None
@@ -760,9 +760,35 @@ def adapter_datetime_field_roundtrip() -> None:
         result = adapter.read(id=uid)
         assert result is not None
         assert isinstance(result.ts, datetime), f'expected datetime, got {type(result.ts)}'
-        # MongoDB truncates microseconds to milliseconds, so compare truncated value
-        assert result.ts.year == 2024 and result.ts.month == 6 and result.ts.day == 15
-        assert result.ts.hour == 10 and result.ts.minute == 30 and result.ts.second == 45
+        assert result.ts.tzinfo is not None, f'expected an aware datetime, got {result.ts!r}'
+        # MongoDB truncates microseconds to milliseconds; 123000 us is exactly 123 ms
+        assert result.ts == original, f'expected {original}, got {result.ts!r}'
+
+
+@fact
+@trait('integration')
+@trait('mongodb')
+def adapter_datetime_aware_non_utc_field_roundtrip() -> None:
+    """Timezone-aware non-UTC datetimes are normalized to UTC for storage and read back as UTC."""
+    import appsettings2
+    from deev.common.connection_string import ConnectionString
+    conn_str = ConnectionString(appsettings2.get_configuration().connections.mongo_test)
+    with connect(conn_str) as connection:
+        @entity
+        class DateTimeEntity:
+            id: str = field(primary_key=True)
+            ts: datetime = datetime.now(timezone.utc)
+
+        adapter = MongoTableAdapter[DateTimeEntity](connection, create_table=True)
+        uid = f'dtz-rt-{uuid4().hex[:8]}'
+        original = datetime(2024, 6, 15, 10, 30, 45, tzinfo=timezone(timedelta(hours=5)))
+        pk = adapter.create(DateTimeEntity(id=uid, ts=original))
+        assert pk is not None
+
+        result = adapter.read(id=uid)
+        assert result is not None
+        assert result.ts.tzinfo is not None, f'expected an aware datetime, got {result.ts!r}'
+        assert result.ts == original.astimezone(timezone.utc), f'expected a UTC datetime, got {result.ts!r}'
 
 
 @fact
@@ -781,9 +807,9 @@ def adapter_datetime_field_query_range() -> None:
             ts: datetime = datetime.now(timezone.utc)
 
         adapter = MongoTableAdapter[DateTimeEntity](connection, create_table=True)
-        dt1 = datetime(2024, 1, 1, 0, 0, 0)
-        dt2 = datetime(2024, 6, 15, 12, 0, 0)
-        dt3 = datetime(2025, 1, 1, 0, 0, 0)
+        dt1 = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        dt2 = datetime(2024, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+        dt3 = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 
         adapter.create(id=f'{prefix}-dt-q-1', ts=dt1)
         adapter.create(id=f'{prefix}-dt-q-2', ts=dt2)
@@ -855,12 +881,12 @@ def adapter_date_field_query_range() -> None:
         adapter.create(id=f'{prefix}-date-q-2', birth_date=d2)
         adapter.create(id=f'{prefix}-date-q-3', birth_date=d3)
 
-        # Query: birth_date >= mid date (using datetime for comparison)
-        results = list(adapter.query(where='birth_date >= %?', parameters=[datetime(1990, 6, 15)]))
+        # Query: birth_date >= mid date (using a UTC midnight datetime for comparison)
+        results = list(adapter.query(where='birth_date >= %?', parameters=[datetime(1990, 6, 15, tzinfo=timezone.utc)]))
         assert len(results) >= 2  # d2 and d3
 
         # Query: birth_date < mid date
-        results = list(adapter.query(where='birth_date < %?', parameters=[datetime(1990, 6, 15)]))
+        results = list(adapter.query(where='birth_date < %?', parameters=[datetime(1990, 6, 15, tzinfo=timezone.utc)]))
         assert len(results) >= 1  # at least d1
 
 

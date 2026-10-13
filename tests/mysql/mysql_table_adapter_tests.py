@@ -135,3 +135,37 @@ def timedelta_roundtrip() -> None:
             cursor.execute(f'DROP DATABASE {cxnstring.database};')
             connection.commit()
             connection.close()
+
+
+@fact
+@trait('mysql')
+@trait('integration')
+def datetime_aware_non_utc_roundtrip() -> None:
+    """Timezone-aware non-UTC datetimes are normalized to UTC for storage (MySQL cannot store offsets) and read back as UTC."""
+    appsettings = appsettings2.get_configuration()
+    cxnstring = ConnectionString(appsettings.connections.mysql_test)
+    cxnstring.database = f'deev_test_{uuid4().hex}'
+    create_database(cxnstring)
+    try:
+        @entity(table_name='tbl_my_dtz')
+        class DateTimeEntity:
+            id: int = field(autoincrement=True, primary_key=True, default=0)
+            created_at: datetime | None = None
+
+        with connect(cxnstring) as connection:
+            adapter = MySQLTableAdapter[DateTimeEntity](connection, create_table=True)
+            original = datetime(2024, 1, 15, 12, 30, 45, tzinfo=timezone(timedelta(hours=5)))
+            pk = adapter.create(DateTimeEntity(created_at=original))
+            assert pk is not None
+
+            result = adapter.read(**pk)
+            assert result is not None
+            assert result.created_at is not None
+            assert result.created_at.tzinfo is not None, f'expected an aware datetime, got {result.created_at!r}'
+            assert result.created_at == original.astimezone(timezone.utc), f'expected a UTC datetime, got {result.created_at!r}'
+    finally:
+        with connect(cxnstring) as connection:
+            cursor = connection.cursor()
+            cursor.execute(f'DROP DATABASE {cxnstring.database};')
+            connection.commit()
+            connection.close()

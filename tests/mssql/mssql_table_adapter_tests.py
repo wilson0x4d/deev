@@ -7,6 +7,7 @@ from deev import entity, field
 from deev.common import ConnectionString
 from deev.utils import connect
 from deev.mssql.mssql_table_adapter import MSSQLTableAdapter
+from deev.translation import datetime_utils
 from uuid import UUID, uuid4
 from punit import fact, trait
 from typing import Any
@@ -305,3 +306,57 @@ def timedelta_roundtrip() -> None:
         assert result is not None
         assert result.duration is not None
         assert result.duration == target
+
+
+@fact
+@trait('mssql')
+@trait('integration')
+def datetime_aware_non_utc_roundtrip() -> None:
+    """Timezone-aware non-UTC datetimes are stored in DATETIMEOFFSET (the default type) with their offset preserved."""
+    appsettings = appsettings2.get_configuration()
+    cxnstring = ConnectionString(appsettings.connections.mssql_test)
+    with connect(cxnstring) as connection:
+        @entity(table_name='tbl_ms_dtz')
+        class DateTimeEntity:
+            id: int = field(autoincrement=True, primary_key=True, default=0)
+            created_at: datetime | None = None
+
+        adapter = MSSQLTableAdapter[DateTimeEntity](connection, create_table=True)
+        original = datetime(2024, 1, 15, 12, 30, 45, tzinfo=timezone(timedelta(hours=5)))
+        pk = adapter.create(DateTimeEntity(created_at=original))
+        assert pk is not None
+
+        result = adapter.read(**pk)
+        assert result is not None
+        assert result.created_at is not None
+        assert result.created_at == original, f'expected the offset to be preserved, got {result.created_at!r}'
+
+
+@fact
+@trait('mssql')
+@trait('integration')
+def datetime_aware_non_utc_roundtrip_configured_datetime2() -> None:
+    """With a non-default DEEV__MSSQL__DATETIME_TYPE, aware non-UTC datetimes are normalized to UTC for storage and read back as UTC."""
+    appsettings = appsettings2.get_configuration()
+    cxnstring = ConnectionString(appsettings.connections.mssql_test)
+    old = datetime_utils.__mssql_datetime_type
+    datetime_utils.__mssql_datetime_type = 'DATETIME2(6)'
+    try:
+        with connect(cxnstring) as connection:
+            @entity(table_name='tbl_ms_dtz2')
+            class DateTimeEntity:
+                id: int = field(autoincrement=True, primary_key=True, default=0)
+                created_at: datetime | None = None
+
+            adapter = MSSQLTableAdapter[DateTimeEntity](connection, create_table=True)
+            original = datetime(2024, 1, 15, 12, 30, 45, tzinfo=timezone(timedelta(hours=5)))
+            pk = adapter.create(DateTimeEntity(created_at=original))
+            assert pk is not None
+
+            result = adapter.read(**pk)
+            assert result is not None
+            assert result.created_at is not None
+            assert result.created_at.utcoffset() == timedelta(0), f'expected a UTC offset, got {result.created_at!r}'
+            assert result.created_at == original.astimezone(timezone.utc), f'expected a UTC datetime, got {result.created_at!r}'
+    finally:
+        datetime_utils.__mssql_datetime_type = old

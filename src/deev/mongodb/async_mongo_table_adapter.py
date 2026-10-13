@@ -97,7 +97,8 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
     def __get_pyobject(self, key: str, value: Any) -> Any:
         return to_pyobject(
             value,
-            cast(type, self.__entity_spec.attrs.get(key)))
+            cast(type, self.__entity_spec.attrs.get(key)),
+            from_bson=True)
 
     def __get_typearg(self, obj: object) -> type:
         orig = getattr(obj, '__orig_class__', None)

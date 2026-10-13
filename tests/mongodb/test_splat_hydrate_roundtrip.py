@@ -680,12 +680,14 @@ def to_bsonobject_passes_aware_datetime_through() -> None:
 
 
 @fact
-def to_bsonobject_passes_naive_datetime_through() -> None:
-    """to_bsonobject should pass through naive datetime as-is (BSON stores it natively)."""
+def to_bsonobject_normalizes_naive_datetime_to_utc() -> None:
+    """to_bsonobject treats naive datetimes as UTC and stores the UTC instant."""
     original = datetime(2024, 6, 15, 10, 30, 0)
+    expected = original.replace(tzinfo=timezone.utc)
     result = to_bsonobject(original)
-    assert result is original, 'naive datetime should pass through as same object'
     assert isinstance(result, datetime)
+    assert result == expected, f'expected naive to be treated as UTC, got {result!r}'
+    assert result.utcoffset() == timedelta(0), f'expected a UTC offset, got {result!r}'
 
 
 @fact
@@ -764,8 +766,8 @@ def splat_to_bson_serializes_datetime_field_as_datetime() -> None:
 
 
 @fact
-def splat_to_bson_serializes_naive_datetime_field_as_datetime() -> None:
-    """splat with naive datetime should keep it as datetime."""
+def splat_to_bson_serializes_naive_datetime_field_as_utc_datetime() -> None:
+    """splat with naive datetime should treat it as UTC and store it as a UTC datetime."""
 
     @entity
     class TestEntity:
@@ -773,10 +775,12 @@ def splat_to_bson_serializes_naive_datetime_field_as_datetime() -> None:
         ts: datetime = datetime.now()
 
     ts = datetime(2024, 6, 15, 10, 30, 0)
+    expected = ts.replace(tzinfo=timezone.utc)
     entity1 = TestEntity(id='test', ts=ts)
     d = splat(entity1, to_bson=True)
     assert isinstance(d['ts'], datetime), f'ts should be datetime, got {type(d["ts"])}'
-    assert d['ts'] is ts
+    assert d['ts'] == expected, f'expected naive to be treated as UTC, got {d["ts"]!r}'
+    assert d['ts'].utcoffset() == timedelta(0), f'expected a UTC offset, got {d["ts"]!r}'
 
 
 @fact
@@ -1071,7 +1075,7 @@ def splat_hydrate_bson_roundtrip_datetime_date_time_all_together() -> None:
 
 @fact
 def splat_hydrate_bson_roundtrip_datetime_naive() -> None:
-    """Full BSON roundtrip with naive datetime (no timezone)."""
+    """Full BSON roundtrip with naive datetime (treated as UTC, stored and read back as UTC)."""
 
     @entity
     class TestEntity:
@@ -1079,14 +1083,16 @@ def splat_hydrate_bson_roundtrip_datetime_naive() -> None:
         ts: datetime = datetime.now()
 
     original = datetime(2024, 6, 15, 10, 30, 0)
+    expected = original.replace(tzinfo=timezone.utc)
     entity1 = TestEntity(id='test', ts=original)
 
     d = splat(entity1, to_bson=True)
     assert isinstance(d['ts'], datetime)
-    assert d['ts'] is original
+    assert d['ts'] == expected, f'expected naive to be treated as UTC, got {d["ts"]!r}'
 
     entity2 = hydrate(TestEntity, d, from_bson=True)
-    assert entity2.ts == original.replace(tzinfo=timezone.utc)
+    assert entity2.ts == expected
+    assert entity2.ts.utcoffset() == timedelta(0), f'expected a UTC offset, got {entity2.ts!r}'
 
 
 @fact

@@ -91,7 +91,8 @@ class MSSQLTableAdapter(Generic[TEntity]):
         """
         return to_pyobject(
             value,
-            cast(type, self.__entity_spec.attrs.get(key)))
+            cast(type, self.__entity_spec.attrs.get(key)),
+            from_mssql=True)
 
     @staticmethod
     def __to_mssql_value(value: Any) -> Any:

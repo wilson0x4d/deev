@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Any, cast
 
 from deev import entity, field
-from deev.translation import splat, hydrate, to_mssql_object, to_pyobject, deunionize
+from deev.translation import datetime_utils, splat, hydrate, to_mssql_object, to_pyobject, deunionize
 from punit import fact, trait
 from uuid import UUID, uuid4
 
@@ -34,19 +34,22 @@ class TestToMssqlObject:
 
     @fact
     @trait('unit')
-    def when_datetime_with_tz_then_returns_utc_datetime(self) -> None:
+    def when_datetime_with_tz_then_preserves_offset(self) -> None:
         dt = datetime(2024, 6, 15, 14, 30, 0, tzinfo=timezone(timedelta(hours=-5)))
         result = to_mssql_object(dt, datetime)
         assert isinstance(result, datetime), f"(expected=datetime, actual={type(result).__name__})"
         assert result.tzinfo is not None, f"expected tzinfo, got None"
-        assert result.hour == 19, f"expected 19 UTC, got {result.hour}"
+        assert result == dt, f"expected the offset to be preserved, got {result!r}"
 
     @fact
     @trait('unit')
-    def when_datetime_without_tz_then_adds_utc(self) -> None:
+    def when_datetime_without_tz_then_tags_as_utc(self) -> None:
         dt = datetime(2024, 6, 15, 14, 30, 0)
         result = to_mssql_object(dt, datetime)
         assert result.tzinfo is not None, f"expected tzinfo, got None"
+        assert result == dt.replace(tzinfo=timezone.utc), f"expected naive to be tagged as UTC, got {result!r}"
+
+
 
     @fact
     @trait('unit')
@@ -259,3 +262,16 @@ class TestFullRoundTrip:
 
         # Step 3: entity was never mutated
         assert entity_inst.ref_uuid == target_uuid
+
+
+@fact
+@trait('unit')
+def when_mssql_datetime_type_configured_then_normalizes_to_utc() -> None:
+    old = datetime_utils.__mssql_datetime_type
+    datetime_utils.__mssql_datetime_type = 'DATETIME2'
+    try:
+        dt = datetime(2024, 6, 15, 14, 30, 0, tzinfo=timezone(timedelta(hours=-5)))
+        result = to_mssql_object(dt, datetime)
+        assert result == dt.astimezone(timezone.utc), f"expected normalization to UTC, got {result!r}"
+    finally:
+        datetime_utils.__mssql_datetime_type = old

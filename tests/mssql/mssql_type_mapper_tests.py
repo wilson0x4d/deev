@@ -7,6 +7,7 @@ from deev import entity, field
 from deev.common import DbError
 from deev.entities import get_entity_spec
 from deev.mssql import MSSQLTypeMapper
+from deev.translation import datetime_utils
 from punit import fact, inlinedata, theory, trait
 from typing import Any, Callable, Mapping
 from uuid import UUID
@@ -81,6 +82,20 @@ def bare_collection_fallbacks() -> None:
     assert mapper.get_provider_type('bare_tuple') == 'NVARCHAR(MAX)'
 
 
+@fact
+@trait('mssql')
+@trait('unit')
+def when_datetime_type_configured_then_used_verbatim() -> None:
+    old = datetime_utils.__mssql_datetime_type
+    datetime_utils.__mssql_datetime_type = 'DATETIME2(6)'
+    try:
+        entity_spec = get_entity_spec(TypeMapperTestEntity)
+        mapper = MSSQLTypeMapper(entity_spec)
+        assert mapper.get_provider_type('dt_datetime') == 'DATETIME2(6)'
+    finally:
+        datetime_utils.__mssql_datetime_type = old
+
+
 @theory
 @inlinedata('min_max_str', 'NCHAR(5)')
 @inlinedata('min_str', 'NVARCHAR(20)')
@@ -88,7 +103,7 @@ def bare_collection_fallbacks() -> None:
 @inlinedata('num_int', 'INT')
 @inlinedata('num_float', 'FLOAT')
 @inlinedata('num_decimal', 'DECIMAL(20,10)')
-@inlinedata('dt_datetime', 'DATETIME2(6)')
+@inlinedata('dt_datetime', 'DATETIMEOFFSET')
 @inlinedata('dt_date', 'DATE')
 @inlinedata('dt_time', 'TIME(6)')
 @inlinedata('dt_timedelta', 'BIGINT')

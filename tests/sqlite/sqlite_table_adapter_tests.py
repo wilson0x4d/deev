@@ -106,6 +106,80 @@ def basic_verification() -> None:
 @fact
 @trait('sqlite')
 @trait('integration')
+def datetime_aware_non_utc_roundtrip() -> None:
+    """Timezone-aware datetimes retain their UTC offset through a roundtrip (stored as TEXT with the offset)."""
+    appsettings = appsettings2.get_configuration()
+    cxnstring = ConnectionString(appsettings.connections.sqlite_test)
+    cxnstring.database = f'deev_test_{uuid4().hex}.db'
+    create_database(cxnstring)
+    try:
+        @entity(table_name='tbl_sl_dtz')
+        class AwareDtEntity:
+            id: int = field(autoincrement=True, primary_key=True, default=0)
+            ts: datetime | None = None
+
+        with connect(cxnstring) as connection:
+            adapter = SQLiteTableAdapter[AwareDtEntity](connection, create_table=True)
+            original = datetime(2024, 1, 15, 12, 30, 45, tzinfo=timezone(timedelta(hours=5)))
+            pk = adapter.create(AwareDtEntity(ts=original))
+            assert pk is not None
+
+            # The underlying storage is TEXT and must retain the offset.
+            cursor = connection.cursor()
+            cursor.execute('SELECT [ts] FROM [tbl_sl_dtz] WHERE [id] = %?', (pk['id'],))
+            stored = cursor.fetchone()
+            assert stored is not None
+            assert '+05:00' in str(stored[0]), f'expected the offset in the stored value, got {stored[0]!r}'
+
+            result = adapter.read(**pk)
+            assert result is not None
+            assert result.ts is not None
+            assert result.ts == original, f'expected the offset to be preserved, got {result.ts!r}'
+    finally:
+        database_path = os.path.dirname(cxnstring.database if cxnstring.server is None else os.path.join(cxnstring.server, cxnstring.database))
+        assert os.path.exists(database_path)
+        shutil.rmtree(database_path)
+        assert not os.path.exists(database_path)
+
+
+@fact
+@trait('sqlite')
+@trait('integration')
+def datetime_naive_roundtrip_treated_as_utc() -> None:
+    """Naive datetimes are treated as UTC, stored with the UTC offset, and read back as timezone-aware."""
+    appsettings = appsettings2.get_configuration()
+    cxnstring = ConnectionString(appsettings.connections.sqlite_test)
+    cxnstring.database = f'deev_test_{uuid4().hex}.db'
+    create_database(cxnstring)
+    try:
+        @entity(table_name='tbl_sl_dtz')
+        class AwareDtEntity:
+            id: int = field(autoincrement=True, primary_key=True, default=0)
+            ts: datetime | None = None
+
+        with connect(cxnstring) as connection:
+            adapter = SQLiteTableAdapter[AwareDtEntity](connection, create_table=True)
+            original = datetime(2024, 1, 15, 12, 30, 45)
+            expected = original.replace(tzinfo=timezone.utc)
+            pk = adapter.create(AwareDtEntity(ts=original))
+            assert pk is not None
+
+            result = adapter.read(**pk)
+            assert result is not None
+            assert result.ts is not None
+            assert result.ts.tzinfo is not None, f'expected an aware datetime, got {result.ts!r}'
+            assert result.ts == expected, f'expected naive to be treated as UTC, got {result.ts!r}'
+            assert result.ts.utcoffset() == timedelta(0), f'expected a UTC offset, got {result.ts!r}'
+    finally:
+        database_path = os.path.dirname(cxnstring.database if cxnstring.server is None else os.path.join(cxnstring.server, cxnstring.database))
+        assert os.path.exists(database_path)
+        shutil.rmtree(database_path)
+        assert not os.path.exists(database_path)
+
+
+@fact
+@trait('sqlite')
+@trait('integration')
 def timedelta_roundtrip() -> None:
     appsettings = appsettings2.get_configuration()
     cxnstring = ConnectionString(appsettings.connections.sqlite_test)

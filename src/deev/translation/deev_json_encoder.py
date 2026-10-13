@@ -1,12 +1,14 @@
 # SPDX-FileCopyrightText: © 2023 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 import json
 import base64
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
+
+from .datetime_utils import ensure_utc_aware
 
 
 def _utc_z(dt: datetime) -> str:
@@ -14,6 +16,19 @@ def _utc_z(dt: datetime) -> str:
     return utc_dt.strftime('%Y-%m-%dT%H:%M:%S') + (
         ('.%06d' % utc_dt.microsecond) if utc_dt.microsecond else ''
     ) + 'Z'
+
+
+def _iso_z(dt: datetime) -> str:
+    """
+    Return an ISO-8601 string for a timezone-aware datetime.
+
+    UTC datetimes are rendered with a ``Z`` suffix; other offsets are rendered
+    with their numeric offset (``+HH:MM``/``-HH:MM``) so that offset
+    information is preserved.
+    """
+    if dt.utcoffset() == timedelta(0):
+        return _utc_z(dt)
+    return dt.isoformat()
 
 
 def _utc_z_time(t: time) -> str:
@@ -49,10 +64,8 @@ class DeevJsonEncoder(json.JSONEncoder):
 
     def __process(self, obj: Any) -> Any:
         if isinstance(obj, datetime):
-            if obj.tzinfo is not None:
-                return f'dt`{_utc_z(obj)}'
-            else:
-                return f'dt`{obj.isoformat()}'
+            # Naive values are treated as UTC; aware values pass through with their offset.
+            return f'dt`{_iso_z(ensure_utc_aware(obj))}'
         elif isinstance(obj, date):
             return f'date`{obj.isoformat()}'
         elif isinstance(obj, time):

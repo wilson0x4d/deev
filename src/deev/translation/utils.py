@@ -11,8 +11,9 @@ from types import NoneType, UnionType
 import inspect
 from typing import Any, Callable, Mapping, Union, get_args, get_origin
 
+from .datetime_utils import assume_utc, ensure_utc_aware, get_mssql_datetime_type
 from .deev_json_decoder import DeevJsonDecoder, _parse_datetime_iso, _parse_time_iso
-from .deev_json_encoder import DeevJsonEncoder, _utc_z, _utc_z_time
+from .deev_json_encoder import DeevJsonEncoder, _iso_z, _utc_z, _utc_z_time
 from ..entities import get_entity_spec
 from uuid import UUID
 
@@ -45,6 +46,35 @@ def __from_json(s: str) -> Any:
             cls=__json_decoder
         )
     )
+
+
+def __apply_datetime_read_policy(dt: datetime, from_sql: bool, from_mssql: bool, from_bson: bool, from_mysql: bool, from_chsql: bool) -> datetime:
+    """
+    Apply the provider-specific read policy for datetime values.
+
+    Naive values are always treated as UTC (tagged via ``replace``).
+    Timezone-aware values depend on the store: stores that can carry the
+    offset (SQLite, MSSQL ``DATETIMEOFFSET``, and the provider-agnostic JSON
+    path) return them unchanged; stores that cannot (MySQL, ClickHouse,
+    MongoDB, and MSSQL with any other ``DEEV__MSSQL__DATETIME_TYPE``) are
+    normalized to UTC (defensively — their drivers return naive values).
+
+    :param dt: The datetime value to normalize.
+    :param from_sql: True when the value came from SQLite.
+    :param from_mssql: True when the value came from SQL Server.
+    :param from_bson: True when the value came from MongoDB.
+    :param from_mysql: True when the value came from MySQL.
+    :param from_chsql: True when the value came from ClickHouse.
+    :return: A timezone-aware datetime.
+    :raises ValueError: If more than one provider flag is specified.
+    """
+    if sum((from_sql, from_mssql, from_bson, from_mysql, from_chsql)) > 1:
+        raise ValueError('Only one of `from_sql`, `from_mssql`, `from_bson`, `from_mysql`, `from_chsql` may be specified.')
+    if from_mssql and get_mssql_datetime_type() != 'DATETIMEOFFSET':
+        return assume_utc(dt)
+    if from_mysql or from_chsql or from_bson:
+        return assume_utc(dt)
+    return ensure_utc_aware(dt)
 
 
 def configure_serialization(  # pragma: no cover
@@ -101,7 +131,7 @@ def deunionize(t: type) -> type:
     return t
 
 
-def to_pyobject(value: Any, hint: type) -> Any:
+def to_pyobject(value: Any, hint: type, *, from_sql: bool = False, from_mssql: bool = False, from_bson: bool = False, from_mysql: bool = False, from_chsql: bool = False) -> Any:
     """
     Convert a database-stored value back to its Python type.
 
@@ -112,8 +142,18 @@ def to_pyobject(value: Any, hint: type) -> Any:
     For container types with element hints (e.g. ``list[date]``, ``dict[str, time]``),
     each element is recursively converted using the appropriate element type hint.
 
+    ``datetime`` values are always returned timezone-aware; the provider flags
+    select the read policy (see :func:`__apply_datetime_read_policy` for the
+    per-provider behavior).  With no flags specified (the JSON path), aware
+    values are treated as UTC.
+
     :param value: The raw value from the database.
     :param hint: The type hint for the field (e.g. ``Optional[str]`` or ``list[date]``).
+    :param from_sql: If True, the value came from SQLite.
+    :param from_mssql: If True, the value came from SQL Server.
+    :param from_bson: If True, the value came from MongoDB.
+    :param from_mysql: If True, the value came from MySQL.
+    :param from_chsql: If True, the value came from ClickHouse.
     :return: The value converted to the appropriate Python type.
     """
     if value in (None, NoneType, 'null', 'NULL'):
@@ -128,14 +168,9 @@ def to_pyobject(value: Any, hint: type) -> Any:
     elif hint == UUID and isinstance(value, str):
         return UUID(value)
     elif hint == datetime and isinstance(value, str):
-        dt = _parse_datetime_iso(value)
-        if dt.tzinfo is not None:
-            return dt.replace(tzinfo=timezone.utc)
-        return dt
+        return __apply_datetime_read_policy(_parse_datetime_iso(value), from_sql, from_mssql, from_bson, from_mysql, from_chsql)
     elif hint == datetime and isinstance(value, datetime):
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value
+        return __apply_datetime_read_policy(value, from_sql, from_mssql, from_bson, from_mysql, from_chsql)
     elif hint == date and isinstance(value, datetime):
         return value.date()
     elif hint == date and isinstance(value, str):
@@ -202,10 +237,8 @@ def _to_json_value(value: Any) -> Any:
     if value in (None, NoneType, 'null', 'NULL'):
         return None
     if isinstance(value, datetime):
-        if value.tzinfo is not None:
-            return _utc_z(value)
-        else:
-            return value.isoformat()
+        # Naive values are treated as UTC; aware values keep their offset (UTC renders with 'Z').
+        return _iso_z(ensure_utc_aware(value))
     elif isinstance(value, date):
         return value.isoformat()
     elif isinstance(value, time):
@@ -234,7 +267,9 @@ def to_bsonobject(value: Any, hint: type | None = None) -> Any:
     Unlike :func:`_to_json_value`, this leaves types that BSON supports natively
     as their Python equivalents — PyMongo handles the rest:
 
-    - ``datetime.datetime`` is passed through as-is (BSON native Date, 8 bytes)
+    - ``datetime.datetime`` is normalized to aware UTC (BSON stores the UTC instant;
+      timezone-aware values are converted via ``astimezone`` and naive values are
+      treated as UTC)
     - ``datetime.date`` is converted to a midnight ``datetime`` for storage
     - ``datetime.time`` is converted to an ISO 8601 string ("HH:MM:SS.ffffff")
     - ``uuid.UUID`` is left as a Python ``UUID`` object (BSON binary)
@@ -252,7 +287,7 @@ def to_bsonobject(value: Any, hint: type | None = None) -> Any:
     if value in (None, NoneType, 'null', 'NULL'):
         return None
     if isinstance(value, datetime):
-        return value
+        return assume_utc(value)
     elif isinstance(value, date):
         return datetime(value.year, value.month, value.day)
     elif isinstance(value, time):
@@ -287,17 +322,17 @@ def to_bsonobject(value: Any, hint: type | None = None) -> Any:
     return value
 
 
-def to_sqlobject(value: Any, hint: type) -> Any:
+def __to_sql_object_impl(value: Any, hint: type, dt_to_store: Callable[[datetime], datetime], uuid_to_store: Callable[[UUID], str]) -> Any:
     """
-    Convert a Python value to a SQL-compatible representation.
-
-    Handles conversion of ``datetime`` to UTC ISO strings, ``UUID`` to hex,
-    ``dict``/``list``/``set``/``tuple`` to JSON, ``bool`` to int, ``timedelta`` to microseconds,
-    ``Enum`` to value, and ``Decimal`` to string.
+    Shared implementation for the SQL-family object converters
+    (:func:`to_sqlobject`, :func:`to_mysql_object`, :func:`to_chsql_object`,
+    :func:`to_mssql_object`).
 
     :param value: The Python value to convert.
     :param hint: The type hint for the field.
-    :return: A SQL-compatible value (e.g. datetime -> ISO string, dict -> JSON).
+    :param dt_to_store: The datetime policy for the target DBMS.
+    :param uuid_to_store: The UUID rendering for the target DBMS.
+    :return: The DBMS-compatible value.
     """
     if value in (None, NoneType, 'null', 'NULL'):
         return None
@@ -306,12 +341,9 @@ def to_sqlobject(value: Any, hint: type) -> Any:
         value = __to_json(value)
         return value if value != 'null' and value != '' else None
     elif hint == UUID:
-        return value.hex
+        return uuid_to_store(value)
     elif hint == datetime:
-        if value.tzinfo is not None:
-            return value.astimezone(timezone.utc)
-        else:
-            return value.replace(tzinfo=timezone.utc)
+        return dt_to_store(value)
     elif hint == date:
         return value.isoformat()
     elif hint == time:
@@ -326,6 +358,77 @@ def to_sqlobject(value: Any, hint: type) -> Any:
         return value.value
     else:
         return value
+
+
+def to_sqlobject(value: Any, hint: type) -> Any:
+    """
+    Convert a Python value to a SQLite-compatible representation.
+
+    ``datetime`` values are stored with offset information preserved:
+    timezone-aware values pass through unchanged and naive values are
+    treated as UTC (tagged via ``replace``, no change to the instant).
+
+    Also handles conversion of ``UUID`` to hex, ``dict``/``list``/``set``/``tuple`` to JSON,
+    ``bool`` to int, ``timedelta`` to microseconds, ``Enum`` to value, and ``Decimal`` to string.
+
+    :param value: The Python value to convert.
+    :param hint: The type hint for the field.
+    :return: A SQLite-compatible value (e.g. datetime -> aware datetime, dict -> JSON).
+    """
+    return __to_sql_object_impl(value, hint, ensure_utc_aware, lambda uuid_value: uuid_value.hex)
+
+
+def to_mysql_object(value: Any, hint: type) -> Any:
+    """
+    Convert a Python value to a MySQL-compatible representation.
+
+    MySQL cannot store offset information, so ``datetime`` values are stored
+    as UTC: timezone-aware values are converted via ``astimezone`` and naive
+    values are treated as UTC (tagged via ``replace``, no change to the
+    instant).
+
+    Also handles conversion of ``UUID`` to hex, ``dict``/``list``/``set``/``tuple`` to JSON,
+    ``bool`` to int, ``timedelta`` to microseconds, ``Enum`` to value, and ``Decimal`` to string.
+
+    :param value: The Python value to convert.
+    :param hint: The type hint for the field.
+    :return: A MySQL-compatible value (e.g. datetime -> UTC datetime, dict -> JSON).
+    """
+    return __to_sql_object_impl(value, hint, assume_utc, lambda uuid_value: uuid_value.hex)
+
+
+def to_chsql_object(value: Any, hint: type) -> Any:
+    """
+    Convert a Python value to a ClickHouse-compatible representation.
+
+    ClickHouse cannot store offset information with plain ``DateTime64``
+    columns, so ``datetime`` values are stored as UTC: timezone-aware values
+    are converted via ``astimezone`` and naive values are treated as UTC
+    (tagged via ``replace``, no change to the instant).
+
+    Also handles conversion of ``UUID`` to hex, ``dict``/``list``/``set``/``tuple`` to JSON,
+    ``bool`` to int, ``timedelta`` to microseconds, ``Enum`` to value, and ``Decimal`` to string.
+
+    :param value: The Python value to convert.
+    :param hint: The type hint for the field.
+    :return: A ClickHouse-compatible value (e.g. datetime -> UTC datetime, dict -> JSON).
+    """
+    return __to_sql_object_impl(value, hint, assume_utc, lambda uuid_value: uuid_value.hex)
+
+
+def __mssql_datetime_write_policy(dt: datetime) -> datetime:
+    """
+    Select the MSSQL write policy for a datetime value.
+
+    With the default ``DATETIMEOFFSET`` storage type, timezone-aware values
+    pass through unchanged (offsets are stored) and naive values are tagged
+    as UTC (no change to the instant); with any other type configured via
+    ``DEEV__MSSQL__DATETIME_TYPE``, all values are normalized to UTC (naive
+    values are treated as UTC).
+    """
+    if get_mssql_datetime_type() == 'DATETIMEOFFSET':
+        return ensure_utc_aware(dt)
+    return assume_utc(dt)
 
 
 def to_mssql_object(value: Any, hint: type) -> Any:
@@ -335,7 +438,14 @@ def to_mssql_object(value: Any, hint: type) -> Any:
     Like :func:`to_sqlobject` but for SQL Server's ``UNIQUEIDENTIFIER`` type,
     which stores UUIDs in standard hyphenated format (``str(uuid)``) instead of hex.
 
-    Handles conversion of ``datetime`` to UTC datetime, ``UUID`` to hyphenated string,
+    The ``datetime`` policy depends on the ``DEEV__MSSQL__DATETIME_TYPE``
+    setting: with the default ``DATETIMEOFFSET`` type, timezone-aware values
+    pass through unchanged (offsets are stored) and naive values are tagged
+    as UTC; with any other type (e.g. ``DATETIME2``), all values are
+    normalized to UTC.  See
+    :func:`deev.translation.datetime_utils.get_mssql_datetime_type`.
+
+    Also handles conversion of ``UUID`` to hyphenated string,
     ``dict``/``list``/``set``/``tuple`` to JSON, ``bool`` to int, ``timedelta`` to microseconds,
     ``Enum`` to value, and ``Decimal`` to string.
 
@@ -343,46 +453,25 @@ def to_mssql_object(value: Any, hint: type) -> Any:
     :param hint: The type hint for the field.
     :return: A SQL Server-compatible value.
     """
-    if value in (None, NoneType, 'null', 'NULL'):
-        return None
-    hint = deunionize(hint)
-    if get_origin(hint) in (Mapping, dict, list, set, tuple):
-        value = __to_json(value)
-        return value if value != 'null' and value != '' else None
-    elif hint == UUID:
-        return str(value)
-    elif hint == datetime:
-        if value.tzinfo is not None:
-            return value.astimezone(timezone.utc)
-        else:
-            return value.replace(tzinfo=timezone.utc)
-    elif hint == date:
-        return value.isoformat()
-    elif hint == time:
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return _utc_z_time(value)
-    elif hint == timedelta:
-        return value.days * 86_400_000_000 + value.seconds * 1_000_000 + value.microseconds
-    elif hint == bool:
-        return int(value is True)
-    elif inspect.isclass(hint) and issubclass(hint, Enum):
-        return value.value
-    else:
-        return value
+    return __to_sql_object_impl(value, hint, __mssql_datetime_write_policy, str)
 
 
-def splat(entity: object, attrs: list[str] | None = None, to_sql: bool = False, to_bson: bool = False, to_mssql: bool = False) -> dict[str, Any]:
+def splat(entity: object, attrs: list[str] | None = None, to_sql: bool = False, to_bson: bool = False, to_mssql: bool = False, to_mysql: bool = False, to_chsql: bool = False) -> dict[str, Any]:
     """
     Splatter entity attributes/fields into a dict.
 
     :param entity: The entity to splatter.
     :param attrs: Specify which attrs/fields to splatter, otherwise splatter all.
-    :param to_sql: If True, destination values need to be mapped to sql objects.
+    :param to_sql: If True, destination values need to be mapped to SQLite-compatible objects.
     :param to_bson: If True, destination values need to be mapped to bson-compatible objects (for MongoDB).
     :param to_mssql: If True, destination values need to be mapped to SQL Server objects.
+    :param to_mysql: If True, destination values need to be mapped to MySQL-compatible objects.
+    :param to_chsql: If True, destination values need to be mapped to ClickHouse-compatible objects.
     :return: The resulting splat.
+    :raises ValueError: If more than one destination mapping flag is specified.
     """
+    if sum((to_sql, to_bson, to_mssql, to_mysql, to_chsql)) > 1:
+        raise ValueError('Only one of `to_sql`, `to_bson`, `to_mssql`, `to_mysql`, `to_chsql` may be specified.')
     result = dict[str, Any]()
     t = type(entity)
     entity_spec = get_entity_spec(t)
@@ -403,6 +492,10 @@ def splat(entity: object, attrs: list[str] | None = None, to_sql: bool = False, 
                     result[attr_name] = to_mssql_object(attr_value, attr_hint)
                 elif to_sql:
                     result[attr_name] = to_sqlobject(attr_value, attr_hint)
+                elif to_mysql:
+                    result[attr_name] = to_mysql_object(attr_value, attr_hint)
+                elif to_chsql:
+                    result[attr_name] = to_chsql_object(attr_value, attr_hint)
                 elif to_bson:
                     result[attr_name] = to_bsonobject(attr_value, attr_hint)
                 else:
@@ -412,18 +505,23 @@ def splat(entity: object, attrs: list[str] | None = None, to_sql: bool = False, 
     return result
 
 
-def hydrate(entity: object | type, data: dict[str, Any], attrs: list[str] | None = None, from_sql: bool = False, from_mssql: bool = False, from_bson: bool = False) -> Any:
+def hydrate(entity: object | type, data: dict[str, Any], attrs: list[str] | None = None, from_sql: bool = False, from_mssql: bool = False, from_bson: bool = False, from_mysql: bool = False, from_chsql: bool = False) -> Any:
     """
     Hydrates an entity in-place from a "splat."
 
     :param entity: The entity to hydrate, or a type specifier of an entity to create and then hydrate.
     :param data: The data to hydrate.
     :param attrs: Specify which attrs/props to hydrate, otherwise hydrates all.
-    :param from_sql: If True, source values are presumed to be sql objects that need to be mapped to python objects.
+    :param from_sql: If True, source values are presumed to be SQLite objects that need to be mapped to python objects.
     :param from_mssql: If True, source values are presumed to be SQL Server objects that need to be mapped to python objects.
     :param from_bson: If True, source values are presumed to be BSON objects from MongoDB (UUIDs are already UUID objects).
+    :param from_mysql: If True, source values are presumed to be MySQL objects that need to be mapped to python objects.
+    :param from_chsql: If True, source values are presumed to be ClickHouse objects that need to be mapped to python objects.
     :return: The original entity, hydrated.
+    :raises ValueError: If more than one source mapping flag is specified.
     """
+    if sum((from_sql, from_mssql, from_bson, from_mysql, from_chsql)) > 1:
+        raise ValueError('Only one of `from_sql`, `from_mssql`, `from_bson`, `from_mysql`, `from_chsql` may be specified.')
     t: type
     if isinstance(entity, type):
         t = entity
@@ -440,7 +538,7 @@ def hydrate(entity: object | type, data: dict[str, Any], attrs: list[str] | None
                 continue
         hint = entity_spec.attrs.get(attr_name, None)
         if hint is not None:
-            setattr(entity, attr_name, to_pyobject(attr_value, hint))
+            setattr(entity, attr_name, to_pyobject(attr_value, hint, from_sql=from_sql, from_mssql=from_mssql, from_bson=from_bson, from_mysql=from_mysql, from_chsql=from_chsql))
     return entity
 
 
@@ -450,7 +548,9 @@ __all__ = [
     'hydrate',
     'splat',
     'to_bsonobject',
+    'to_chsql_object',
     'to_mssql_object',
+    'to_mysql_object',
     'to_pyobject',
     'to_sqlobject',
 ]
