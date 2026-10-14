@@ -6,8 +6,11 @@ from __future__ import annotations
 import hanaro
 import logging
 from mssql_python import Cursor
+from types import TracebackType
 from typing import (
     Any,
+    Literal,
+    Self,
     Sequence,
     cast,
 )
@@ -114,6 +117,19 @@ class MSSQLProxyCursor(DbCursor):
     def close(self) -> None:
         """Close the cursor."""
         self.__cursor.close()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+        /
+    ) -> Literal[False]:
+        self.close()
+        return False
 
 
 __all__ = ['MSSQLProxyCursor']

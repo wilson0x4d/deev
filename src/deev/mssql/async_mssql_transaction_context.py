@@ -119,8 +119,11 @@ class AsyncMSSQLTransactionContext(AsyncDbTransactionContext):
 
     async def execute_reader(self, sql: str, parameters: DbParameters | None = None) -> AsyncGenerator[tuple[Any, ...], None]:  # type: ignore[override]
         sync_gen = self.__get_inner_ctx().execute_reader(sql, parameters)
-        for row in sync_gen:
-            yield row
+        try:
+            for row in sync_gen:
+                yield row
+        finally:
+            sync_gen.close()
 
     async def execute_scalar(self, sql: str, parameters: DbParameters | None = None) -> Any:
         return self.__get_inner_ctx().execute_scalar(sql, parameters)

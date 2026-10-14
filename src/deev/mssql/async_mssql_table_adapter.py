@@ -131,8 +131,11 @@ class AsyncMSSQLTableAdapter(AsyncDbTableAdapter[TEntity]):
     ) -> AsyncGenerator[TEntity, None]:
         await self.__deferred_init()
         sync_gen = self.__sync_adapter.query(where, parameters, orderby, limit)
-        for e in sync_gen:
-            yield e
+        try:
+            for e in sync_gen:
+                yield e
+        finally:
+            sync_gen.close()
 
     async def commit(self) -> None:
         await self.__deferred_init()

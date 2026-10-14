@@ -79,7 +79,10 @@ class MSSQLTableAdapter(Generic[TEntity]):
         :param parameters: Optional parameters to bind to the statement.
         """
         cursor = self.__context.cursor()
-        cursor.execute(sql, parameters)
+        try:
+            cursor.execute(sql, parameters)
+        finally:
+            cursor.close()
 
     def __get_pyobject(self, key: str, value: Any) -> Any:
         """
@@ -142,11 +145,14 @@ class MSSQLTableAdapter(Generic[TEntity]):
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         # Check if table already exists (SQL Server has no IF NOT EXISTS on CREATE TABLE)
         cursor = self.__context.cursor()
-        cursor.execute(
-            "SELECT COUNT(*) FROM sys.tables WHERE name = %? AND schema_name(schema_id) = 'dbo'",
-            (table_name,)
-        )
-        result = cursor.fetchone()
+        try:
+            cursor.execute(
+                "SELECT COUNT(*) FROM sys.tables WHERE name = %? AND schema_name(schema_id) = 'dbo'",
+                (table_name,)
+            )
+            result = cursor.fetchone()
+        finally:
+            cursor.close()
         if result is not None and result[0] == 0:
             ddl = ddl_generator.generate_table_ddl(entity_spec=self.__entity_spec, table_name=self.__table_name)
             for stmt in ddl:
@@ -190,25 +196,28 @@ class MSSQLTableAdapter(Generic[TEntity]):
         parms = ', '.join(['%?' for _ in data.keys()])
         cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
-        if self.__entity_spec.has_autoincrement:
-            sql = f'INSERT INTO [{table_name}] ({column_names}) OUTPUT INSERTED.[{self.__entity_spec.primary_key[0]}] VALUES ({parms})'
-            parameters = tuple(data.values())
-            cursor.execute(sql, parameters)
-            v = cursor.fetchone()
-            if v is not None:
-                pk_values[self.__entity_spec.primary_key[0]] = self.__get_pyobject(self.__entity_spec.primary_key[0], int(v[0]))
+        try:
+            if self.__entity_spec.has_autoincrement:
+                sql = f'INSERT INTO [{table_name}] ({column_names}) OUTPUT INSERTED.[{self.__entity_spec.primary_key[0]}] VALUES ({parms})'
+                parameters = tuple(data.values())
+                cursor.execute(sql, parameters)
+                v = cursor.fetchone()
+                if v is not None:
+                    pk_values[self.__entity_spec.primary_key[0]] = self.__get_pyobject(self.__entity_spec.primary_key[0], int(v[0]))
+                else:
+                    raise Exception('Unsupported NULL encountered in primary key.')
             else:
-                raise Exception('Unsupported NULL encountered in primary key.')
-        else:
-            sql = f'INSERT INTO [{table_name}] ({column_names}) VALUES ({parms})'
-            parameters = tuple(data.values())
-            cursor.execute(sql, parameters)
-        # For non-autoincrement PKs, fetch the inserted row's PK value
-        if not pk_values:
-            raise DbError('No primary key values provided for non-autoincrement entity.')
-        cursor.execute(f'SELECT TOP 1 1 FROM [{table_name}] WHERE {" AND ".join([f"[{k}] = ?" for k in pk_values.keys()])}', tuple(pk_values.values()))
-        if cursor.fetchone() is None:
-            raise DbError('Failed to verify created entity exists.')
+                sql = f'INSERT INTO [{table_name}] ({column_names}) VALUES ({parms})'
+                parameters = tuple(data.values())
+                cursor.execute(sql, parameters)
+            # For non-autoincrement PKs, fetch the inserted row's PK value
+            if not pk_values:
+                raise DbError('No primary key values provided for non-autoincrement entity.')
+            cursor.execute(f'SELECT TOP 1 1 FROM [{table_name}] WHERE {" AND ".join([f"[{k}] = ?" for k in pk_values.keys()])}', tuple(pk_values.values()))
+            if cursor.fetchone() is None:
+                raise DbError('Failed to verify created entity exists.')
+        finally:
+            cursor.close()
         return pk_values
 
     def read(self, **kwargs: Any) -> TEntity | None:
@@ -229,19 +238,22 @@ class MSSQLTableAdapter(Generic[TEntity]):
         cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'SELECT {self.__column_names} FROM [{table_name}] WHERE {where}'
-        cursor.execute(sql, tuple(keys))
-        data = cursor.fetchone()
-        if data:
-            if cursor.description is None:
-                raise DbError('Provider did not provide a description.')
-            result = {}
-            for kvp in zip(cursor.description, data):
-                value = self.__get_pyobject(kvp[0][0], kvp[1])
-                if value is not None:
-                    result[kvp[0][0]] = value
-            return hydrate(self.__entity_spec.entity_type(), result, from_mssql=True)
-        else:
-            return None
+        try:
+            cursor.execute(sql, tuple(keys))
+            data = cursor.fetchone()
+            if data:
+                if cursor.description is None:
+                    raise DbError('Provider did not provide a description.')
+                result = {}
+                for kvp in zip(cursor.description, data):
+                    value = self.__get_pyobject(kvp[0][0], kvp[1])
+                    if value is not None:
+                        result[kvp[0][0]] = value
+                return hydrate(self.__entity_spec.entity_type(), result, from_mssql=True)
+            else:
+                return None
+        finally:
+            cursor.close()
 
     def update(self, entity: TEntity) -> None:
         """
@@ -266,7 +278,10 @@ class MSSQLTableAdapter(Generic[TEntity]):
         parms = [v for k, v in entity_data.items() if k not in self.__entity_spec.primary_key]
         cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
-        cursor.execute(f'UPDATE [{table_name}] SET {_set} WHERE {where}', tuple(parms) + tuple(keys))
+        try:
+            cursor.execute(f'UPDATE [{table_name}] SET {_set} WHERE {where}', tuple(parms) + tuple(keys))
+        finally:
+            cursor.close()
 
     def delete(self, **kwargs: Any) -> None:
         """
@@ -285,7 +300,10 @@ class MSSQLTableAdapter(Generic[TEntity]):
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'DELETE FROM [{table_name}] WHERE {where}'
         cursor = self.__context.cursor()
-        cursor.execute(sql, tuple(keys))
+        try:
+            cursor.execute(sql, tuple(keys))
+        finally:
+            cursor.close()
 
     def exists(self, **kwargs: Any) -> bool:
         """
@@ -304,8 +322,11 @@ class MSSQLTableAdapter(Generic[TEntity]):
         keys = primary_key.values()
         cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
-        cursor.execute(f'SELECT TOP 1 1 FROM [{table_name}] WHERE {where}', tuple(keys))
-        return cursor.fetchone() is not None
+        try:
+            cursor.execute(f'SELECT TOP 1 1 FROM [{table_name}] WHERE {where}', tuple(keys))
+            return cursor.fetchone() is not None
+        finally:
+            cursor.close()
 
     def upsert(self, entity: TEntity) -> dict[str, Any]:
         """
@@ -350,13 +371,16 @@ class MSSQLTableAdapter(Generic[TEntity]):
                 all_parameters = update_parameters + where_parameters
             else:
                 all_parameters = update_parameters
-            if len(where) > 0:
-                cursor.execute(f'UPDATE [{table_name}] SET {update} WHERE {where}', all_parameters)
-            if len(where) == 0 or cursor.rowcount == 0:
-                insert_cols = ', '.join([f'[{k}]' for k in entity_data.keys()])
-                insert_values = ', '.join(['%?' for _ in entity_data.keys()])
-                insert_parameters = tuple(entity_data.values())
-                cursor.execute(f'INSERT INTO [{table_name}] ({insert_cols}) VALUES ({insert_values})', insert_parameters)
+            try:
+                if len(where) > 0:
+                    cursor.execute(f'UPDATE [{table_name}] SET {update} WHERE {where}', all_parameters)
+                if len(where) == 0 or cursor.rowcount == 0:
+                    insert_cols = ', '.join([f'[{k}]' for k in entity_data.keys()])
+                    insert_values = ', '.join(['%?' for _ in entity_data.keys()])
+                    insert_parameters = tuple(entity_data.values())
+                    cursor.execute(f'INSERT INTO [{table_name}] ({insert_cols}) VALUES ({insert_values})', insert_parameters)
+            finally:
+                cursor.close()
             return primary_key
 
     def query(
@@ -389,20 +413,23 @@ class MSSQLTableAdapter(Generic[TEntity]):
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'SELECT {top_clause}{self.__column_names} FROM [{table_name}]{where_clause}{orderby_clause}'
         cursor = self.__context.cursor()
-        cursor.execute(sql, tuple(parameters))
-        if cursor.description is None:
-            raise DbError('cursor missing required descriptor')
-        row = cursor.fetchone()
-        while row is not None:
+        try:
+            cursor.execute(sql, tuple(parameters))
             if cursor.description is None:
-                raise DbError('Provider did not provide a description.')
-            result = {}
-            for kvp in zip(cursor.description, row):
-                value = self.__get_pyobject(kvp[0][0], kvp[1])
-                if value is not None:
-                    result[kvp[0][0]] = value
-            yield hydrate(self.__entity_spec.entity_type(), result, from_mssql=True)
+                raise DbError('cursor missing required descriptor')
             row = cursor.fetchone()
+            while row is not None:
+                if cursor.description is None:
+                    raise DbError('Provider did not provide a description.')
+                result = {}
+                for kvp in zip(cursor.description, row):
+                    value = self.__get_pyobject(kvp[0][0], kvp[1])
+                    if value is not None:
+                        result[kvp[0][0]] = value
+                yield hydrate(self.__entity_spec.entity_type(), result, from_mssql=True)
+                row = cursor.fetchone()
+        finally:
+            cursor.close()
 
 
 __all__ = ['MSSQLTableAdapter']

@@ -340,10 +340,14 @@ class MSSQLTransactionContext(DbTransactionContext):
         :raises DbError: If the transaction has already been committed or rolled back.
         """
         cursor = self.execute(sql, parameters)
-        row = cursor.fetchone()
-        while row is not None:
-            yield row
+        try:
             row = cursor.fetchone()
+            while row is not None:
+                yield row
+                row = cursor.fetchone()
+        finally:
+            cursor.close()
+            self.__cursor = None
 
     def execute_scalar(self, sql: str, parameters: DbParameters | None = None) -> Any:
         """
@@ -360,6 +364,9 @@ class MSSQLTransactionContext(DbTransactionContext):
             return None if row is None else row[0]
         except (mssql_python.ProgrammingError, mssql_python.InterfaceError):
             return cursor.rowcount
+        finally:
+            cursor.close()
+            self.__cursor = None
 
     def execute_script(self, sql: str, raw: bool = False) -> None:
         """

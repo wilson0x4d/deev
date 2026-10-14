@@ -56,7 +56,7 @@ async def sqlite_connect_async_rejects_unknown_driver_kwargs() -> None:
                 lambda: asyncio.run(connect_async(_sqlite_connectionstring(tmpdir), bogus_kwarg=1))
             ))
 
-        result = _run()
+        result = await asyncio.to_thread(_run)
         assert result is True, 'connect_async should raise TypeError for unknown driver kwargs'
 
 
