@@ -185,7 +185,7 @@ class TestSplatWithToMssql:
 class TestHydrateWithFromMssql:
     @fact
     @trait('unit')
-    def when_hydrate_from_mssql_uuid_string_becomes_uuid(self) -> None:
+    def when_hydrate_mssql_uuid_string_becomes_uuid(self) -> None:
         @entity
         class Entity:
             id: int = field(primary_key=True)
@@ -197,7 +197,7 @@ class TestHydrateWithFromMssql:
 
     @fact
     @trait('unit')
-    def when_hydrate_from_mssql_uuid_hyphenated_string_becomes_uuid(self) -> None:
+    def when_hydrate_mssql_uuid_hyphenated_string_becomes_uuid(self) -> None:
         @entity
         class Entity:
             id: int = field(primary_key=True)
@@ -211,7 +211,7 @@ class TestHydrateWithFromMssql:
 
     @fact
     @trait('unit')
-    def when_hydrate_from_mssql_uuid_hex_string_becomes_uuid(self) -> None:
+    def when_hydrate_mssql_uuid_hex_string_becomes_uuid(self) -> None:
         """to_pyobject accepts both hyphenated and hex UUID strings — this covers the hex path."""
         @entity
         class Entity:
@@ -226,7 +226,7 @@ class TestHydrateWithFromMssql:
 
     @fact
     @trait('unit')
-    def when_hydrate_from_mssql_optional_uuid_is_none(self) -> None:
+    def when_hydrate_mssql_optional_uuid_is_none(self) -> None:
         @entity
         class Entity:
             id: int = field(primary_key=True)
@@ -240,7 +240,7 @@ class TestHydrateWithFromMssql:
 class TestFullRoundTrip:
     @fact
     @trait('unit')
-    def uuid_roundtrip_splat_to_mssql_then_hydrate_from_mssql(self) -> None:
+    def uuid_roundtrip_splat_mssql_then_hydrate_mssql(self) -> None:
         @entity
         class Entity:
             id: int = field(primary_key=True)

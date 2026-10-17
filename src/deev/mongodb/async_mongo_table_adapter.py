@@ -17,7 +17,7 @@ from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
 from ..common.db_type_mapper import DbTypeMapper
 from ..entities import EntitySpec, get_entity_spec
-from ..translation import hydrate, splat, to_pyobject
+from ..translation import hydrate_mongodb, splat_mongodb, to_pyobject
 from ..translation.utils import to_bsonobject
 from .utils import parse_sql_where
 from .mongo_type_mapper import MongoTypeMapper
@@ -211,7 +211,7 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         """
         self.__deferred_init()
         data = (
-            splat(entity, to_sql=False, to_bson=True)  # type: ignore[arg-type]
+            splat_mongodb(entity)  # type: ignore[arg-type]
             if entity is not None
             else dict[str, Any]()
         )
@@ -259,11 +259,11 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         if raw_doc is None:
             return None
         doc = {k: v for k, v in raw_doc.items() if k != '_id'}
-        return hydrate(self.__entity_spec.entity_type, doc, from_bson=True)  # type: ignore[arg-type]
+        return hydrate_mongodb(self.__entity_spec.entity_type, doc)  # type: ignore[arg-type]
 
     async def update(self, entity: TEntity) -> None:
         self.__deferred_init()
-        entity_data = splat(entity, to_sql=False, to_bson=True)  # type: ignore[arg-type]
+        entity_data = splat_mongodb(entity)  # type: ignore[arg-type]
         primary_key = {
             k: v
             for k, v in entity_data.items()
@@ -296,7 +296,7 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
 
     async def upsert(self, entity: TEntity) -> dict[str, Any]:
         self.__deferred_init()
-        data = splat(entity, to_sql=False, to_bson=True)  # type: ignore[arg-type]
+        data = splat_mongodb(entity)  # type: ignore[arg-type]
         primary_key = {
             k: v
             for k, v in data.items()
@@ -359,7 +359,7 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
             cursor = cursor.limit(limit)
         async for result in cursor:
             doc = {k: v for k, v in result.items() if k != '_id'}
-            yield hydrate(self.__entity_spec.entity_type, doc, from_bson=True)  # type: ignore[arg-type]
+            yield hydrate_mongodb(self.__entity_spec.entity_type, doc)  # type: ignore[arg-type]
 
 
 __all__ = ['AsyncMongoTableAdapter']

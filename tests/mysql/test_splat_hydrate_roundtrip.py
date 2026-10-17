@@ -19,7 +19,7 @@ class Color(Enum):
 
 
 @fact
-def splat_to_dict_serializes_uuid_to_string_for_json() -> None:
+def splat_dict_serializes_uuid_to_string_for_json() -> None:
     """Verify splat converts UUID to string so the dict is JSON-serializable."""
 
     @entity
@@ -34,7 +34,7 @@ def splat_to_dict_serializes_uuid_to_string_for_json() -> None:
 
 
 @fact
-def splat_to_dict_serializes_datetime_to_iso_for_json() -> None:
+def splat_dict_serializes_datetime_to_iso_for_json() -> None:
     """Verify splat converts datetime to ISO string so the dict is JSON-serializable."""
 
     @entity
@@ -49,7 +49,7 @@ def splat_to_dict_serializes_datetime_to_iso_for_json() -> None:
 
 
 @fact
-def splat_to_dict_serializes_decimal_to_string_for_json() -> None:
+def splat_dict_serializes_decimal_to_string_for_json() -> None:
     """Verify splat converts Decimal to string so the dict is JSON-serializable."""
 
     @entity
@@ -64,7 +64,7 @@ def splat_to_dict_serializes_decimal_to_string_for_json() -> None:
 
 
 @fact
-def splat_to_dict_serializes_enum_to_value_for_json() -> None:
+def splat_dict_serializes_enum_to_value_for_json() -> None:
     """Verify splat converts Enum members to their value for JSON."""
 
     @entity
@@ -143,7 +143,7 @@ def json_roundtrip_splat_dict_preserves_decimal() -> None:
 
 
 @fact
-def hydrate_from_dict_reconstructs_uuid_from_string() -> None:
+def hydrate_dict_reconstructs_uuid_from_string() -> None:
     """hydrate should convert string UUID back to UUID object."""
 
     @entity
@@ -161,7 +161,7 @@ def hydrate_from_dict_reconstructs_uuid_from_string() -> None:
 
 
 @fact
-def hydrate_from_dict_reconstructs_datetime_from_string() -> None:
+def hydrate_dict_reconstructs_datetime_from_string() -> None:
     """hydrate should convert ISO string datetime back to datetime object."""
 
     @entity
@@ -178,7 +178,7 @@ def hydrate_from_dict_reconstructs_datetime_from_string() -> None:
 
 
 @fact
-def hydrate_from_dict_reconstructs_decimal_from_string() -> None:
+def hydrate_dict_reconstructs_decimal_from_string() -> None:
     """hydrate should convert string Decimal back to Decimal object."""
 
     @entity
@@ -324,7 +324,7 @@ def splat_dict_contains_only_mapped_fields() -> None:
 
 
 @fact
-def splat_to_dict_serializes_timedelta_to_microseconds_int() -> None:
+def splat_dict_serializes_timedelta_to_microseconds_int() -> None:
     """Verify splat converts timedelta to microseconds as int for JSON."""
 
     @entity
@@ -362,7 +362,7 @@ def json_roundtrip_splat_dict_preserves_timedelta() -> None:
 
 
 @fact
-def hydrate_from_dict_reconstructs_timedelta_from_int() -> None:
+def hydrate_dict_reconstructs_timedelta_from_int() -> None:
     """hydrate should convert microseconds int back to timedelta object."""
 
     @entity

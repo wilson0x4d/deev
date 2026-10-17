@@ -456,6 +456,162 @@ def to_mssql_object(value: Any, hint: type) -> Any:
     return __to_sql_object_impl(value, hint, __mssql_datetime_write_policy, str)
 
 
+def splat_mssql(entity: object, attrs: list[str] | None = None) -> dict[str, Any]:
+    """
+    Splatter entity attributes/fields into a dict, mapping values to SQL Server-compatible objects (see :func:`to_mssql_object`).
+
+    :param entity: The entity to splatter.
+    :param attrs: Specify which attrs/fields to splatter, otherwise splatter all.
+    :return: The resulting splat.
+    """
+    result = dict[str, Any]()
+    t = type(entity)
+    entity_spec = get_entity_spec(t)
+    for attr_name, attr_hint in entity_spec.attrs.items():
+        if attrs is not None and attr_name not in attrs:
+            continue
+        field_spec = entity_spec.fields.get(attr_name, None)
+        if field_spec is not None:
+            if field_spec.mapped is False:
+                continue
+            if hasattr(entity, attr_name):
+                attr_value = getattr(entity, attr_name)
+                result[attr_name] = to_mssql_object(attr_value, attr_hint)
+            elif field_spec.nullable:
+                result[attr_name] = None
+    return result
+
+
+def splat_sqlite(entity: object, attrs: list[str] | None = None) -> dict[str, Any]:
+    """
+    Splatter entity attributes/fields into a dict, mapping values to SQLite-compatible objects (see :func:`to_sqlobject`).
+
+    :param entity: The entity to splatter.
+    :param attrs: Specify which attrs/fields to splatter, otherwise splatter all.
+    :return: The resulting splat.
+    """
+    result = dict[str, Any]()
+    t = type(entity)
+    entity_spec = get_entity_spec(t)
+    for attr_name, attr_hint in entity_spec.attrs.items():
+        if attrs is not None and attr_name not in attrs:
+            continue
+        field_spec = entity_spec.fields.get(attr_name, None)
+        if field_spec is not None:
+            if field_spec.mapped is False:
+                continue
+            if hasattr(entity, attr_name):
+                attr_value = getattr(entity, attr_name)
+                result[attr_name] = to_sqlobject(attr_value, attr_hint)
+            elif field_spec.nullable:
+                result[attr_name] = None
+    return result
+
+
+def splat_mysql(entity: object, attrs: list[str] | None = None) -> dict[str, Any]:
+    """
+    Splatter entity attributes/fields into a dict, mapping values to MySQL-compatible objects (see :func:`to_mysql_object`).
+
+    :param entity: The entity to splatter.
+    :param attrs: Specify which attrs/fields to splatter, otherwise splatter all.
+    :return: The resulting splat.
+    """
+    result = dict[str, Any]()
+    t = type(entity)
+    entity_spec = get_entity_spec(t)
+    for attr_name, attr_hint in entity_spec.attrs.items():
+        if attrs is not None and attr_name not in attrs:
+            continue
+        field_spec = entity_spec.fields.get(attr_name, None)
+        if field_spec is not None:
+            if field_spec.mapped is False:
+                continue
+            if hasattr(entity, attr_name):
+                attr_value = getattr(entity, attr_name)
+                result[attr_name] = to_mysql_object(attr_value, attr_hint)
+            elif field_spec.nullable:
+                result[attr_name] = None
+    return result
+
+
+def splat_chsql(entity: object, attrs: list[str] | None = None) -> dict[str, Any]:
+    """
+    Splatter entity attributes/fields into a dict, mapping values to ClickHouse-compatible objects (see :func:`to_chsql_object`).
+
+    :param entity: The entity to splatter.
+    :param attrs: Specify which attrs/fields to splatter, otherwise splatter all.
+    :return: The resulting splat.
+    """
+    result = dict[str, Any]()
+    t = type(entity)
+    entity_spec = get_entity_spec(t)
+    for attr_name, attr_hint in entity_spec.attrs.items():
+        if attrs is not None and attr_name not in attrs:
+            continue
+        field_spec = entity_spec.fields.get(attr_name, None)
+        if field_spec is not None:
+            if field_spec.mapped is False:
+                continue
+            if hasattr(entity, attr_name):
+                attr_value = getattr(entity, attr_name)
+                result[attr_name] = to_chsql_object(attr_value, attr_hint)
+            elif field_spec.nullable:
+                result[attr_name] = None
+    return result
+
+
+def splat_mongodb(entity: object, attrs: list[str] | None = None) -> dict[str, Any]:
+    """
+    Splatter entity attributes/fields into a dict, mapping values to BSON-compatible objects for MongoDB (see :func:`to_bsonobject`).
+
+    :param entity: The entity to splatter.
+    :param attrs: Specify which attrs/fields to splatter, otherwise splatter all.
+    :return: The resulting splat.
+    """
+    result = dict[str, Any]()
+    t = type(entity)
+    entity_spec = get_entity_spec(t)
+    for attr_name, attr_hint in entity_spec.attrs.items():
+        if attrs is not None and attr_name not in attrs:
+            continue
+        field_spec = entity_spec.fields.get(attr_name, None)
+        if field_spec is not None:
+            if field_spec.mapped is False:
+                continue
+            if hasattr(entity, attr_name):
+                attr_value = getattr(entity, attr_name)
+                result[attr_name] = to_bsonobject(attr_value, attr_hint)
+            elif field_spec.nullable:
+                result[attr_name] = None
+    return result
+
+
+def splat_json(entity: object, attrs: list[str] | None = None) -> dict[str, Any]:
+    """
+    Splatter entity attributes/fields into a dict, mapping values to JSON-serializable objects (see :func:`_to_json_value`).
+
+    :param entity: The entity to splatter.
+    :param attrs: Specify which attrs/fields to splatter, otherwise splatter all.
+    :return: The resulting splat.
+    """
+    result = dict[str, Any]()
+    t = type(entity)
+    entity_spec = get_entity_spec(t)
+    for attr_name, attr_hint in entity_spec.attrs.items():
+        if attrs is not None and attr_name not in attrs:
+            continue
+        field_spec = entity_spec.fields.get(attr_name, None)
+        if field_spec is not None:
+            if field_spec.mapped is False:
+                continue
+            if hasattr(entity, attr_name):
+                attr_value = getattr(entity, attr_name)
+                result[attr_name] = _to_json_value(attr_value)
+            elif field_spec.nullable:
+                result[attr_name] = None
+    return result
+
+
 def splat(entity: object, attrs: list[str] | None = None, to_sql: bool = False, to_bson: bool = False, to_mssql: bool = False, to_mysql: bool = False, to_chsql: bool = False) -> dict[str, Any]:
     """
     Splatter entity attributes/fields into a dict.
@@ -472,37 +628,191 @@ def splat(entity: object, attrs: list[str] | None = None, to_sql: bool = False, 
     """
     if sum((to_sql, to_bson, to_mssql, to_mysql, to_chsql)) > 1:
         raise ValueError('Only one of `to_sql`, `to_bson`, `to_mssql`, `to_mysql`, `to_chsql` may be specified.')
-    result = dict[str, Any]()
-    t = type(entity)
+    if to_mssql:
+        return splat_mssql(entity, attrs)
+    if to_sql:
+        return splat_sqlite(entity, attrs)
+    if to_mysql:
+        return splat_mysql(entity, attrs)
+    if to_chsql:
+        return splat_chsql(entity, attrs)
+    if to_bson:
+        return splat_mongodb(entity, attrs)
+    return splat_json(entity, attrs)
+
+
+def hydrate_mssql(entity: object | type, data: dict[str, Any], attrs: list[str] | None = None) -> Any:
+    """
+    Hydrates an entity in-place from a "splat," mapping values from SQL Server objects to python objects (see :func:`to_pyobject`).
+
+    :param entity: The entity to hydrate, or a type specifier of an entity to create and then hydrate.
+    :param data: The data to hydrate.
+    :param attrs: Specify which attrs/props to hydrate, otherwise hydrates all.
+    :return: The original entity, hydrated.
+    """
+    t: type
+    if isinstance(entity, type):
+        t = entity
+        entity = entity()
+    else:
+        t = type(entity)
     entity_spec = get_entity_spec(t)
-    for attr_name, attr_hint in entity_spec.attrs.items():
+    for attr_name, attr_value in data.items():
         if attrs is not None and attr_name not in attrs:
             continue
         field_spec = entity_spec.fields.get(attr_name, None)
         if field_spec is not None:
             if field_spec.mapped is False:
                 continue
-            if hasattr(entity, attr_name):
-                attr_value = getattr(entity, attr_name)
-                # NOTE: this edge case is handled by way of __getattribute__ logic now
-                # if attr_value is None and field_spec is not None and field_spec.nullable is not True:
-                #     # NOTE: twe do NOT translate NULLs unless spec'd to do so.
-                #     continue
-                if to_mssql:
-                    result[attr_name] = to_mssql_object(attr_value, attr_hint)
-                elif to_sql:
-                    result[attr_name] = to_sqlobject(attr_value, attr_hint)
-                elif to_mysql:
-                    result[attr_name] = to_mysql_object(attr_value, attr_hint)
-                elif to_chsql:
-                    result[attr_name] = to_chsql_object(attr_value, attr_hint)
-                elif to_bson:
-                    result[attr_name] = to_bsonobject(attr_value, attr_hint)
-                else:
-                    result[attr_name] = _to_json_value(attr_value)
-            elif field_spec.nullable:
-                result[attr_name] = None
-    return result
+        hint = entity_spec.attrs.get(attr_name, None)
+        if hint is not None:
+            setattr(entity, attr_name, to_pyobject(attr_value, hint, from_mssql=True))
+    return entity
+
+
+def hydrate_sqlite(entity: object | type, data: dict[str, Any], attrs: list[str] | None = None) -> Any:
+    """
+    Hydrates an entity in-place from a "splat," mapping values from SQLite objects to python objects (see :func:`to_pyobject`).
+
+    :param entity: The entity to hydrate, or a type specifier of an entity to create and then hydrate.
+    :param data: The data to hydrate.
+    :param attrs: Specify which attrs/props to hydrate, otherwise hydrates all.
+    :return: The original entity, hydrated.
+    """
+    t: type
+    if isinstance(entity, type):
+        t = entity
+        entity = entity()
+    else:
+        t = type(entity)
+    entity_spec = get_entity_spec(t)
+    for attr_name, attr_value in data.items():
+        if attrs is not None and attr_name not in attrs:
+            continue
+        field_spec = entity_spec.fields.get(attr_name, None)
+        if field_spec is not None:
+            if field_spec.mapped is False:
+                continue
+        hint = entity_spec.attrs.get(attr_name, None)
+        if hint is not None:
+            setattr(entity, attr_name, to_pyobject(attr_value, hint, from_sql=True))
+    return entity
+
+
+def hydrate_mysql(entity: object | type, data: dict[str, Any], attrs: list[str] | None = None) -> Any:
+    """
+    Hydrates an entity in-place from a "splat," mapping values from MySQL objects to python objects (see :func:`to_pyobject`).
+
+    :param entity: The entity to hydrate, or a type specifier of an entity to create and then hydrate.
+    :param data: The data to hydrate.
+    :param attrs: Specify which attrs/props to hydrate, otherwise hydrates all.
+    :return: The original entity, hydrated.
+    """
+    t: type
+    if isinstance(entity, type):
+        t = entity
+        entity = entity()
+    else:
+        t = type(entity)
+    entity_spec = get_entity_spec(t)
+    for attr_name, attr_value in data.items():
+        if attrs is not None and attr_name not in attrs:
+            continue
+        field_spec = entity_spec.fields.get(attr_name, None)
+        if field_spec is not None:
+            if field_spec.mapped is False:
+                continue
+        hint = entity_spec.attrs.get(attr_name, None)
+        if hint is not None:
+            setattr(entity, attr_name, to_pyobject(attr_value, hint, from_mysql=True))
+    return entity
+
+
+def hydrate_chsql(entity: object | type, data: dict[str, Any], attrs: list[str] | None = None) -> Any:
+    """
+    Hydrates an entity in-place from a "splat," mapping values from ClickHouse objects to python objects (see :func:`to_pyobject`).
+
+    :param entity: The entity to hydrate, or a type specifier of an entity to create and then hydrate.
+    :param data: The data to hydrate.
+    :param attrs: Specify which attrs/props to hydrate, otherwise hydrates all.
+    :return: The original entity, hydrated.
+    """
+    t: type
+    if isinstance(entity, type):
+        t = entity
+        entity = entity()
+    else:
+        t = type(entity)
+    entity_spec = get_entity_spec(t)
+    for attr_name, attr_value in data.items():
+        if attrs is not None and attr_name not in attrs:
+            continue
+        field_spec = entity_spec.fields.get(attr_name, None)
+        if field_spec is not None:
+            if field_spec.mapped is False:
+                continue
+        hint = entity_spec.attrs.get(attr_name, None)
+        if hint is not None:
+            setattr(entity, attr_name, to_pyobject(attr_value, hint, from_chsql=True))
+    return entity
+
+
+def hydrate_mongodb(entity: object | type, data: dict[str, Any], attrs: list[str] | None = None) -> Any:
+    """
+    Hydrates an entity in-place from a "splat," mapping values from BSON objects (MongoDB, UUIDs are already UUID objects) to python objects (see :func:`to_pyobject`).
+
+    :param entity: The entity to hydrate, or a type specifier of an entity to create and then hydrate.
+    :param data: The data to hydrate.
+    :param attrs: Specify which attrs/props to hydrate, otherwise hydrates all.
+    :return: The original entity, hydrated.
+    """
+    t: type
+    if isinstance(entity, type):
+        t = entity
+        entity = entity()
+    else:
+        t = type(entity)
+    entity_spec = get_entity_spec(t)
+    for attr_name, attr_value in data.items():
+        if attrs is not None and attr_name not in attrs:
+            continue
+        field_spec = entity_spec.fields.get(attr_name, None)
+        if field_spec is not None:
+            if field_spec.mapped is False:
+                continue
+        hint = entity_spec.attrs.get(attr_name, None)
+        if hint is not None:
+            setattr(entity, attr_name, to_pyobject(attr_value, hint, from_bson=True))
+    return entity
+
+
+def hydrate_json(entity: object | type, data: dict[str, Any], attrs: list[str] | None = None) -> Any:
+    """
+    Hydrates an entity in-place from a "splat," mapping values from JSON-serialized objects to python objects (see :func:`to_pyobject`).
+
+    :param entity: The entity to hydrate, or a type specifier of an entity to create and then hydrate.
+    :param data: The data to hydrate.
+    :param attrs: Specify which attrs/props to hydrate, otherwise hydrates all.
+    :return: The original entity, hydrated.
+    """
+    t: type
+    if isinstance(entity, type):
+        t = entity
+        entity = entity()
+    else:
+        t = type(entity)
+    entity_spec = get_entity_spec(t)
+    for attr_name, attr_value in data.items():
+        if attrs is not None and attr_name not in attrs:
+            continue
+        field_spec = entity_spec.fields.get(attr_name, None)
+        if field_spec is not None:
+            if field_spec.mapped is False:
+                continue
+        hint = entity_spec.attrs.get(attr_name, None)
+        if hint is not None:
+            setattr(entity, attr_name, to_pyobject(attr_value, hint))
+    return entity
 
 
 def hydrate(entity: object | type, data: dict[str, Any], attrs: list[str] | None = None, from_sql: bool = False, from_mssql: bool = False, from_bson: bool = False, from_mysql: bool = False, from_chsql: bool = False) -> Any:
@@ -522,31 +832,36 @@ def hydrate(entity: object | type, data: dict[str, Any], attrs: list[str] | None
     """
     if sum((from_sql, from_mssql, from_bson, from_mysql, from_chsql)) > 1:
         raise ValueError('Only one of `from_sql`, `from_mssql`, `from_bson`, `from_mysql`, `from_chsql` may be specified.')
-    t: type
-    if isinstance(entity, type):
-        t = entity
-        entity = entity()
-    else:
-        t = type(entity)
-    entity_spec = get_entity_spec(t)
-    for attr_name, attr_value in data.items():
-        if attrs is not None and attr_name not in attrs:
-            continue
-        field_spec = entity_spec.fields.get(attr_name, None)
-        if field_spec is not None:
-            if field_spec.mapped is False:
-                continue
-        hint = entity_spec.attrs.get(attr_name, None)
-        if hint is not None:
-            setattr(entity, attr_name, to_pyobject(attr_value, hint, from_sql=from_sql, from_mssql=from_mssql, from_bson=from_bson, from_mysql=from_mysql, from_chsql=from_chsql))
-    return entity
+    if from_mssql:
+        return hydrate_mssql(entity, data, attrs)
+    if from_sql:
+        return hydrate_sqlite(entity, data, attrs)
+    if from_mysql:
+        return hydrate_mysql(entity, data, attrs)
+    if from_chsql:
+        return hydrate_chsql(entity, data, attrs)
+    if from_bson:
+        return hydrate_mongodb(entity, data, attrs)
+    return hydrate_json(entity, data, attrs)
 
 
 __all__ = [
     'configure_serialization',
     'deunionize',
     'hydrate',
+    'hydrate_mongodb',
+    'hydrate_chsql',
+    'hydrate_json',
+    'hydrate_mssql',
+    'hydrate_mysql',
+    'hydrate_sqlite',
     'splat',
+    'splat_mongodb',
+    'splat_chsql',
+    'splat_json',
+    'splat_mssql',
+    'splat_mysql',
+    'splat_sqlite',
     'to_bsonobject',
     'to_chsql_object',
     'to_mssql_object',

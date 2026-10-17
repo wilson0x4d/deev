@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from deev.entities import entity, field
-from deev.translation import splat, hydrate
+from deev.translation import hydrate, hydrate_mongodb, hydrate_chsql, hydrate_json, hydrate_mssql, hydrate_mysql, hydrate_sqlite, splat, splat_mongodb, splat_chsql, splat_json, splat_mssql, splat_mysql, splat_sqlite
 from enum import Enum, IntEnum
 from punit import fact
 from typing import Any
@@ -107,7 +107,7 @@ def splat_populated_bvt() -> None:
 
 
 @fact
-def splat_to_sql_bvt() -> None:
+def splat_sqlite_bvt() -> None:
     """verify splatter to sql-compatible objects (and back)"""
     @entity
     class SPLATTOSQLBVT:
@@ -223,3 +223,85 @@ def hydrate_partial_bvt() -> None:
     assert actual_entity is not None
     assert actual_entity.attr_int == expected_entity.attr_int
     assert getattr(actual_entity, 'attr_float', None) is None
+
+
+@fact
+def splat_targets_match_flagged_splat() -> None:
+    """verify each splat_* target function matches splat with the corresponding destination flag"""
+    @entity
+    class SPLATTARGETBVT:
+        attr_int: int
+        attr_float: float
+        attr_decimal: Decimal
+        attr_datetime: datetime
+        attr_date: date
+        attr_time: time
+        attr_timedelta: timedelta
+        attr_str: str
+        attr_dict: dict[str, Any]
+        attr_list: list[Any]
+        attr_tuple: tuple[Any, ...]
+        attr_uuid: UUID
+    expected_entity = SPLATTARGETBVT(
+        attr_int=1,
+        attr_float=1.0,
+        attr_decimal=Decimal('1.12345'),
+        attr_datetime=datetime.now(timezone.utc),
+        attr_date=datetime.now(timezone.utc).date(),
+        attr_time=datetime.now(timezone.utc).time().replace(tzinfo=timezone.utc),
+        attr_timedelta=timedelta(days=1, seconds=2, microseconds=3),
+        attr_str=uuid4().hex,
+        attr_dict={'test': 'value'},
+        attr_list=['one', 2, 3.0, Decimal('4')],
+        attr_tuple=('one', 2, 3.0, Decimal('4')),
+        attr_uuid=uuid4()
+    )
+    pairs = (
+        ('splat_sqlite', splat_sqlite(expected_entity), splat(expected_entity, to_sql=True)),
+        ('splat_mssql', splat_mssql(expected_entity), splat(expected_entity, to_mssql=True)),
+        ('splat_mysql', splat_mysql(expected_entity), splat(expected_entity, to_mysql=True)),
+        ('splat_chsql', splat_chsql(expected_entity), splat(expected_entity, to_chsql=True)),
+        ('splat_mongodb', splat_mongodb(expected_entity), splat(expected_entity, to_bson=True)),
+        ('splat_json', splat_json(expected_entity), splat(expected_entity)),
+    )
+    for name, actual, expected in pairs:
+        assert actual == expected, f'{name} mismatch (expected={expected}, actual={actual})'
+    partial_actual = splat_sqlite(expected_entity, ['attr_int'])
+    partial_expected = splat(expected_entity, ['attr_int'], to_sql=True)
+    assert partial_actual == partial_expected, f'(expected={partial_expected}, actual={partial_actual})'
+
+
+@fact
+def hydrate_targets_match_flagged_hydrate() -> None:
+    """verify each hydrate_* target function matches hydrate with the corresponding source flag"""
+    @entity
+    class HYDRATETARGETBVT:
+        attr_int: int
+        attr_bool: bool
+        attr_uuid: UUID
+        attr_datetime: datetime
+        attr_date: date
+        attr_time: time
+        attr_timedelta: timedelta
+    data = {
+        'attr_int': '1',
+        'attr_bool': '1',
+        'attr_uuid': '04c182b78c784285b913c8981b4727bf',
+        'attr_datetime': '2023-05-19T21:43:46.539436Z',
+        'attr_date': '2023-05-19',
+        'attr_time': '21:43:46.539436Z',
+        'attr_timedelta': 266583000321,
+    }
+    pairs = (
+        ('hydrate_mssql', hydrate_mssql(HYDRATETARGETBVT, data), hydrate(HYDRATETARGETBVT, data, from_mssql=True)),
+        ('hydrate_sqlite', hydrate_sqlite(HYDRATETARGETBVT, data), hydrate(HYDRATETARGETBVT, data, from_sql=True)),
+        ('hydrate_mysql', hydrate_mysql(HYDRATETARGETBVT, data), hydrate(HYDRATETARGETBVT, data, from_mysql=True)),
+        ('hydrate_chsql', hydrate_chsql(HYDRATETARGETBVT, data), hydrate(HYDRATETARGETBVT, data, from_chsql=True)),
+        ('hydrate_mongodb', hydrate_mongodb(HYDRATETARGETBVT, data), hydrate(HYDRATETARGETBVT, data, from_bson=True)),
+        ('hydrate_json', hydrate_json(HYDRATETARGETBVT, data), hydrate(HYDRATETARGETBVT, data)),
+    )
+    for name, actual, expected in pairs:
+        assert splat_json(actual) == splat_json(expected), f'{name} mismatch (expected={splat_json(expected)}, actual={splat_json(actual)})'
+    partial_actual = splat_json(hydrate_sqlite(HYDRATETARGETBVT, data, ['attr_int']))
+    partial_expected = splat_json(hydrate(HYDRATETARGETBVT, data, ['attr_int'], from_sql=True))
+    assert partial_actual == partial_expected, f'(expected={partial_expected}, actual={partial_actual})'

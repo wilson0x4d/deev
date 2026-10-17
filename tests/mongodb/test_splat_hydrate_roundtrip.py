@@ -22,7 +22,7 @@ class Color(Enum):
 
 
 @fact
-def splat_to_dict_serializes_uuid_to_string_for_json() -> None:
+def splat_dict_serializes_uuid_to_string_for_json() -> None:
     """Verify splat converts UUID to string so the dict is JSON-serializable."""
 
     @entity
@@ -37,7 +37,7 @@ def splat_to_dict_serializes_uuid_to_string_for_json() -> None:
 
 
 @fact
-def splat_to_dict_serializes_datetime_to_iso_for_json() -> None:
+def splat_dict_serializes_datetime_to_iso_for_json() -> None:
     """Verify splat converts datetime to ISO string so the dict is JSON-serializable."""
 
     @entity
@@ -52,7 +52,7 @@ def splat_to_dict_serializes_datetime_to_iso_for_json() -> None:
 
 
 @fact
-def splat_to_dict_serializes_decimal_to_string_for_json() -> None:
+def splat_dict_serializes_decimal_to_string_for_json() -> None:
     """Verify splat converts Decimal to string so the dict is JSON-serializable."""
 
     @entity
@@ -67,7 +67,7 @@ def splat_to_dict_serializes_decimal_to_string_for_json() -> None:
 
 
 @fact
-def splat_to_dict_serializes_enum_to_value_for_json() -> None:
+def splat_dict_serializes_enum_to_value_for_json() -> None:
     """Verify splat converts Enum members to their value for JSON."""
 
     @entity
@@ -147,7 +147,7 @@ def json_roundtrip_splat_dict_preserves_decimal() -> None:
 
 
 @fact
-def hydrate_from_dict_reconstructs_uuid_from_string() -> None:
+def hydrate_dict_reconstructs_uuid_from_string() -> None:
     """hydrate should convert string UUID back to UUID object."""
 
     @entity
@@ -165,7 +165,7 @@ def hydrate_from_dict_reconstructs_uuid_from_string() -> None:
 
 
 @fact
-def hydrate_from_dict_reconstructs_datetime_from_string() -> None:
+def hydrate_dict_reconstructs_datetime_from_string() -> None:
     """hydrate should convert ISO string datetime back to datetime object."""
 
     @entity
@@ -182,7 +182,7 @@ def hydrate_from_dict_reconstructs_datetime_from_string() -> None:
 
 
 @fact
-def hydrate_from_dict_reconstructs_decimal_from_string() -> None:
+def hydrate_dict_reconstructs_decimal_from_string() -> None:
     """hydrate should convert string Decimal back to Decimal object."""
 
     @entity
@@ -328,7 +328,7 @@ def splat_dict_contains_only_mapped_fields() -> None:
 
 
 @fact
-def splat_to_dict_serializes_timedelta_to_microseconds_int() -> None:
+def splat_dict_serializes_timedelta_to_microseconds_int() -> None:
     """Verify splat converts timedelta to microseconds as int for JSON."""
 
     @entity
@@ -366,7 +366,7 @@ def json_roundtrip_splat_dict_preserves_timedelta() -> None:
 
 
 @fact
-def hydrate_from_dict_reconstructs_timedelta_from_int() -> None:
+def hydrate_dict_reconstructs_timedelta_from_int() -> None:
     """hydrate should convert microseconds int back to timedelta object."""
 
     @entity
@@ -483,7 +483,7 @@ def to_bsonobject_serializes_timedelta_to_microseconds_int() -> None:
 
 
 @fact
-def splat_to_bson_serializes_timedelta_to_int() -> None:
+def splat_mongodb_serializes_timedelta_to_int() -> None:
     """Verify splat with to_bson=True converts timedelta to microseconds int."""
 
     @entity
@@ -498,7 +498,7 @@ def splat_to_bson_serializes_timedelta_to_int() -> None:
 
 
 @fact
-def splat_to_bson_preserves_uuid_as_uuid_object() -> None:
+def splat_mongodb_preserves_uuid_as_uuid_object() -> None:
     """Verify splat with to_bson=True keeps UUID as UUID object (not string)."""
 
     @entity
@@ -513,7 +513,7 @@ def splat_to_bson_preserves_uuid_as_uuid_object() -> None:
 
 
 @fact
-def splat_to_bson_converts_set_to_list() -> None:
+def splat_mongodb_converts_set_to_list() -> None:
     """Verify splat with to_bson=True converts set to list."""
 
     @entity
@@ -528,7 +528,7 @@ def splat_to_bson_converts_set_to_list() -> None:
 
 
 @fact
-def splat_to_bson_with_timedelta_and_uuid() -> None:
+def splat_mongodb_with_timedelta_and_uuid() -> None:
     """Verify splat with to_bson=True handles timedelta + UUID together."""
 
     @entity
@@ -548,7 +548,7 @@ def splat_to_bson_with_timedelta_and_uuid() -> None:
 
 
 @fact
-def hydrate_from_bson_reconstructs_timedelta_from_int() -> None:
+def hydrate_mongodb_reconstructs_timedelta_from_int() -> None:
     """Verify hydrate with from_bson=True converts int back to timedelta."""
 
     @entity
@@ -566,7 +566,7 @@ def hydrate_from_bson_reconstructs_timedelta_from_int() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_timedelta() -> None:
+def splat_hydrate_mongodb_roundtrip_timedelta() -> None:
     """Full BSON roundtrip: entity → splat(to_bson) → hydrate(from_bson) → should match."""
 
     @entity
@@ -590,7 +590,7 @@ def splat_hydrate_bson_roundtrip_timedelta() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_timedelta_zero() -> None:
+def splat_hydrate_mongodb_roundtrip_timedelta_zero() -> None:
     """BSON roundtrip with zero timedelta."""
 
     @entity
@@ -608,7 +608,7 @@ def splat_hydrate_bson_roundtrip_timedelta_zero() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_timedelta_negative() -> None:
+def splat_hydrate_mongodb_roundtrip_timedelta_negative() -> None:
     """BSON roundtrip with negative timedelta."""
 
     @entity
@@ -627,7 +627,7 @@ def splat_hydrate_bson_roundtrip_timedelta_negative() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_timedelta_nullable_none() -> None:
+def splat_hydrate_mongodb_roundtrip_timedelta_nullable_none() -> None:
     """BSON roundtrip with nullable timedelta that is None."""
 
     @entity
@@ -750,7 +750,7 @@ def to_bsonobject_none_value_returns_none() -> None:
 
 
 @fact
-def splat_to_bson_serializes_datetime_field_as_datetime() -> None:
+def splat_mongodb_serializes_datetime_field_as_datetime() -> None:
     """splat(entity, to_bson=True) should keep datetime field as datetime object."""
 
     @entity
@@ -766,7 +766,7 @@ def splat_to_bson_serializes_datetime_field_as_datetime() -> None:
 
 
 @fact
-def splat_to_bson_serializes_naive_datetime_field_as_utc_datetime() -> None:
+def splat_mongodb_serializes_naive_datetime_field_as_utc_datetime() -> None:
     """splat with naive datetime should treat it as UTC and store it as a UTC datetime."""
 
     @entity
@@ -784,7 +784,7 @@ def splat_to_bson_serializes_naive_datetime_field_as_utc_datetime() -> None:
 
 
 @fact
-def splat_to_bson_serializes_date_field_as_datetime() -> None:
+def splat_mongodb_serializes_date_field_as_datetime() -> None:
     """splat(entity, to_bson=True) should convert date field to midnight datetime."""
 
     @entity
@@ -800,7 +800,7 @@ def splat_to_bson_serializes_date_field_as_datetime() -> None:
 
 
 @fact
-def splat_to_bson_serializes_time_field_as_iso_string() -> None:
+def splat_mongodb_serializes_time_field_as_iso_string() -> None:
     """splat(entity, to_bson=True) should convert time field to ISO string."""
 
     @entity
@@ -816,7 +816,7 @@ def splat_to_bson_serializes_time_field_as_iso_string() -> None:
 
 
 @fact
-def splat_to_bson_serializes_time_field_without_microseconds() -> None:
+def splat_mongodb_serializes_time_field_without_microseconds() -> None:
     """splat with time without microseconds should produce clean ISO string."""
 
     @entity
@@ -831,7 +831,7 @@ def splat_to_bson_serializes_time_field_without_microseconds() -> None:
 
 
 @fact
-def splat_to_bson_with_datetime_date_time_all_fields() -> None:
+def splat_mongodb_with_datetime_date_time_all_fields() -> None:
     """splat with all three types in one entity should serialize each correctly."""
 
     @entity
@@ -859,7 +859,7 @@ def splat_to_bson_with_datetime_date_time_all_fields() -> None:
 
 
 @fact
-def hydrate_from_bson_reconstructs_datetime_from_native() -> None:
+def hydrate_mongodb_reconstructs_datetime_from_native() -> None:
     """hydrate(from_bson=True) should accept native datetime for datetime field."""
 
     @entity
@@ -875,7 +875,7 @@ def hydrate_from_bson_reconstructs_datetime_from_native() -> None:
 
 
 @fact
-def hydrate_from_bson_reconstructs_datetime_from_iso_string() -> None:
+def hydrate_mongodb_reconstructs_datetime_from_iso_string() -> None:
     """hydrate(from_bson=True) should convert ISO string back to datetime (legacy path)."""
 
     @entity
@@ -890,7 +890,7 @@ def hydrate_from_bson_reconstructs_datetime_from_iso_string() -> None:
 
 
 @fact
-def hydrate_from_bson_reconstructs_date_from_midnight_datetime() -> None:
+def hydrate_mongodb_reconstructs_date_from_midnight_datetime() -> None:
     """hydrate(from_bson=True) should extract .date() from midnight datetime for date field."""
 
     @entity
@@ -907,7 +907,7 @@ def hydrate_from_bson_reconstructs_date_from_midnight_datetime() -> None:
 
 
 @fact
-def hydrate_from_bson_reconstructs_date_from_string_legacy() -> None:
+def hydrate_mongodb_reconstructs_date_from_string_legacy() -> None:
     """hydrate(from_bson=True) should parse ISO string for date field (legacy/edge case)."""
 
     @entity
@@ -922,7 +922,7 @@ def hydrate_from_bson_reconstructs_date_from_string_legacy() -> None:
 
 
 @fact
-def hydrate_from_bson_reconstructs_time_from_iso_string() -> None:
+def hydrate_mongodb_reconstructs_time_from_iso_string() -> None:
     """hydrate(from_bson=True) should parse ISO string back to time for time field."""
 
     @entity
@@ -937,7 +937,7 @@ def hydrate_from_bson_reconstructs_time_from_iso_string() -> None:
 
 
 @fact
-def hydrate_from_bson_reconstructs_time_without_microseconds() -> None:
+def hydrate_mongodb_reconstructs_time_without_microseconds() -> None:
     """hydrate(from_bson=True) should parse ISO string without microseconds for time field."""
 
     @entity
@@ -952,7 +952,7 @@ def hydrate_from_bson_reconstructs_time_without_microseconds() -> None:
 
 
 @fact
-def hydrate_from_bson_reconstructs_time_from_native_time() -> None:
+def hydrate_mongodb_reconstructs_time_from_native_time() -> None:
     """hydrate(from_bson=True) should pass through native time for time field (edge case)."""
 
     @entity
@@ -973,7 +973,7 @@ def hydrate_from_bson_reconstructs_time_from_native_time() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_datetime() -> None:
+def splat_hydrate_mongodb_roundtrip_datetime() -> None:
     """Full BSON roundtrip with datetime field: splat(to_bson) → hydrate(from_bson)."""
 
     @entity
@@ -997,7 +997,7 @@ def splat_hydrate_bson_roundtrip_datetime() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_date() -> None:
+def splat_hydrate_mongodb_roundtrip_date() -> None:
     """Full BSON roundtrip with date field: splat(to_bson) → hydrate(from_bson)."""
 
     @entity
@@ -1020,7 +1020,7 @@ def splat_hydrate_bson_roundtrip_date() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_time() -> None:
+def splat_hydrate_mongodb_roundtrip_time() -> None:
     """Full BSON roundtrip with time field: splat(to_bson) → hydrate(from_bson)."""
 
     @entity
@@ -1042,7 +1042,7 @@ def splat_hydrate_bson_roundtrip_time() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_datetime_date_time_all_together() -> None:
+def splat_hydrate_mongodb_roundtrip_datetime_date_time_all_together() -> None:
     """Full BSON roundtrip with all three date/time types in one entity."""
 
     @entity
@@ -1074,7 +1074,7 @@ def splat_hydrate_bson_roundtrip_datetime_date_time_all_together() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_datetime_naive() -> None:
+def splat_hydrate_mongodb_roundtrip_datetime_naive() -> None:
     """Full BSON roundtrip with naive datetime (treated as UTC, stored and read back as UTC)."""
 
     @entity
@@ -1096,7 +1096,7 @@ def splat_hydrate_bson_roundtrip_datetime_naive() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_time_without_microseconds() -> None:
+def splat_hydrate_mongodb_roundtrip_time_without_microseconds() -> None:
     """Full BSON roundtrip with time that has no microseconds."""
 
     @entity
@@ -1120,7 +1120,7 @@ def splat_hydrate_bson_roundtrip_time_without_microseconds() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_list_of_dates() -> None:
+def splat_hydrate_mongodb_roundtrip_list_of_dates() -> None:
     """list[date] → list[datetime] on splat → list[date] on hydrate."""
 
     @entity
@@ -1139,7 +1139,7 @@ def splat_hydrate_bson_roundtrip_list_of_dates() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_list_of_times() -> None:
+def splat_hydrate_mongodb_roundtrip_list_of_times() -> None:
     """list[time] → list[str] on splat → list[time] on hydrate."""
 
     @entity
@@ -1158,7 +1158,7 @@ def splat_hydrate_bson_roundtrip_list_of_times() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_list_mixed_types() -> None:
+def splat_hydrate_mongodb_roundtrip_list_mixed_types() -> None:
     """list[date] with datetime values in the stored data should convert to date."""
 
     @entity
@@ -1177,7 +1177,7 @@ def splat_hydrate_bson_roundtrip_list_mixed_types() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_tuple_of_dates() -> None:
+def splat_hydrate_mongodb_roundtrip_tuple_of_dates() -> None:
     """tuple[date, ...] → tuple[datetime, ...] on splat → tuple[date, ...] on hydrate."""
 
     @entity
@@ -1196,7 +1196,7 @@ def splat_hydrate_bson_roundtrip_tuple_of_dates() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_tuple_of_times() -> None:
+def splat_hydrate_mongodb_roundtrip_tuple_of_times() -> None:
     """tuple[time, ...] → tuple[str, ...] on splat → tuple[time, ...] on hydrate."""
 
     @entity
@@ -1215,7 +1215,7 @@ def splat_hydrate_bson_roundtrip_tuple_of_times() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_dict_of_dates() -> None:
+def splat_hydrate_mongodb_roundtrip_dict_of_dates() -> None:
     """dict[str, date] → dict[str, datetime] on splat → dict[str, date] on hydrate."""
 
     @entity
@@ -1234,7 +1234,7 @@ def splat_hydrate_bson_roundtrip_dict_of_dates() -> None:
 
 
 @fact
-def splat_hydrate_bson_roundtrip_dict_of_times() -> None:
+def splat_hydrate_mongodb_roundtrip_dict_of_times() -> None:
     """dict[str, time] → dict[str, str] on splat → dict[str, time] on hydrate."""
 
     @entity
@@ -1253,7 +1253,7 @@ def splat_hydrate_bson_roundtrip_dict_of_times() -> None:
 
 
 @fact
-def splat_to_bson_serializes_nested_list_of_dicts_with_dates() -> None:
+def splat_mongodb_serializes_nested_list_of_dicts_with_dates() -> None:
     """Nested structures like list[dict[str, date]] serialize correctly."""
 
     @entity
@@ -1276,7 +1276,7 @@ def splat_to_bson_serializes_nested_list_of_dicts_with_dates() -> None:
 
 
 @fact
-def splat_to_bson_handles_empty_containers() -> None:
+def splat_mongodb_handles_empty_containers() -> None:
     """Empty containers serialize and deserialize correctly."""
 
     @entity
@@ -1299,7 +1299,7 @@ def splat_to_bson_handles_empty_containers() -> None:
 
 
 @fact
-def splat_to_bson_handles_none_in_containers() -> None:
+def splat_mongodb_handles_none_in_containers() -> None:
     """None values inside containers are preserved."""
 
     @entity
@@ -1318,7 +1318,7 @@ def splat_to_bson_handles_none_in_containers() -> None:
 
 
 @fact
-def splat_to_bson_list_any_roundtrip() -> None:
+def splat_mongodb_list_any_roundtrip() -> None:
     """list[Any] — splat converts date/time via isinstance, hydrate returns as-is."""
     from typing import Any
 

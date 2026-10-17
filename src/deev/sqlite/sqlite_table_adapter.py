@@ -12,7 +12,7 @@ from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
 from ..common.db_type_mapper import DbTypeMapper
 from ..entities import EntitySpec, get_entity_spec
-from ..translation import hydrate, to_pyobject, splat
+from ..translation import hydrate_sqlite, to_pyobject, splat_sqlite
 from .sqlite_proxy_connection import SQLiteProxyConnection
 from .sqlite_transaction_context import SQLiteTransactionContext
 from .sqlite_type_mapper import SQLiteTypeMapper
@@ -120,7 +120,7 @@ class SQLiteTableAdapter(Generic[TEntity]):
         self.__deferred_init()
 
         data = (
-            splat(entity, to_sql=True)
+            splat_sqlite(entity)
             if entity is not None
             else dict[str, Any]()
         )
@@ -177,13 +177,13 @@ class SQLiteTableAdapter(Generic[TEntity]):
                 value = self.__get_pyobject(kvp[0][0], kvp[1])
                 if value is not None:
                     result[kvp[0][0]] = value
-            return hydrate(self.__entity_spec.entity_type(), result, from_sql=True)
+            return hydrate_sqlite(self.__entity_spec.entity_type(), result)
         else:
             return None
 
     def update(self, entity: TEntity) -> None:
         self.__deferred_init()
-        entity_data = splat(entity, to_sql=True)
+        entity_data = splat_sqlite(entity)
         primary_key = {
             k: (v.hex if type(v) is UUID else v)
             for k, v in entity_data.items()
@@ -231,7 +231,7 @@ class SQLiteTableAdapter(Generic[TEntity]):
 
     def upsert(self, entity: TEntity) -> dict[str, Any]:
         self.__deferred_init()
-        entity_data = splat(entity, to_sql=True)
+        entity_data = splat_sqlite(entity)
         if self.__entity_spec.has_autoincrement and entity_data.get(self.__entity_spec.primary_key[0], None) is None:
             # no id provided and table is auto-increment, use INSERT syntax for new records
             return self.create(entity)
@@ -307,7 +307,7 @@ class SQLiteTableAdapter(Generic[TEntity]):
                 value = self.__get_pyobject(kvp[0][0], kvp[1])
                 if value is not None:
                     result[kvp[0][0]] = value
-            yield hydrate(self.__entity_spec.entity_type(), result, from_sql=True)
+            yield hydrate_sqlite(self.__entity_spec.entity_type(), result)
             row = cursor.fetchone()
 
 

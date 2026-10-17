@@ -13,7 +13,7 @@ from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
 from ..common.db_type_mapper import DbTypeMapper
 from ..entities import EntitySpec, get_entity_spec
-from ..translation import hydrate, to_pyobject, splat
+from ..translation import hydrate_mysql, to_pyobject, splat_mysql
 from .mysql_proxy_connection import MySQLProxyConnection
 from .mysql_transaction_context import MySQLTransactionContext
 from .mysql_type_mapper import MySQLTypeMapper
@@ -120,7 +120,7 @@ class MySQLTableAdapter(Generic[TEntity]):
         self.__deferred_init()
 
         data = (
-            splat(entity, to_mysql=True)
+            splat_mysql(entity)
             if entity is not None
             else dict[str, Any]()
         )
@@ -178,13 +178,13 @@ class MySQLTableAdapter(Generic[TEntity]):
                 value = self.__get_pyobject(kvp[0][0], kvp[1])
                 if value is not None:
                     result[kvp[0][0]] = value
-            return hydrate(self.__entity_spec.entity_type(), result, from_mysql=True)
+            return hydrate_mysql(self.__entity_spec.entity_type(), result)
         else:
             return None
 
     def update(self, entity: TEntity) -> None:
         self.__deferred_init()
-        entity_data = splat(entity, to_mysql=True)
+        entity_data = splat_mysql(entity)
         primary_key = {
             k: (v.hex if type(v) is UUID else v)
             for k, v in entity_data.items()
@@ -232,7 +232,7 @@ class MySQLTableAdapter(Generic[TEntity]):
 
     def upsert(self, entity: TEntity) -> dict[str, Any]:
         self.__deferred_init()
-        entity_data = splat(entity, to_mysql=True)
+        entity_data = splat_mysql(entity)
         if self.__entity_spec.has_autoincrement and entity_data.get(self.__entity_spec.primary_key[0], None) is None:
             # no id provided and table is auto-increment, use INSERT syntax for new records
             return self.create(entity)
@@ -305,7 +305,7 @@ class MySQLTableAdapter(Generic[TEntity]):
                 value = self.__get_pyobject(kvp[0][0], kvp[1])
                 if value is not None:
                     result[kvp[0][0]] = value
-            yield hydrate(self.__entity_spec.entity_type(), result, from_mysql=True)
+            yield hydrate_mysql(self.__entity_spec.entity_type(), result)
             row = cursor.fetchone()
 
 

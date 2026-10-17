@@ -13,7 +13,7 @@ from ..common.db_context import AsyncDbContext
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
 from ..entities import EntitySpec, get_entity_spec
-from ..translation import hydrate, to_pyobject, splat
+from ..translation import hydrate_mysql, to_pyobject, splat_mysql
 from .async_mysql_proxy_connection import AsyncMySQLProxyConnection
 from .async_mysql_transaction_context import AsyncMySQLTransactionContext
 from .mysql_type_mapper import MySQLTypeMapper
@@ -122,7 +122,7 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
         await self.__deferred_init()
 
         data = (
-            splat(entity, to_mysql=True)
+            splat_mysql(entity)
             if entity is not None
             else dict[str, Any]()
         )
@@ -180,13 +180,13 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
                 value = self.__get_pyobject(kvp[0][0], kvp[1])
                 if value is not None:
                     result[kvp[0][0]] = value
-            return hydrate(self.__entity_spec.entity_type(), result, from_mysql=True)
+            return hydrate_mysql(self.__entity_spec.entity_type(), result)
         else:
             return None
 
     async def update(self, entity: TEntity) -> None:
         await self.__deferred_init()
-        entity_data = splat(entity, to_mysql=True)
+        entity_data = splat_mysql(entity)
         primary_key = {
             k: (v.hex if type(v) is UUID else v)
             for k, v in entity_data.items()
@@ -234,7 +234,7 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
 
     async def upsert(self, entity: TEntity) -> dict[str, Any]:
         await self.__deferred_init()
-        entity_data = splat(entity, to_mysql=True)
+        entity_data = splat_mysql(entity)
         pk_value = entity_data.get(self.__entity_spec.primary_key[0], None)
         if self.__entity_spec.has_autoincrement and pk_value in (None, 0):
             return await self.create(entity)
@@ -298,7 +298,7 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
                 value = self.__get_pyobject(kvp[0][0], kvp[1])
                 if value is not None:
                     result[kvp[0][0]] = value
-            yield hydrate(self.__entity_spec.entity_type(), result, from_mysql=True)
+            yield hydrate_mysql(self.__entity_spec.entity_type(), result)
             row = await cursor.fetchone()
 
 

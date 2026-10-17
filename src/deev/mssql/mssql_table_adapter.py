@@ -9,7 +9,7 @@ from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
 from ..entities import EntitySpec, get_entity_spec
-from ..translation import hydrate, to_pyobject, splat
+from ..translation import hydrate_mssql, to_pyobject, splat_mssql
 from .mssql_input_sizes import input_sizes, resolve_where_fields
 from .mssql_proxy_connection import MSSQLProxyConnection
 from .mssql_transaction_context import MSSQLTransactionContext
@@ -217,7 +217,7 @@ class MSSQLTableAdapter(Generic[TEntity]):
         self.__deferred_init()
 
         data = (
-            splat(entity, to_mssql=True)
+            splat_mssql(entity)
             if entity is not None
             else dict[str, Any]()
         )
@@ -292,7 +292,7 @@ class MSSQLTableAdapter(Generic[TEntity]):
                     value = self.__get_pyobject(kvp[0][0], kvp[1])
                     if value is not None:
                         result[kvp[0][0]] = value
-                return hydrate(self.__entity_spec.entity_type(), result, from_mssql=True)
+                return hydrate_mssql(self.__entity_spec.entity_type(), result)
             else:
                 return None
         finally:
@@ -305,7 +305,7 @@ class MSSQLTableAdapter(Generic[TEntity]):
         :param entity: The entity with updated values.
         """
         self.__deferred_init()
-        entity_data = splat(entity, to_mssql=True)
+        entity_data = splat_mssql(entity)
         primary_key = {
             k: v
             for k, v in entity_data.items()
@@ -388,7 +388,7 @@ class MSSQLTableAdapter(Generic[TEntity]):
         :returns: A dictionary containing the primary key values.
         """
         self.__deferred_init()
-        entity_data = splat(entity, to_mssql=True)
+        entity_data = splat_mssql(entity)
         pk_value = entity_data.get(self.__entity_spec.primary_key[0], None)
         if self.__entity_spec.has_autoincrement and pk_value in (None, 0):
             return self.create(entity)
@@ -486,7 +486,7 @@ class MSSQLTableAdapter(Generic[TEntity]):
                     value = self.__get_pyobject(kvp[0][0], kvp[1])
                     if value is not None:
                         result[kvp[0][0]] = value
-                yield hydrate(self.__entity_spec.entity_type(), result, from_mssql=True)
+                yield hydrate_mssql(self.__entity_spec.entity_type(), result)
                 row = cursor.fetchone()
         finally:
             cursor.close()
