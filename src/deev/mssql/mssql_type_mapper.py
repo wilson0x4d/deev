@@ -60,7 +60,7 @@ class MSSQLTypeMapper(DbTypeMapper):
                     if field_spec.min is not None and field_spec.min == field_spec.max:
                         return f'NCHAR({field_spec.max})'
                     if field_spec.max is not None:
-                        return f'NVARCHAR({field_spec.max})'
+                        return 'NVARCHAR(MAX)' if field_spec.max > 4000 else f'NVARCHAR({field_spec.max})'
                 mapped_dbtype = self.__pytype_map.get(field_type, None)
                 if mapped_dbtype is not None:
                     return mapped_dbtype

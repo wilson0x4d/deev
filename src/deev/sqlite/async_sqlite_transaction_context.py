@@ -21,9 +21,6 @@ from .sqlite_transaction_context import SQLiteTransactionContext
 class AsyncSQLiteTransactionContext(AsyncDbTransactionContext):
     """
     Async shim that delegates to ``SQLiteTransactionContext``.
-
-    Wraps the synchronous transaction context and exposes an async API
-    using direct method calls — no ``asyncio.to_thread``.
     """
 
     __context: AsyncDbContext | None

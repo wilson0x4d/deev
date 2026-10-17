@@ -19,7 +19,8 @@ class AsyncMSSQLProxyConnection(AsyncDbConnection):
     Async shim that delegates to ``MSSQLProxyConnection``.
 
     Since mssql_python has no native async API, all calls are forwarded to the
-    synchronous proxy using ``asyncio.to_thread``.
+    synchronous proxy.  While not truly async it provides us with an
+    async path if/when proper threading support becomes available.
     """
 
     __sync_conn: MSSQLProxyConnection

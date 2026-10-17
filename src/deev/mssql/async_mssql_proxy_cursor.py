@@ -19,9 +19,6 @@ from .mssql_proxy_cursor import MSSQLProxyCursor
 class AsyncMSSQLProxyCursor(AsyncDbCursor):
     """
     Async shim that delegates to ``MSSQLProxyCursor``.
-
-    Wraps the synchronous deev cursor proxy and exposes an async API
-    using ``asyncio.to_thread`` for underlying mssql_python operations.
     """
     __sync_cursor: MSSQLProxyCursor
     __cursor: Cursor

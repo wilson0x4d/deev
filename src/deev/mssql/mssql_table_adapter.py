@@ -1,17 +1,16 @@
 # SPDX-FileCopyrightText: © 2026 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
-from __future__ import annotations
-
-from typing import Any, Generator, Generic, TypeVar, cast, get_args, get_origin
+from typing import Any, Generator, Generic, Sequence, TypeVar, cast, get_args, get_origin
 from uuid import UUID
 
 from ..common.db_context import DbContext
+from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
-from ..common.db_type_mapper import DbTypeMapper
 from ..entities import EntitySpec, get_entity_spec
 from ..translation import hydrate, to_pyobject, splat
+from .mssql_input_sizes import input_sizes, resolve_where_fields
 from .mssql_proxy_connection import MSSQLProxyConnection
 from .mssql_transaction_context import MSSQLTransactionContext
 from .mssql_type_mapper import MSSQLTypeMapper
@@ -29,15 +28,17 @@ class MSSQLTableAdapter(Generic[TEntity]):
     __create_table: bool
     __entity_spec: EntitySpec
     __initialized: bool
-    __dbtype_mapper: DbTypeMapper
+    __dbtype_mapper: MSSQLTypeMapper
     __table_name: str | None
+    __use_setinputsizes: bool
 
     def __init__(
         self,
         context: DbContext,
         *,
         create_table: bool | None = False,
-        table_name: str | None = None
+        table_name: str | None = None,
+        use_setinputsizes: bool | None = None
     ) -> None:
         """
         Initialize a new MSSQLTableAdapter.
@@ -45,11 +46,17 @@ class MSSQLTableAdapter(Generic[TEntity]):
         :param context: A :class:`DbContext` or :class:`MSSQLProxyConnection` instance.
         :param create_table: Whether to create the table if it does not exist.
         :param table_name: Optional override for the table name.
+        :param use_setinputsizes: Whether to internally declare parameter
+          type/size information (via ``setinputsizes``) derived from the
+          entity/field spec before each parameterized execution.  Defaults
+          to ``False``.  Explicit declarations for raw SQL remain available
+          at the cursor level via :meth:`MSSQLProxyCursor.setinputsizes`.
         """
         self.__context = context if isinstance(context, (MSSQLProxyConnection, MSSQLTransactionContext)) else MSSQLProxyConnection(context)  # type: ignore[arg-type]
         self.__create_table = create_table is True
         self.__initialized = False
         self.__table_name = table_name
+        self.__use_setinputsizes = use_setinputsizes is True
 
     def __deferred_init(self) -> None:
         if not self.__initialized:
@@ -108,6 +115,38 @@ class MSSQLTableAdapter(Generic[TEntity]):
         if type(value) is UUID:
             return str(value)
         return value
+
+    def __apply_input_sizes(self, cursor: DbCursor, field_names: Sequence[str], parameters: Sequence[Any]) -> None:
+        """
+        Compute and declare parameter type/size information for the next
+        execution, in a single step.
+
+        Only acts when ``use_setinputsizes`` is enabled; otherwise the
+        driver's native type detection is left undisturbed.  Sizes are
+        computed from the entity/field spec (falling back to a default
+        inferred from the data type), giving the driver the column's
+        correct type/size information — mssql_python sizes string
+        parameters from the Python value itself, which fails with "String
+        data, right truncation" when a value is longer than the target
+        column (even in ``WHERE`` comparisons).
+
+        Explicit declarations for raw SQL remain available at the cursor
+        level via :meth:`MSSQLProxyCursor.setinputsizes`.
+
+        :param cursor: The cursor about to execute a parameterized statement.
+        :param field_names: The entity field for each parameter, in parameter order.
+        :param parameters: The parameter values.
+        """
+        if self.__use_setinputsizes is not True:
+            return
+        if len(parameters) == 0:
+            return
+        sizes = input_sizes(self.__entity_spec, self.__dbtype_mapper, field_names, [tuple(parameters)])
+        if sizes is None:
+            return
+        apply = getattr(cursor, 'setinputsizes', None)
+        if apply is not None:
+            apply(sizes)
 
     def __get_typearg(self, obj: object) -> type:
         """
@@ -200,6 +239,7 @@ class MSSQLTableAdapter(Generic[TEntity]):
             if self.__entity_spec.has_autoincrement:
                 sql = f'INSERT INTO [{table_name}] ({column_names}) OUTPUT INSERTED.[{self.__entity_spec.primary_key[0]}] VALUES ({parms})'
                 parameters = tuple(data.values())
+                self.__apply_input_sizes(cursor, list(data.keys()), parameters)
                 cursor.execute(sql, parameters)
                 v = cursor.fetchone()
                 if v is not None:
@@ -209,10 +249,12 @@ class MSSQLTableAdapter(Generic[TEntity]):
             else:
                 sql = f'INSERT INTO [{table_name}] ({column_names}) VALUES ({parms})'
                 parameters = tuple(data.values())
+                self.__apply_input_sizes(cursor, list(data.keys()), parameters)
                 cursor.execute(sql, parameters)
             # For non-autoincrement PKs, fetch the inserted row's PK value
             if not pk_values:
                 raise DbError('No primary key values provided for non-autoincrement entity.')
+            self.__apply_input_sizes(cursor, list(pk_values.keys()), tuple(pk_values.values()))
             cursor.execute(f'SELECT TOP 1 1 FROM [{table_name}] WHERE {" AND ".join([f"[{k}] = ?" for k in pk_values.keys()])}', tuple(pk_values.values()))
             if cursor.fetchone() is None:
                 raise DbError('Failed to verify created entity exists.')
@@ -239,6 +281,7 @@ class MSSQLTableAdapter(Generic[TEntity]):
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'SELECT {self.__column_names} FROM [{table_name}] WHERE {where}'
         try:
+            self.__apply_input_sizes(cursor, list(pk_values.keys()), tuple(keys))
             cursor.execute(sql, tuple(keys))
             data = cursor.fetchone()
             if data:
@@ -279,6 +322,11 @@ class MSSQLTableAdapter(Generic[TEntity]):
         cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         try:
+            self.__apply_input_sizes(
+                cursor,
+                [k for k in entity_data.keys() if k not in self.__entity_spec.primary_key] + list(primary_key.keys()),
+                tuple(parms) + tuple(keys)
+            )
             cursor.execute(f'UPDATE [{table_name}] SET {_set} WHERE {where}', tuple(parms) + tuple(keys))
         finally:
             cursor.close()
@@ -301,6 +349,7 @@ class MSSQLTableAdapter(Generic[TEntity]):
         sql = f'DELETE FROM [{table_name}] WHERE {where}'
         cursor = self.__context.cursor()
         try:
+            self.__apply_input_sizes(cursor, list(primary_key.keys()), tuple(keys))
             cursor.execute(sql, tuple(keys))
         finally:
             cursor.close()
@@ -323,6 +372,7 @@ class MSSQLTableAdapter(Generic[TEntity]):
         cursor = self.__context.cursor()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         try:
+            self.__apply_input_sizes(cursor, list(primary_key.keys()), tuple(keys))
             cursor.execute(f'SELECT TOP 1 1 FROM [{table_name}] WHERE {where}', tuple(keys))
             return cursor.fetchone() is not None
         finally:
@@ -373,11 +423,17 @@ class MSSQLTableAdapter(Generic[TEntity]):
                 all_parameters = update_parameters
             try:
                 if len(where) > 0:
+                    self.__apply_input_sizes(
+                        cursor,
+                        [k for k in entity_data.keys() if k not in primary_key] + list(primary_key.keys()),
+                        all_parameters
+                    )
                     cursor.execute(f'UPDATE [{table_name}] SET {update} WHERE {where}', all_parameters)
                 if len(where) == 0 or cursor.rowcount == 0:
                     insert_cols = ', '.join([f'[{k}]' for k in entity_data.keys()])
                     insert_values = ', '.join(['%?' for _ in entity_data.keys()])
                     insert_parameters = tuple(entity_data.values())
+                    self.__apply_input_sizes(cursor, list(entity_data.keys()), insert_parameters)
                     cursor.execute(f'INSERT INTO [{table_name}] ({insert_cols}) VALUES ({insert_values})', insert_parameters)
             finally:
                 cursor.close()
@@ -414,6 +470,10 @@ class MSSQLTableAdapter(Generic[TEntity]):
         sql = f'SELECT {top_clause}{self.__column_names} FROM [{table_name}]{where_clause}{orderby_clause}'
         cursor = self.__context.cursor()
         try:
+            if where is not None and len(parameters) > 0:
+                resolved = resolve_where_fields(where, list(self.__entity_spec.fields.keys()))
+                if len(resolved) == len(parameters) and all(f is not None for f in resolved):
+                    self.__apply_input_sizes(cursor, [f for f in resolved if f is not None], tuple(parameters))
             cursor.execute(sql, tuple(parameters))
             if cursor.description is None:
                 raise DbError('cursor missing required descriptor')

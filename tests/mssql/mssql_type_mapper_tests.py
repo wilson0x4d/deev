@@ -35,6 +35,7 @@ class TypeMapperTestEntity:
     max_str: str = field(max=50)
     with_dbtype: int = field(dbtype='VARCHAR(42)')
     big_int: int = field(dbtype='BIGINT')
+    long_str: str = field(max=5000)
 
 
 @fact
@@ -116,6 +117,7 @@ def when_datetime_type_configured_then_used_verbatim() -> None:
 @inlinedata('uid', 'UNIQUEIDENTIFIER')
 @inlinedata('with_dbtype', 'VARCHAR(42)')
 @inlinedata('big_int', 'BIGINT')
+@inlinedata('long_str', 'NVARCHAR(MAX)')
 @trait('mssql')
 @trait('unit')
 def expected_mapping(field_name: str, dbtype: str) -> None:

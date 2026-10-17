@@ -1,8 +1,6 @@
 # SPDX-FileCopyrightText: © 2026 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
-from __future__ import annotations
-
 from typing import Any, AsyncGenerator, TypeVar, cast, get_args, get_origin
 
 from ..common.async_db_table_adapter import AsyncDbTableAdapter
@@ -23,25 +21,29 @@ class AsyncMSSQLTableAdapter(AsyncDbTableAdapter[TEntity]):
     Async shim that delegates to ``MSSQLTableAdapter``.
 
     Since mssql_python has no native async API, all calls are forwarded to the
-    synchronous table adapter using ``asyncio.to_thread``.
+    synchronous table adapter.  While not truly async it provides us with an
+    async path if/when proper threading support becomes available.
     """
 
     __sync_adapter: MSSQLTableAdapter[TEntity]
     __context: AsyncDbContext
     __create_table: bool
     __table_name: str | None
+    __use_setinputsizes: bool
 
     def __init__(
         self,
         context: AsyncDbContext,
         *,
         create_table: bool = False,
-        table_name: str | None = None
+        table_name: str | None = None,
+        use_setinputsizes: bool | None = None
     ) -> None:
         self.__context = context if isinstance(context, (AsyncMSSQLProxyConnection, AsyncMSSQLTransactionContext)) else AsyncMSSQLProxyConnection(context)  # type: ignore[arg-type]
         self.__create_table = create_table is True
         self.__table_name = table_name
         self.__is_initialized = False
+        self.__use_setinputsizes = use_setinputsizes is True
 
     async def __deferred_init(self) -> None:
         if not self.__is_initialized:
@@ -60,6 +62,7 @@ class AsyncMSSQLTableAdapter(AsyncDbTableAdapter[TEntity]):
             self.mssql_connection,
             create_table=self.__create_table,
             table_name=self.__table_name,
+            use_setinputsizes=self.__use_setinputsizes,
         )
 
     @property

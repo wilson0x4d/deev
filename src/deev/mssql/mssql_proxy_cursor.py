@@ -62,6 +62,18 @@ class MSSQLProxyCursor(DbCursor):
         """
         return self.__cursor.rowcount
 
+    def setinputsizes(self, sizes: Sequence[tuple[int, int, int]]) -> None:
+        """
+        Declare parameter type/size information for the next execution.
+
+        Delegates to the underlying mssql_python cursor.  The declaration
+        is consumed (and reset) by the next ``execute``/``executemany``.
+
+        :param sizes: A sequence of ``(sql_type, column_size, decimal_digits)``
+          ODBC triples, one per parameter, in parameter order.
+        """
+        self.__cursor.setinputsizes(list(sizes))  # type: ignore[arg-type]
+
     def execute(self, operation: str, parameters: DbParameters | None = None) -> None:
         """
         Execute a SQL operation with optional parameters.

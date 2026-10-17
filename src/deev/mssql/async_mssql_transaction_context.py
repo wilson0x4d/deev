@@ -20,9 +20,6 @@ from .mssql_transaction_context import MSSQLTransactionContext
 class AsyncMSSQLTransactionContext(AsyncDbTransactionContext):
     """
     Async shim that delegates to ``MSSQLTransactionContext``.
-
-    Wraps the synchronous transaction context and exposes an async API
-    using direct method calls — no ``asyncio.to_thread``.
     """
 
     __context: AsyncDbContext | None
