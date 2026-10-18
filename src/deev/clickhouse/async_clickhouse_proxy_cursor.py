@@ -36,7 +36,6 @@ class AsyncClickHouseProxyCursor(AsyncDbCursor):
     """
 
     __client: AsyncClient
-    __cursor: logging.Logger
     __result: list[tuple[Any, ...]]
     __description: AsyncDbCursorDescription
     __rowcount: int
@@ -46,7 +45,6 @@ class AsyncClickHouseProxyCursor(AsyncDbCursor):
 
     def __init__(self, provider_client: AsyncClient, *args: Any, **kwargs: Any) -> None:
         self.__client = provider_client
-        self.__cursor = hanaro.get_logger()
         self.__result = []
         self.__description = None
         self.__rowcount = 0

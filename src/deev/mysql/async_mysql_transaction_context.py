@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import asyncio
 from contextvars import ContextVar
-import hanaro
-import logging
 import mysql.connector
 from types import TracebackType
 from typing import Any, AsyncGenerator, Literal, Self, cast
@@ -28,7 +26,6 @@ class AsyncMySQLTransactionContext(AsyncDbTransactionContext):
     __ambient_transaction_id: ContextVar[str | None] = ContextVar[str | None]('ambient_transaction_id', default=None)
     __context: AsyncDbContext | None
     __cursor: AsyncDbCursor | None
-    __logger: logging.Logger
     __savepoints: list[str]
     __transaction_depth: int
     __transaction_id: str
@@ -38,7 +35,6 @@ class AsyncMySQLTransactionContext(AsyncDbTransactionContext):
         self.__owns_context = owns_context is True
         self.__is_deev_context = isinstance(context, (AsyncMySQLProxyConnection, AsyncMySQLTransactionContext))
         self.__context = context if self.__is_deev_context else AsyncMySQLProxyConnection(context)  # type: ignore[arg-type]
-        self.__logger = hanaro.get_logger()
         self.__transaction_id = uuid4().hex
         self.__transaction_depth = 0
         self.__savepoints: list[str] = []

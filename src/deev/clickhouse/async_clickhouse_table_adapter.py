@@ -59,7 +59,6 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
         self.__initialized = False
         self.__table_name = table_name
         self.__is_sync_replicas_enabled = sync_replicas is True and getattr(self.__context, 'is_replicated', False) is True
-        self.__logger = hanaro.get_logger()
 
     async def __deferred_init(self) -> None:
         if not self.__initialized:

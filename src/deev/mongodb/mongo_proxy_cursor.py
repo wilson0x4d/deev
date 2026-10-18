@@ -26,7 +26,6 @@ class MongoProxyCursor(DbCursor):
     underlying ClientSession and returns documents as dicts/tuples.
     """
     __database_name: str
-    __logger: logging.Logger
     __result_set: list[dict[str, Any]] | None
     __row_index: int
     __row_count: int
@@ -37,7 +36,6 @@ class MongoProxyCursor(DbCursor):
 
     def __init__(self, provider_session: ClientSession, database_name: str) -> None:
         self.__database_name = database_name
-        self.__logger = hanaro.get_logger()
         self.__session = provider_session
         self.__sql_arg_expect = '%?'
         self.__description_fields = None
@@ -112,7 +110,6 @@ class MongoProxyCursor(DbCursor):
             else:
                 pass
         except Exception as exc:
-            self.__logger.error('MongoProxyCursor.execute failed: %s', str(exc))
             raise DbError(f'MongoDB operation failed: {exc}') from exc
 
     def _execute_select(self, sql: str, parameters: tuple[Any, ...]) -> None:

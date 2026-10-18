@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import hanaro
-import logging
 from mssql_python import Cursor
 from types import TracebackType
 from typing import (
@@ -29,7 +27,6 @@ class MSSQLProxyCursor(DbCursor):
     """
 
     __cursor: Cursor
-    __logger: logging.Logger
     __sql_arg_expect: str
     __sql_arg_subst: str
 
@@ -40,7 +37,6 @@ class MSSQLProxyCursor(DbCursor):
         :param provider_cursor: A raw mssql_python Cursor instance.
         """
         self.__cursor = provider_cursor
-        self.__logger = hanaro.get_logger()
         self.__sql_arg_expect = '%?'
         self.__sql_arg_subst = '?'
 

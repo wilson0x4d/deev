@@ -8,7 +8,6 @@ import logging
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Generator, Literal, Self, cast
 
-import hanaro
 from uuid import uuid4
 
 from ..common.db_connection import DbConnection
@@ -55,7 +54,6 @@ class ClickHouseTransactionContext(DbTransactionContext):
         self.__owns_context = owns_context is True
         self.__is_deev_context = isinstance(context, (ClickHouseProxyConnection, ClickHouseTransactionContext))
         self.__context = context if self.__is_deev_context else ClickHouseProxyConnection(context)  # type: ignore[arg-type]
-        self.__logger = hanaro.get_logger()
         self.__transaction_id = uuid4().hex
         self.__transaction_depth = 0
         self.__savepoints: list[str] = []

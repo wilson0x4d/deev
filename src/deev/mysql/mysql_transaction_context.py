@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
-import hanaro
-import logging
 import mysql.connector
 from types import TracebackType
 from typing import Any, Generator, Literal, Self, cast
@@ -26,7 +24,6 @@ class MySQLTransactionContext(DbTransactionContext):
     __ambient_transaction_id: ContextVar[str | None] = ContextVar[str | None]('ambient_transaction_id', default=None)
     __context: DbContext | None
     __cursor: DbCursor | None
-    __logger: logging.Logger
     __savepoints: list[str]
     __transaction_depth: int
     __transaction_id: str
@@ -36,7 +33,6 @@ class MySQLTransactionContext(DbTransactionContext):
         self.__owns_context = owns_context is True
         self.__is_deev_context = isinstance(context, (MySQLProxyConnection, MySQLTransactionContext))
         self.__context = context if self.__is_deev_context else MySQLProxyConnection(context)  # type: ignore[arg-type]
-        self.__logger = hanaro.get_logger()
         self.__transaction_id = uuid4().hex
         self.__transaction_depth = 0
         self.__savepoints: list[str] = []

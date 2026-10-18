@@ -31,11 +31,9 @@ class ClickHouseProxyCursor(DbCursor):
     """
 
     __cursor: Cursor
-    __logger: logging.Logger
 
     def __init__(self, provider_cursor: Cursor) -> None:
         self.__cursor = provider_cursor
-        self.__logger = hanaro.get_logger()
 
     @property
     def clickhouse_client(self) -> Client:

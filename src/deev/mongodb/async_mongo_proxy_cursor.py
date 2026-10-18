@@ -3,13 +3,11 @@
 
 from __future__ import annotations
 
-import logging
 import re
 from typing import (
     Any,
     Sequence
 )
-import hanaro
 from pymongo.asynchronous.client_session import AsyncClientSession
 from pymongo.asynchronous.collection import AsyncCollection
 
@@ -28,7 +26,6 @@ class AsyncMongoProxyCursor(AsyncDbCursor):
     """
     __database_name: str
     __result_set: list[dict[str, Any]] | None
-    __logger: logging.Logger
     __row_count: int
     __row_index: int
     __session: AsyncClientSession
@@ -41,7 +38,6 @@ class AsyncMongoProxyCursor(AsyncDbCursor):
         self.__database_name = database_name
         self.__sql_arg_expect = '%?'
         self.__description_fields = None
-        self.__logger = hanaro.get_logger()
         self.__last_collection = None
         self.__result_set = None
         self.__row_index = 0
@@ -113,7 +109,6 @@ class AsyncMongoProxyCursor(AsyncDbCursor):
             else:
                 pass
         except Exception as exc:
-            self.__logger.error('AsyncMongoProxyCursor.execute failed: %s', str(exc))
             raise DbError(f'MongoDB operation failed: {exc}') from exc
 
     async def _execute_select(self, sql: str, parameters: tuple[Any, ...]) -> None:

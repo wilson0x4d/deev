@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import hanaro
-import logging
 from sqlite3 import Cursor
 from typing import (
     Any,
@@ -22,13 +20,11 @@ class SQLiteProxyCursor(DbCursor):
     Ensures features are preserved whenever a cursor is acquired via ``deev``.
     """
     __cursor: Cursor
-    __logger: logging.Logger
     __sql_arg_expect: str
     __sql_arg_subst: str
 
     def __init__(self, provider_cursor: Cursor) -> None:
         self.__cursor = provider_cursor
-        self.__logger = hanaro.get_logger()
         self.__sql_arg_expect = '%?'
         self.__sql_arg_subst = '?'
 

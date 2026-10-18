@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from clickhouse_connect.driver.client import Client
-import hanaro
 import logging
 import re
 from typing import (
@@ -55,7 +54,6 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         self.__initialized = False
         self.__table_name = table_name
         self.__is_sync_replicas_enabled = sync_replicas is True and getattr(self.__context, 'is_replicated', False) is True
-        self.__logger = hanaro.get_logger()
 
     def __deferred_init(self) -> None:
         if not self.__initialized:

@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import hanaro
-import logging
 from mysql.connector.aio import cursor as aio_cursor
 from typing import (
     Any,
@@ -20,13 +18,11 @@ class AsyncMySQLProxyCursor(AsyncDbCursor):
     Async DB-API 2.0 compliant cursor interface for mysql.connector.aio.
     """
     __cursor: aio_cursor.MySQLCursorAbstract
-    __logger: logging.Logger
     __sql_arg_expect: str
     __sql_arg_subst: str
 
     def __init__(self, provider_cursor: aio_cursor.MySQLCursorAbstract) -> None:
         self.__cursor = provider_cursor
-        self.__logger = hanaro.get_logger()
         self.__sql_arg_expect = '%?'
         self.__sql_arg_subst = '%s'
 

@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import hanaro
-import logging
 from mysql.connector.abstracts import MySQLCursorAbstract
 from typing import (
     Any,
@@ -22,13 +20,11 @@ class MySQLProxyCursor(DbCursor):
     Ensures features are preserved whenever a cursor is acquired via ``deev``.
     """
     __cursor: MySQLCursorAbstract
-    __logger: logging.Logger
     __sql_arg_expect: str
     __sql_arg_subst: str
 
     def __init__(self, provider_cursor: MySQLCursorAbstract) -> None:
         self.__cursor = provider_cursor
-        self.__logger = hanaro.get_logger()
         self.__sql_arg_expect = '%?'
         self.__sql_arg_subst = '%s'
 

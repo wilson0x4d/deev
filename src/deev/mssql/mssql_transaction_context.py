@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
-import logging
 import mssql_python
-from mssql_python import Connection
 from types import TracebackType
 from typing import Any, Generator, Literal, Self, cast
 from uuid import uuid4
@@ -31,7 +29,6 @@ class MSSQLTransactionContext(DbTransactionContext):
     __ambient_transaction_id: ContextVar[str | None] = ContextVar[str | None]('ambient_transaction_id', default=None)
     __context: DbContext | None
     __cursor: DbCursor | None
-    __logger: logging.Logger
     __savepoints: list[str]
     __transaction_depth: int
     __transaction_id: str
@@ -46,7 +43,6 @@ class MSSQLTransactionContext(DbTransactionContext):
         self.__owns_context = owns_context is True
         self.__is_deev_context = isinstance(context, (MSSQLProxyConnection, MSSQLTransactionContext))
         self.__context = context if self.__is_deev_context else MSSQLProxyConnection(context)  # type: ignore[arg-type]
-        self.__logger = hanaro.get_logger()
         self.__transaction_id = uuid4().hex
         self.__transaction_depth = 0
         self.__savepoints: list[str] = []
@@ -255,7 +251,7 @@ class MSSQLTransactionContext(DbTransactionContext):
         try:
             self.execute(sql)
         except Exception:
-            self.__logger.warning(f'Savepoint {name} already released')
+            hanaro.get_logger().warning(f'Savepoint {name} already released')
 
     def close(self) -> None:
         """Close method for cross-compatibility with :class:`DbConnection`."""
