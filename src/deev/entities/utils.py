@@ -240,7 +240,9 @@ def __value_factory(value: Any) -> Callable[[], Any]:
 def field(
     *,
     autoincrement: bool | None = None,
+    cascade_delete: bool | None = None,
     default: Callable[..., Any] | Any | None = __NOTSET__,
+    foreign_key: tuple[type, str] | None = None,
     index: str | IndexOptions | None = None,
     mapped: bool | None = None,
     max: int | float | Decimal | None = None,
@@ -259,7 +261,13 @@ def field(
     column mapping, constraints, and indexing for the field.
 
     :param autoincrement: Whether the primary key field should auto-increment.
+    :param cascade_delete: When ``True`` and ``foreign_key`` is set, DDL generators emit
+        ``ON DELETE CASCADE`` for the foreign key so that deleting a referenced row also
+        deletes this row. Default ``None`` (no cascade; cascading must be explicit).
     :param default: Default value or zero-argument callable. Uses sentinel to distinguish "not set" from ``None``.
+    :param foreign_key: Foreign-key target as a ``(target_entity_type, target_field_name)``
+        tuple, e.g. ``foreign_key=(Parent, 'id')``. Consumed by DDL generators for DBMSes
+        that support foreign keys. Default ``None``.
     :param index: Index name or :class:`IndexOptions` defining the index field.
     :param mapped: If ``False``, the field is excluded from SQL translation.
     :param max: Maximum value or maximum string length (for validation).
@@ -273,10 +281,20 @@ def field(
     :return: An :class:`EntityFieldSpec` instance.
     """
     # TODO: validation, ie min >= max, autoincrement only valid for integer+pk fields, etc/etc
+    if foreign_key is not None:
+        if not (isinstance(foreign_key, tuple) and len(foreign_key) == 2):
+            raise ValueError('foreign_key must be a tuple of (target_entity_type, target_field_name).')
+        target_type, target_field = foreign_key
+        if not isinstance(target_type, type):
+            raise ValueError(f'foreign_key target must be an entity type, not {target_type!r}.')
+        if not isinstance(target_field, str):
+            raise ValueError(f'foreign_key target field must be a string, not {target_field!r}.')
     if isinstance(index, str):
         index = IndexOptions(name=index, direction=IndexOrder.ASCENDING, rank=0)
     field_spec = EntityFieldSpec(
         autoincrement=autoincrement,
+        cascade_delete=cascade_delete,
+        foreign_key=foreign_key,
         index=index,
         mapped=mapped,
         max=max,

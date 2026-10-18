@@ -283,3 +283,57 @@ def pluralization_bvt() -> None:
     assert pluralize('Widgets') == 'Widgets', 'not respecting already plural.'
     assert pluralize('Tree') == 'Trees', 'not applying default pluralization.'
     assert pluralize('Anatoly') == 'Anatolies', 'not applying consonantal pluralization.'
+
+
+@entity
+class FKRefTarget:
+    id: UUID = field(primary_key=True)
+
+
+@fact
+def field_foreign_key_stores_target() -> None:
+    @entity
+    class FKHolder:
+        id: UUID = field(primary_key=True)
+        ref_id: UUID = field(foreign_key=(FKRefTarget, 'id'))
+    spec = get_entity_spec(FKHolder)
+    assert spec.fields['ref_id'].foreign_key == (FKRefTarget, 'id'), 'foreign_key not stored on the field spec.'
+
+
+@fact
+def field_cascade_delete_stores_flag() -> None:
+    @entity
+    class FKHolderCascade:
+        id: UUID = field(primary_key=True)
+        ref_id: UUID = field(foreign_key=(FKRefTarget, 'id'), cascade_delete=True)
+    spec = get_entity_spec(FKHolderCascade)
+    assert spec.fields['ref_id'].cascade_delete is True, 'cascade_delete not stored on the field spec.'
+
+
+@fact
+def field_foreign_key_defaults_to_none() -> None:
+    @entity
+    class FKHolderNone:
+        id: UUID = field(primary_key=True)
+        ref_id: UUID
+    spec = get_entity_spec(FKHolderNone)
+    assert spec.fields['ref_id'].foreign_key is None, 'foreign_key should default to None.'
+    assert spec.fields['ref_id'].cascade_delete is None, 'cascade_delete should default to None.'
+
+
+@fact
+def field_foreign_key_malformed_tuple_raises() -> None:
+    from punit import raises
+    assert raises[ValueError](lambda: field(foreign_key=('not', 'a', 'tuple'))), 'expected ValueError for a 3-tuple foreign_key.'  # type: ignore[arg-type]
+
+
+@fact
+def field_foreign_key_non_type_target_raises() -> None:
+    from punit import raises
+    assert raises[ValueError](lambda: field(foreign_key=('FKRefTarget', 'id'))), 'expected ValueError for a non-type foreign_key target.'  # type: ignore[arg-type]
+
+
+@fact
+def field_foreign_key_non_string_field_raises() -> None:
+    from punit import raises
+    assert raises[ValueError](lambda: field(foreign_key=(FKRefTarget, 123))), 'expected ValueError for a non-string foreign_key field.'  # type: ignore[arg-type]

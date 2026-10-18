@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import hanaro
 
-from ..entities import EntitySpec, IndexOrder
+from ..entities import EntitySpec, IndexOrder, get_entity_spec
 from .sqlite_type_mapper import SQLiteTypeMapper
 
 
@@ -14,7 +14,8 @@ class SQLiteDDLGenerator():
     Generates DDL statements for SQLite tables from entity specifications.
 
     Produces ``CREATE TABLE IF NOT EXISTS`` statements with column definitions,
-    auto-increment for integer PKs, and ``CREATE INDEX`` for secondary indexes.
+    auto-increment for integer PKs, ``FOREIGN KEY`` constraints for foreign-key
+    fields, and ``CREATE INDEX`` for secondary indexes.
     """
 
     def __init__(
@@ -22,6 +23,18 @@ class SQLiteDDLGenerator():
     ) -> None:
         """Initialize the DDL generator."""
         self.__logger = hanaro.get_logger()
+
+    def __generate_foreign_keys_ddl(self, entity_spec: EntitySpec) -> list[str]:
+        """Build ``FOREIGN KEY`` table constraints for all foreign-key fields."""
+        fks = list[str]()
+        for field_name, spec in entity_spec.fields.items():
+            if spec.foreign_key is None:
+                continue
+            target_entity_type, target_field = spec.foreign_key
+            target_table_name = get_entity_spec(target_entity_type).table_name
+            cascade = ' ON DELETE CASCADE' if spec.cascade_delete is True else ''
+            fks.append(f'FOREIGN KEY ([{field_name}]) REFERENCES [{target_table_name}]([{target_field}]){cascade}')
+        return fks
 
     def __generate_table_indexes_ddl(self, entity_spec: EntitySpec, table_name: str) -> list[str]:
         """Build ``CREATE INDEX`` statements for all secondary indexes."""
@@ -64,28 +77,27 @@ class SQLiteDDLGenerator():
         db_type_mapper = SQLiteTypeMapper(entity_spec)
         ddl = list[str]()
         table_name = entity_spec.table_name if table_name is None else table_name
+        definitions = list[str]()
         if len(entity_spec.primary_key) == 1:
             # handling a single-column PK
             primary_key = entity_spec.primary_key[0]
             id_dbtype = db_type_mapper.get_provider_type(primary_key)
-            columns = ', '.join([
+            definitions.append(f'{primary_key} {id_dbtype} PRIMARY KEY{" AUTOINCREMENT" if id_dbtype == "INTEGER" else ""}')
+            definitions.extend([
                 f'[{k}] {db_type_mapper.get_provider_type(k)}'
                 for k in entity_spec.attrs.keys()
                 if k != primary_key
             ])
-            ddl.append(f'CREATE TABLE IF NOT EXISTS [{table_name}] ({primary_key} {id_dbtype} PRIMARY KEY{" AUTOINCREMENT" if id_dbtype == "INTEGER" else ""}, {columns})')
         else:
             # special handling of multi-column PK
-            columns = ', '.join([
+            definitions.extend([
                 f'[{k}] {db_type_mapper.get_provider_type(k)}'
                 for k in entity_spec.attrs.keys()
             ])
-            primary_key = (
-                f", PRIMARY KEY ({','.join(entity_spec.primary_key)})"
-                if len(entity_spec.primary_key) > 0
-                else ''
-            )
-            ddl.append(f'CREATE TABLE IF NOT EXISTS [{table_name}] ({columns}{primary_key})')
+            if len(entity_spec.primary_key) > 0:
+                definitions.append(f'PRIMARY KEY ({", ".join(entity_spec.primary_key)})')
+        definitions.extend(self.__generate_foreign_keys_ddl(entity_spec))
+        ddl.append(f'CREATE TABLE IF NOT EXISTS [{table_name}] ({", ".join(definitions)})')
         # Generate CREATE INDEX for secondary indexes defined via field(index=...)
         [ddl.append(e) for e in self.__generate_table_indexes_ddl(entity_spec, table_name)]  # type: ignore
         return ddl

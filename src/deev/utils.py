@@ -685,6 +685,88 @@ def generate_entity_ddl(
         raise ValueError(f'Cannot determine type information for `{entity_fqn}`.')
 
 
+def _order_entities_for_ddl(entity_types: list[type]) -> list[type]:
+    """
+    Resolve the complete set of entities to emit DDL for and order them so that
+    foreign-key targets precede the entities that reference them.
+
+    In addition to the provided *entity_types*, any entity referenced as a foreign-key
+    target (transitively) is included, so that the generated DDL is complete and every
+    ``FOREIGN KEY`` constraint references a table that is itself emitted.
+
+    Ordering is a topological sort that uses alphabetical table name as a deterministic
+    tie-breaker, so that entities without foreign-key dependencies are still emitted in
+    alphabetical order.  If a foreign-key cycle is detected, the remaining (cyclic)
+    entities are appended in alphabetical table-name order.
+
+    :param entity_types: The entity types discovered on a :class:`DbAdapter`.
+    :return: Entity types ordered for DDL emission (foreign-key targets first).
+    """
+    from deev.entities import EntitySpec, get_entity_spec
+
+    def _table_name(entity_type: type) -> str:
+        try:
+            return get_entity_spec(entity_type).table_name
+        except Exception:
+            return entity_type.__name__
+
+    def _fk_targets(spec: EntitySpec) -> list[type]:
+        targets = list[type]()
+        for field_spec in spec.fields.values():
+            fk = field_spec.foreign_key
+            if fk is None:
+                continue
+            target = fk[0]
+            if isinstance(target, type):
+                targets.append(target)
+        return targets
+
+    # transitive closure of the discovered entities plus their foreign-key targets
+    all_entities: list[type] = []
+    seen: set[type] = set()
+    queue: list[type] = list(entity_types)
+    while queue:
+        current = queue.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+        all_entities.append(current)
+        try:
+            spec = get_entity_spec(current)
+        except Exception:
+            continue
+        for target in _fk_targets(spec):
+            if target not in seen:
+                queue.append(target)
+
+    # dependencies: entity -> set of entities that must be emitted before it
+    deps: dict[type, set[type]] = {et: set() for et in all_entities}
+    for et in all_entities:
+        try:
+            spec = get_entity_spec(et)
+        except Exception:
+            continue
+        for target in _fk_targets(spec):
+            if target in deps:
+                deps[et].add(target)
+
+    # Kahn's algorithm, always picking the alphabetically-first ready entity
+    ordered: list[type] = []
+    resolved: set[type] = set()
+    remaining: dict[type, set[type]] = {et: set(deps[et]) for et in all_entities}
+    while remaining:
+        ready = [et for et, d in remaining.items() if d <= resolved]
+        if not ready:
+            # foreign-key cycle detected; fall back to alphabetical table-name order
+            ordered.extend(sorted(remaining, key=_table_name))
+            break
+        pick = min(ready, key=_table_name)
+        ordered.append(pick)
+        resolved.add(pick)
+        del remaining[pick]
+    return ordered
+
+
 def generate_dbadapter_ddl(
     dbcontext_or_connectionstring: DbContext | ConnectionString,
     dbadapter_fqn: str
@@ -693,12 +775,15 @@ def generate_dbadapter_ddl(
     Generate DDL statements for all entities referenced by a :class:`DbAdapter` subclass.
 
     Inspects the adapter class properties for ``DbTableAdapter[T]`` types and
-    generates DDL for each entity type.  Tables are emitted in alphabetical
-    order by table name.
+    generates DDL for each entity type.  Any entity referenced as a foreign-key
+    target (transitively) is also included.  Tables are emitted in an order that
+    guarantees every foreign-key target is created before the table that references
+    it; entities without foreign-key dependencies are emitted in alphabetical order
+    by table name.
 
     :param dbcontext_or_connectionstring: A :class:`DbContext` or :class:`ConnectionString`.
     :param dbadapter_fqn: Fully-qualified ``DbAdapter`` subclass name.
-    :return: List of DDL statement strings for all discovered entity types, sorted alphabetically by table name.
+    :return: List of DDL statement strings for all discovered (and transitively referenced) entity types.
     :raises ValueError: If the adapter type cannot be determined.
     """
     dbadapter_type: type | None = None
@@ -712,7 +797,7 @@ def generate_dbadapter_ddl(
     if dbadapter_type is None:
         raise ValueError(f'Cannot determine type information for `{dbadapter_fqn}`.')
     from deev.entities import get_entity_spec
-    table_ddl: list[tuple[str, list[str]]] = []
+    discovered: list[type] = []
     for name, attr in dbadapter_type.__dict__.items():
         if name.startswith('_'):
             continue
@@ -733,14 +818,17 @@ def generate_dbadapter_ddl(
             if origin is not None and len(type_args) == 1:
                 entity_type = type_args[0]
                 if isinstance(entity_type, type) and issubclass(origin, DbTableAdapter):  # type: ignore[arg-type]
-                    entity_ddl = generate_entity_ddl(
-                        dbcontext_or_connectionstring,
-                        f'{entity_type.__module__}.{entity_type.__name__}'
-                    )
-                    table_name = get_entity_spec(entity_type).table_name
-                    table_ddl.append((table_name, entity_ddl))
+                    discovered.append(entity_type)
             break
-    table_ddl.sort(key=lambda item: item[0])
+    ordered_entity_types = _order_entities_for_ddl(discovered)
+    table_ddl: list[tuple[str, list[str]]] = []
+    for entity_type in ordered_entity_types:
+        entity_ddl = generate_entity_ddl(
+            dbcontext_or_connectionstring,
+            f'{entity_type.__module__}.{entity_type.__name__}'
+        )
+        table_name = get_entity_spec(entity_type).table_name
+        table_ddl.append((table_name, entity_ddl))
     return [stmt for _, stmts in table_ddl for stmt in stmts]
 
 

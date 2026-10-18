@@ -25,7 +25,9 @@ class EntityFieldSpec(_ImmutableMixin):
             email: str = field(unique=True, validator=validate_email)
 
     :param autoincrement: Whether the field should auto-increment (PK only).
+    :param cascade_delete: Whether deleting a referenced row should cascade to this row (DDL only; default off).
     :param default: Default value or callable (zero-arg). Set via ``hasattr`` check.
+    :param foreign_key: Foreign-key target as a ``(entity_type, field_name)`` tuple (DDL only).
     :param index: Index definition: a name string or :class:`IndexOptions`.
     :param mapped: Whether the field is mapped to a database column (default ``True``).
     :param max: Maximum value or string length (for validation).
@@ -38,7 +40,9 @@ class EntityFieldSpec(_ImmutableMixin):
     """
 
     autoincrement: bool | None  # if the field should be configured for autoincrement (applies to PK only)
+    cascade_delete: bool | None  # when True, DDL generators emit ON DELETE CASCADE for the foreign key
     default: Callable[..., Any] | Any | None  # the field should have a default value applied on creation. may be a value or a function.
+    foreign_key: tuple[type, str] | None  # foreign-key target as (target entity type, target field name)
     index: IndexOptions | None  # the field is part of an index definition, this represents the index options for the field
     mapped: bool | None  # whether or not the field is mapped, fields are always mapped by default
     max: int | float | None  # maximum length <= value (validation)
@@ -59,10 +63,12 @@ class EntityFieldSpec(_ImmutableMixin):
         :param kwargs: Field options matching the class attribute names.
         """
         self.autoincrement = None
+        self.cascade_delete = None
         # NOTE: we do not populate, since `None` may be the default value we are looking to set
         #       therefore, we never "enforce" a value for `default` and instead always check `hasattr`
         #       to determine the difference.
         # self.default = None
+        self.foreign_key = None
         self.index = None
         self.mapped = None
         self.max = None

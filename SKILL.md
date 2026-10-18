@@ -39,7 +39,9 @@ All parameters are keyword-only with `None` defaults (except `init`).
 | Parameter | Type | Meaning |
 |-----------|------|---------|
 | `autoincrement` | `bool \| None` | Auto-incrementing PK. Default `None`. |
+| `cascade_delete` | `bool \| None` | With `foreign_key`, emit `ON DELETE CASCADE` so deleting a referenced row deletes this row (DDL only). Default `None` (no cascade — must be explicit). |
 | `default` | `Any \| Callable \| None` | Static value or zero-arg callable. Uses sentinel `__NOTSET__` internally to distinguish "not set" from `None`. |
+| `foreign_key` | `tuple[type, str] \| None` | Foreign-key target as `(target_entity_type, target_field_name)`, e.g. `foreign_key=(Parent, 'id')`. Consumed by DDL generators for DBMSes that support FKs. Default `None`. |
 | `index` | `str \| IndexOptions \| None` | Index name or `IndexOptions(name=..., direction=..., rank=..., type=...)`. |
 | `init` | `bool` | Whether field participates in `__init__`. Default `True`. |
 | `mapped` | `bool \| None` | If `False`, excluded from SQL translation. Default `None`. |
@@ -79,6 +81,29 @@ IndexOptions(
 **Provider-specific extra args:** unrecognized `**kwargs` are stored in `EntitySpec.extra_args` and consumed by the active provider's DDL generation. Currently: ClickHouse supports `engine` (e.g. `@entity(engine='ReplacingMergeTree')`), which is used as the table `ENGINE` in generated DDL instead of the database-level engine.
 
 Entity specs (`EntitySpec`, `EntityFieldSpec`) are immutable — after definition, attempts to modify them raise `AttributeError`.
+
+### Foreign Keys
+
+Foreign-key constraints are declared on a field with `foreign_key=(target_entity_type, target_field_name)`. They are consumed **only by DDL generation** for DBMSes that support foreign keys (SQLite, MySQL, MSSQL). MongoDB and ClickHouse ignore them.
+
+```python
+@entity
+class ExampleEntityOne:
+    id: UUID = field(primary_key=True)
+
+@entity
+class ExampleEntityTwo:
+    id: UUID = field(primary_key=True)
+    one_id: UUID = field(foreign_key=(ExampleEntityOne, 'id'))
+```
+
+The DDL generators emit a `FOREIGN KEY` table constraint (e.g. `FOREIGN KEY ([one_id]) REFERENCES [ExampleEntityOnes]([id])`). Adding `cascade_delete=True` appends `ON DELETE CASCADE`, so deleting a referenced row also deletes the dependent rows. The default is **no cascade** — cascading must be configured explicitly.
+
+```python
+one_id: UUID = field(foreign_key=(ExampleEntityOne, 'id'), cascade_delete=True)
+```
+
+`generate_dbadapter_ddl()` orders the emitted tables so that every foreign-key target is created before the table that references it (topological order, alphabetical tie-break). Foreign-key targets that are not themselves direct `DbAdapter` properties are still included, transitively.
 
 ---
 
