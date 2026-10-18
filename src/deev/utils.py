@@ -693,11 +693,12 @@ def generate_dbadapter_ddl(
     Generate DDL statements for all entities referenced by a :class:`DbAdapter` subclass.
 
     Inspects the adapter class properties for ``DbTableAdapter[T]`` types and
-    generates DDL for each entity type.
+    generates DDL for each entity type.  Tables are emitted in alphabetical
+    order by table name.
 
     :param dbcontext_or_connectionstring: A :class:`DbContext` or :class:`ConnectionString`.
     :param dbadapter_fqn: Fully-qualified ``DbAdapter`` subclass name.
-    :return: List of DDL statement strings for all discovered entity types.
+    :return: List of DDL statement strings for all discovered entity types, sorted alphabetically by table name.
     :raises ValueError: If the adapter type cannot be determined.
     """
     dbadapter_type: type | None = None
@@ -710,7 +711,8 @@ def generate_dbadapter_ddl(
             pass
     if dbadapter_type is None:
         raise ValueError(f'Cannot determine type information for `{dbadapter_fqn}`.')
-    ddl: list[str] = []
+    from deev.entities import get_entity_spec
+    table_ddl: list[tuple[str, list[str]]] = []
     for name, attr in dbadapter_type.__dict__.items():
         if name.startswith('_'):
             continue
@@ -735,10 +737,11 @@ def generate_dbadapter_ddl(
                         dbcontext_or_connectionstring,
                         f'{entity_type.__module__}.{entity_type.__name__}'
                     )
-                    for stmt in entity_ddl:
-                        ddl.append(stmt)
+                    table_name = get_entity_spec(entity_type).table_name
+                    table_ddl.append((table_name, entity_ddl))
             break
-    return ddl
+    table_ddl.sort(key=lambda item: item[0])
+    return [stmt for _, stmts in table_ddl for stmt in stmts]
 
 
 def db_table_adapter_factory(
