@@ -296,7 +296,7 @@ class SQLiteTableAdapter(Generic[TEntity]):
         sql = f'SELECT {self.__column_names} FROM [{table_name}]{where}{orderby}{limit_str}'
         cursor = self.__context.cursor()
         if cursor.description is None:
-            Exception('cursor missing required descriptor')
+            raise DbError('cursor missing required descriptor')
         cursor.execute(sql, tuple(parameters))
         row = cursor.fetchone()
         while row is not None:
