@@ -95,6 +95,11 @@ def __parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar='connection',
         help='Database connection string (name from config or literal `key=value` format).',
     )
+    generate_parser.add_argument(
+        '--emit-use-stmt',
+        action='store_true',
+        help='Emit a `USE <database>;` statement before the generated DDL.',
+    )
 
     return parser.parse_args(argv)
 
@@ -155,7 +160,8 @@ def main() -> None:
                 ddl_ident = f'-- Generated {datetime.now()} on {platform.node()} --'
                 ddl_sep = '-' * len(ddl_ident)
                 print(f'{ddl_sep}\n{ddl_ident}\n{ddl_sep}\n')
-                print(f'USE {connection.database};\n')
+                if args.emit_use_stmt:
+                    print(f'USE {connection.database};\n')
                 for stmt in ddl:
                     print(f'{stmt};\n')
                 if connection.provider == 'clickhouse' and connection.parameters.get('engine', 'Replicate').startswith('Replicate'):

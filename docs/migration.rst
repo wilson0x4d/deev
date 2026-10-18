@@ -81,7 +81,7 @@ CLI Syntax
 .. code-block:: bash
 
     $ db-migrate generate -h
-    usage: db-migrate generate [-h] type fqn connection
+    usage: db-migrate generate [-h] [--emit-use-stmt] type fqn connection
 
     positional arguments:
         type          The type of object to generate DDL for (entity or database).
@@ -89,7 +89,8 @@ CLI Syntax
         connection    Database connection string (name from config or literal ``key=value`` format).
 
     options:
-        -h, --help    show this help message
+        -h, --help            show this help message
+        --emit-use-stmt       Emit a ``USE <database>;`` statement before the generated DDL.
 
 
 Connection Strings
