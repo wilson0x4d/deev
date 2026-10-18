@@ -8,6 +8,8 @@ from .datetime_utils import (
 from .deev_json_decoder import DeevJsonDecoder
 from .deev_json_encoder import DeevJsonEncoder
 from .utils import (
+    compile_py_converter,
+    compile_hydrate_plan,
     configure_serialization,
     deunionize,
     hydrate,
@@ -37,6 +39,8 @@ __all__ = [
     'DeevJsonDecoder',
     'DeevJsonEncoder',
     'MSSQL_DATETIME_TYPE_CONFIG_KEY',
+    'compile_py_converter',
+    'compile_hydrate_plan',
     'configure_serialization',
     'deunionize',
     'get_mssql_datetime_type',

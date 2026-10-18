@@ -4,7 +4,7 @@
 from collections import defaultdict
 from deev.entities import IndexOptions, IndexOrder
 import pymongo
-from typing import Any, Generator, TypeVar, cast, get_args, get_origin
+from typing import Any, Callable, Generator, Mapping, TypeVar, cast, get_args, get_origin
 
 from ..common.db_context import DbContext
 from ..common.db_error import DbError
@@ -12,13 +12,14 @@ from ..common.db_parameters import DbParameters
 from ..common.db_table_adapter import DbTableAdapter
 from ..common.db_transaction_context import DbTransactionContext
 from ..common.db_type_mapper import DbTypeMapper
-from ..entities import EntitySpec, get_entity_spec
-from ..translation import hydrate_mongodb, splat_mongodb, to_pyobject
+from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec
+from ..translation import compile_hydrate_plan, splat_mongodb, to_pyobject
 from ..translation.utils import to_bsonobject
 from .utils import parse_sql_where
 from .mongo_type_mapper import MongoTypeMapper
 
 TEntity = TypeVar('TEntity')
+_ABSENT = object()
 
 
 class MongoTableAdapter(DbTableAdapter[TEntity]):
@@ -38,9 +39,11 @@ class MongoTableAdapter(DbTableAdapter[TEntity]):
     __context: DbContext | DbTransactionContext
     __create_table: bool
     __database_name: str
+    __default_only_names: tuple[str, ...]
     __entity_spec: EntitySpec
     __initialized: bool
     __dbtype_mapper: DbTypeMapper
+    __hydrate_plan: tuple[tuple[str, Callable[[Any], Any] | None], ...]
     __table_name: str | None
 
     def __init__(
@@ -63,6 +66,8 @@ class MongoTableAdapter(DbTableAdapter[TEntity]):
             entity_type = self.__get_typearg(self)
             self.__entity_spec = get_entity_spec(entity_type)
             self.__column_names = ', '.join([f'`{k}`' for k in self.__entity_spec.fields.keys()])
+            self.__hydrate_plan = compile_hydrate_plan(self.__entity_spec, from_bson=True)
+            self.__default_only_names = tuple(name for name, convert in self.__hydrate_plan if convert is None)
             self.__dbtype_mapper = MongoTypeMapper(self.__entity_spec)
             self.__initialized = True
             if self.__create_table is True:
@@ -105,6 +110,29 @@ class MongoTableAdapter(DbTableAdapter[TEntity]):
             f'Could not determine the entity type for {obj.__class__.__qualname__}. '
             'Instantiate via the generic alias, e.g. MongoTableAdapter[MyEntity]().'
         )
+
+    def __hydrate_doc(self, doc: Mapping[str, Any]) -> TEntity:
+        entity = construct_entity(self.__entity_spec.entity_type, ())
+        missing: list[str] | None = None
+        for name, convert in self.__hydrate_plan:
+            if convert is None:
+                continue
+            value = doc.get(name, _ABSENT)
+            if value is _ABSENT:
+                if missing is None:
+                    missing = [name]
+                else:
+                    missing.append(name)
+            else:
+                setattr(entity, name, convert(value))
+        if missing is not None:
+            if self.__default_only_names:
+                apply_defaults_for(entity, [*missing, *self.__default_only_names])
+            else:
+                apply_defaults_for(entity, missing)
+        elif self.__default_only_names:
+            apply_defaults_for(entity, self.__default_only_names)
+        return entity
 
     def __get_collection_name(self) -> str:
         """Return the table/collection name (from explicit override or entity spec)."""
@@ -251,8 +279,7 @@ class MongoTableAdapter(DbTableAdapter[TEntity]):
         raw_doc = collection.find_one(primary_key)
         if raw_doc is None:
             return None
-        doc = {k: v for k, v in raw_doc.items() if k != '_id'}
-        return hydrate_mongodb(self.__entity_spec.entity_type, doc)  # type: ignore[arg-type]
+        return self.__hydrate_doc(raw_doc)
 
     def update(self, entity: TEntity) -> None:
         self.__deferred_init()
@@ -351,8 +378,7 @@ class MongoTableAdapter(DbTableAdapter[TEntity]):
         if limit is not None and limit > 0:
             cursor = cursor.limit(limit)
         for result in cursor:
-            doc = {k: v for k, v in result.items() if k != '_id'}
-            yield hydrate_mongodb(self.__entity_spec.entity_type, doc)  # type: ignore[arg-type]
+            yield self.__hydrate_doc(result)
 
 
 __all__ = ['MongoTableAdapter']

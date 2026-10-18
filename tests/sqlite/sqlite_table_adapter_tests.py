@@ -209,3 +209,40 @@ def timedelta_roundtrip() -> None:
         assert os.path.exists(database_path)
         shutil.rmtree(database_path)
         assert not os.path.exists(database_path)
+
+
+@fact
+@trait('sqlite')
+def query_and_read_roundtrip_on_temp_database() -> None:
+    """read() and query() hydrate rows end-to-end, applying field defaults for NULL columns."""
+    import tempfile
+
+    db_dir = tempfile.mkdtemp(prefix='deev_qrt_')
+    db_name = f'deev_qrt_{uuid4().hex}.db'
+    try:
+        @entity(table_name='tbl_qrt')
+        class QrtEntity:
+            id: int = field(autoincrement=True, primary_key=True, default=0)
+            example: int | None = None
+            name: str | None = None
+            note: str | None = field(default='default-note')
+
+        cxnstring = ConnectionString(f'Server={db_dir};Database={db_name};Provider=sqlite3')
+        with connect(cxnstring) as connection:
+            adapter = SQLiteTableAdapter[QrtEntity](connection, create_table=True)
+            pk = adapter.create(QrtEntity(example=42, name='first', note=None))
+            assert pk is not None, 'expected a primary key to be returned'
+            row = adapter.read(**pk)
+            assert row is not None, 'expected a row to be read back'
+            assert row.example == 42, f'expected example 42, got {row.example}'
+            assert row.name == 'first', f'expected name "first", got {row.name}'
+            assert row.note == 'default-note', f'expected the field default to be applied for a NULL column, got {row.note}'
+            selected = [e for e in adapter.query(where='name=%?', parameters=['first'], orderby='id DESC')]
+            assert len(selected) == 1, f'expected 1 row from query, got {len(selected)}'
+            assert selected[0].example == 42, f'expected example 42, got {selected[0].example}'
+            assert selected[0].name == 'first', f'expected name "first", got {selected[0].name}'
+            assert selected[0].note == 'default-note', f'expected the field default to be applied for a NULL column, got {selected[0].note}'
+            adapter.delete(**pk)
+            assert adapter.read(**pk) is None, 'expected no row after delete'
+    finally:
+        shutil.rmtree(db_dir, ignore_errors=True)

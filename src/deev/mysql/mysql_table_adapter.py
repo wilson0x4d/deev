@@ -5,15 +5,15 @@ import mysql.connector
 import mysql.connector.abstracts
 import mysql.connector.cursor
 import mysql.connector.types
-from typing import Any, Generator, Generic, TypeVar, cast, get_args, get_origin
+from typing import Any, Callable, Generator, Generic, TypeVar, cast, get_args, get_origin
 from uuid import UUID
 
 from ..common.db_context import DbContext
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
 from ..common.db_type_mapper import DbTypeMapper
-from ..entities import EntitySpec, get_entity_spec
-from ..translation import hydrate_mysql, to_pyobject, splat_mysql
+from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec
+from ..translation import compile_hydrate_plan, splat_mysql, to_pyobject
 from .mysql_proxy_connection import MySQLProxyConnection
 from .mysql_transaction_context import MySQLTransactionContext
 from .mysql_type_mapper import MySQLTypeMapper
@@ -36,9 +36,11 @@ class MySQLTableAdapter(Generic[TEntity]):
     __column_names: str  # NOTE: just an optimization so we don't have to concat over and over
     __context: DbContext
     __create_table: bool
+    __default_only_names: tuple[str, ...]
     __entity_spec: EntitySpec
     __initialized: bool
     __dbtype_mapper: DbTypeMapper
+    __hydrate_plan: tuple[tuple[str, Callable[[Any], Any] | None], ...]
     __table_name: str | None
 
     def __init__(
@@ -59,6 +61,8 @@ class MySQLTableAdapter(Generic[TEntity]):
             entity_type = self.__get_typearg(self)
             self.__entity_spec = get_entity_spec(entity_type)
             self.__column_names = ', '.join([f'`{k}`' for k in self.__entity_spec.fields.keys()])
+            self.__hydrate_plan = compile_hydrate_plan(self.__entity_spec, from_mysql=True)
+            self.__default_only_names = tuple(name for name, convert in self.__hydrate_plan if convert is None)
             self.__dbtype_mapper = MySQLTypeMapper(self.__entity_spec)
             self.__initialized = True
             if self.__create_table is True:
@@ -94,6 +98,28 @@ class MySQLTableAdapter(Generic[TEntity]):
             f'Could not determine the entity type for {obj.__class__.__qualname__}. '
             'Instantiate via the generic alias, e.g. MySQLTableAdapter[MyEntity]().'
         )
+
+    def __hydrate_row(self, row: tuple[Any, ...]) -> TEntity:
+        entity = construct_entity(self.__entity_spec.entity_type, ())
+        missing: list[str] | None = None
+        for i, (name, convert) in enumerate(self.__hydrate_plan):
+            if convert is None:
+                continue
+            value = convert(row[i])
+            if value is not None:
+                setattr(entity, name, value)
+            elif missing is None:
+                missing = [name]
+            else:
+                missing.append(name)
+        if missing is not None:
+            if self.__default_only_names:
+                apply_defaults_for(entity, [*missing, *self.__default_only_names])
+            else:
+                apply_defaults_for(entity, missing)
+        elif self.__default_only_names:
+            apply_defaults_for(entity, self.__default_only_names)
+        return entity
 
     def create_table(self) -> None:
         """Utility method for creating the target table."""
@@ -171,14 +197,7 @@ class MySQLTableAdapter(Generic[TEntity]):
         cursor.execute(sql, tuple(keys))
         data = cursor.fetchone()
         if data:
-            if cursor.description is None:
-                raise DbError('Provider did not provide a description.')
-            result = {}
-            for kvp in zip(cursor.description, data):
-                value = self.__get_pyobject(kvp[0][0], kvp[1])
-                if value is not None:
-                    result[kvp[0][0]] = value
-            return hydrate_mysql(self.__entity_spec.entity_type(), result)
+            return self.__hydrate_row(data)
         else:
             return None
 
@@ -293,19 +312,10 @@ class MySQLTableAdapter(Generic[TEntity]):
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         sql = f'SELECT {self.__column_names} FROM `{table_name}`{where}{orderby}{limit_str}'
         cursor = self.__context.cursor()
-        if cursor.description is None:
-            Exception('cursor missing required descriptor')
         cursor.execute(sql, tuple(parameters))
         row = cursor.fetchone()
         while row is not None:
-            if cursor.description is None:
-                raise DbError('Provider did not provide a description.')
-            result = {}
-            for kvp in zip(cursor.description, row):
-                value = self.__get_pyobject(kvp[0][0], kvp[1])
-                if value is not None:
-                    result[kvp[0][0]] = value
-            yield hydrate_mysql(self.__entity_spec.entity_type(), result)
+            yield self.__hydrate_row(row)
             row = cursor.fetchone()
 
 

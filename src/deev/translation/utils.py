@@ -9,12 +9,12 @@ from decimal import Decimal
 from enum import Enum
 from types import NoneType, UnionType
 import inspect
-from typing import Any, Callable, Mapping, Union, get_args, get_origin
+from typing import Any, Callable, Mapping, Union, cast, get_args, get_origin
 
 from .datetime_utils import assume_utc, ensure_utc_aware, get_mssql_datetime_type
 from .deev_json_decoder import DeevJsonDecoder, _parse_datetime_iso, _parse_time_iso
 from .deev_json_encoder import DeevJsonEncoder, _iso_z, _utc_z, _utc_z_time
-from ..entities import get_entity_spec
+from ..entities import EntitySpec, get_entity_spec
 from uuid import UUID
 
 __json_encoder: type[json.JSONEncoder] = DeevJsonEncoder
@@ -230,6 +230,250 @@ def to_pyobject(value: Any, hint: type, *, from_sql: bool = False, from_mssql: b
                 return value
         else:
             return value
+
+
+__py_converter_cache: dict[tuple[Any, ...], Callable[[Any], Any]] = {}
+
+
+def __compile_py_converter_impl(
+    hint: type | None,
+    from_sql: bool,
+    from_mssql: bool,
+    from_bson: bool,
+    from_mysql: bool,
+    from_chsql: bool
+) -> Callable[[Any], Any]:
+    """
+    Build a fast value converter for a single (deunionized) type hint.
+
+    The generated callable replicates :func:`to_pyobject` for the given hint
+    exactly, but resolves the per-value type dispatch once, at compile time.
+
+    :param hint: The (deunionized) type hint to compile for.
+    :param from_sql: Provider flag forwarded to the datetime read policy.
+    :param from_mssql: Provider flag forwarded to the datetime read policy.
+    :param from_bson: Provider flag forwarded to the datetime read policy.
+    :param from_mysql: Provider flag forwarded to the datetime read policy.
+    :param from_chsql: Provider flag forwarded to the datetime read policy.
+    :return: The compiled converter.
+    """
+    nulls = (None, NoneType, 'null', 'NULL')
+
+    if hint is None:
+        def convert_identity(value: Any) -> Any:
+            return None if value in nulls else value
+        return convert_identity
+
+    if hint is int:
+        def convert_int(value: Any) -> Any:
+            if value in nulls:
+                return None
+            return int(value) if isinstance(value, str) else value
+        return convert_int
+
+    if hint is float:
+        def convert_float(value: Any) -> Any:
+            if value in nulls:
+                return None
+            return float(value) if isinstance(value, str) else value
+        return convert_float
+
+    if hint is bool:
+        def convert_bool(value: Any) -> Any:
+            if value in nulls:
+                return None
+            return True if value in ('1', 'TRUE', 'true', 'True', 1, True) else False
+        return convert_bool
+
+    if hint is UUID:
+        def convert_uuid(value: Any) -> Any:
+            if value in nulls:
+                return None
+            return UUID(value) if isinstance(value, str) else value
+        return convert_uuid
+
+    if hint is datetime:
+        def convert_datetime(value: Any) -> Any:
+            if value in nulls:
+                return None
+            if isinstance(value, str):
+                return __apply_datetime_read_policy(_parse_datetime_iso(value), from_sql, from_mssql, from_bson, from_mysql, from_chsql)
+            if isinstance(value, datetime):
+                return __apply_datetime_read_policy(value, from_sql, from_mssql, from_bson, from_mysql, from_chsql)
+            return value
+        return convert_datetime
+
+    if hint is date:
+        def convert_date(value: Any) -> Any:
+            if value in nulls:
+                return None
+            if isinstance(value, datetime):
+                return value.date()
+            if isinstance(value, str):
+                return date.fromisoformat(value)
+            return value
+        return convert_date
+
+    if hint is time:
+        def convert_time(value: Any) -> Any:
+            if value in nulls:
+                return None
+            if isinstance(value, str):
+                tm = _parse_time_iso(value)
+                if tm.tzinfo is not None:
+                    return tm.replace(tzinfo=timezone.utc)
+                return tm
+            if isinstance(value, time):
+                return value
+            return value
+        return convert_time
+
+    if hint is timedelta:
+        def convert_timedelta(value: Any) -> Any:
+            if value in nulls:
+                return None
+            return timedelta(microseconds=value) if isinstance(value, int) else value
+        return convert_timedelta
+
+    if hint is Decimal:
+        def convert_decimal(value: Any) -> Any:
+            if value in nulls:
+                return None
+            return value if isinstance(value, Decimal) else Decimal(value)
+        return convert_decimal
+
+    if inspect.isclass(hint) and issubclass(hint, Enum):
+        def convert_enum(value: Any, enum_type: type = hint) -> Any:
+            if value in nulls:
+                return None
+            return enum_type(value)
+        return convert_enum
+
+    org = get_origin(hint)
+    org = org if org is not None else hint
+    if org in (Mapping, dict, list, set, tuple):
+        args = get_args(hint)
+        element_convert = None
+        if org in (list, tuple, set) and args and args[0] is not Any:
+            element_convert = compile_py_converter(cast(type, args[0]))
+        key_convert = None
+        value_convert = None
+        if org in (Mapping, dict) and len(args) >= 2 and args[0] is not Any and args[1] is not Any:
+            key_convert = compile_py_converter(cast(type, args[0]))
+            value_convert = compile_py_converter(cast(type, args[1]))
+
+        def convert_container(value: Any, container_hint: type = hint, container_org: Any = org) -> Any:
+            if value in nulls:
+                return None
+            if isinstance(value, str):
+                d = __from_json(value)
+                if not isinstance(d, container_org):
+                    d = container_hint(d)
+                return d
+            if container_org in (list, tuple, set):
+                if args:
+                    if isinstance(value, (list, tuple, set)):
+                        if element_convert is not None:
+                            if container_org is tuple:
+                                return tuple(element_convert(v) for v in value)
+                            if container_org is set:
+                                return {element_convert(v) for v in value}
+                            return [element_convert(v) for v in value]
+                        return value
+                    return None
+                return value
+            if container_org in (Mapping, dict):
+                if len(args) >= 2:
+                    if isinstance(value, dict):
+                        if key_convert is not None and value_convert is not None:
+                            return {key_convert(k): value_convert(v) for k, v in value.items()}
+                        return value
+                    return None
+                return value
+            return value
+        return convert_container
+
+    def convert_fallback(value: Any) -> Any:
+        return None if value in nulls else value
+    return convert_fallback
+
+
+def compile_py_converter(
+    hint: type | None,
+    *,
+    from_sql: bool = False,
+    from_mssql: bool = False,
+    from_bson: bool = False,
+    from_mysql: bool = False,
+    from_chsql: bool = False
+) -> Callable[[Any], Any]:
+    """
+    Compile a fast value converter for a single type hint.
+
+    The returned callable converts a stored database value to its Python
+    equivalent for the given ``hint`` with semantics identical to calling
+    :func:`to_pyobject` with the same hint and provider flags, but with the
+    per-value type dispatch resolved once at compile time.  Compiled
+    converters are cached and shared across calls.
+
+    :param hint: The type hint for the field (e.g. ``Optional[str]`` or ``list[date]``).
+    :param from_sql: If True, the value came from SQLite.
+    :param from_mssql: If True, the value came from SQL Server.
+    :param from_bson: If True, the value came from MongoDB.
+    :param from_mysql: If True, the value came from MySQL.
+    :param from_chsql: If True, the value came from ClickHouse.
+    :return: A callable mapping a stored value to its Python equivalent.
+    """
+    try:
+        deunionized = deunionize(hint) if hint is not None else None
+        key: tuple[Any, ...] = (deunionized, from_sql, from_mssql, from_bson, from_mysql, from_chsql)
+        convert = __py_converter_cache.get(key)
+        if convert is None:
+            convert = __compile_py_converter_impl(deunionized, from_sql, from_mssql, from_bson, from_mysql, from_chsql)
+            __py_converter_cache[key] = convert
+        return convert
+    except TypeError:
+        return lambda value: to_pyobject(value, cast(type, hint), from_sql=from_sql, from_mssql=from_mssql, from_bson=from_bson, from_mysql=from_mysql, from_chsql=from_chsql)
+
+
+def compile_hydrate_plan(
+    entity_spec: EntitySpec,
+    *,
+    from_sql: bool = False,
+    from_mssql: bool = False,
+    from_bson: bool = False,
+    from_mysql: bool = False,
+    from_chsql: bool = False
+) -> tuple[tuple[str, Callable[[Any], Any] | None], ...]:
+    """
+    Precompile a per-field row hydration plan for an entity spec.
+
+    Returns one ``(field_name, converter)`` pair per field, in
+    ``entity_spec.fields`` order, which matches the column order of the
+    ``SELECT`` statements generated by table adapters.  Fields that are not
+    mapped to a database column have a ``None`` converter; callers must skip
+    them when consuming row values and treat them as always absent when
+    applying field defaults.
+
+    :param entity_spec: The entity spec to compile a plan for.
+    :param from_sql: If True, values came from SQLite.
+    :param from_mssql: If True, values came from SQL Server.
+    :param from_bson: If True, values came from MongoDB.
+    :param from_mysql: If True, values came from MySQL.
+    :param from_chsql: If True, values came from ClickHouse.
+    :return: The compiled row plan, one entry per field in field order.
+    """
+    plan: list[tuple[str, Callable[[Any], Any] | None]] = []
+    for name, field_spec in entity_spec.fields.items():
+        if field_spec.mapped is False:
+            plan.append((name, None))
+            continue
+        hint = entity_spec.attrs.get(name)
+        plan.append((
+            name,
+            compile_py_converter(hint, from_sql=from_sql, from_mssql=from_mssql, from_bson=from_bson, from_mysql=from_mysql, from_chsql=from_chsql)
+        ))
+    return tuple(plan)
 
 
 def _to_json_value(value: Any) -> Any:

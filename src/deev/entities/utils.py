@@ -11,6 +11,7 @@ from typing import (
     Any,
     Callable,
     Mapping,
+    Sequence,
     Type,
     TypeVar,
     Union,
@@ -155,6 +156,85 @@ def get_entity_spec(entity_type: type) -> EntitySpec:
         return define_entity_spec(entity_type)
     else:
         return entity_spec
+
+
+def construct_entity(entity_type: type, default_names: Sequence[str] | None = None) -> Any:
+    """
+    Construct an entity instance, applying precomputed field defaults.
+
+    This is the fast path used by table adapters during row hydration.  When
+    the class was transformed by :func:`entity` without a custom ``__init__``,
+    field defaults are precomputed at decoration time and applied here
+    directly, bypassing the generated ``__init__`` entirely.
+
+    :param entity_type: The entity class to construct.
+    :param default_names: The field names for which defaults should be applied.
+        ``None`` applies all defaults; an empty sequence applies none.  Classes
+        without precomputed defaults (e.g. a custom ``__init__`` is defined, or
+        the class is not an entity) are constructed normally via
+        ``entity_type()``, which applies its own defaults.
+    :return: The constructed entity instance.
+    """
+    defaults = getattr(entity_type, '__deev_defaults__', None)
+    if defaults is None:
+        return entity_type()
+    instance: Any = object.__new__(entity_type)
+    if default_names is None:
+        for name, factory in defaults:
+            object.__setattr__(instance, name, factory())
+    elif default_names:
+        for name, factory in defaults:
+            if name in default_names:
+                object.__setattr__(instance, name, factory())
+    return instance
+
+
+def apply_defaults_for(entity: Any, default_names: Sequence[str]) -> None:
+    """
+    Apply precomputed field defaults to an already-constructed entity instance.
+
+    Fields without a precomputed default are left untouched.  Instances whose
+    class has no precomputed defaults are left unchanged.
+
+    :param entity: The entity instance to apply defaults to.
+    :param default_names: The field names for which defaults should be applied.
+    :return: None.
+    """
+    defaults = getattr(type(entity), '__deev_defaults__', None)
+    if defaults is None or not default_names:
+        return
+    for name, factory in defaults:
+        if name in default_names:
+            object.__setattr__(entity, name, factory())
+
+
+def __default_factories(entity_spec: EntitySpec) -> tuple[tuple[str, Callable[[], Any]], ...]:
+    """
+    Precompute per-field default factories for fast entity construction.
+
+    Mirrors the default application performed by the ``__init__`` generated
+    by :func:`entity`: a non-``None`` callable default is invoked per
+    instance, any other default (including ``None``) is stored as-is.
+
+    :param entity_spec: The entity spec whose fields carry defaults.
+    :return: Tuples of (field name, zero-argument factory), in field order.
+    """
+    factories: list[tuple[str, Callable[[], Any]]] = []
+    for name, field_spec in entity_spec.fields.items():
+        if not hasattr(field_spec, 'default'):
+            continue
+        default = field_spec.default
+        if default is not None and callable(default):
+            factories.append((name, cast(Callable[[], Any], default)))
+        else:
+            factories.append((name, __value_factory(default)))
+    return tuple(factories)
+
+
+def __value_factory(value: Any) -> Callable[[], Any]:
+    def factory() -> Any:
+        return value
+    return factory
 
 
 def field(
@@ -325,6 +405,9 @@ def entity(
                     for k, v in kwargs.items():
                         setattr(self, k, v)
 
+        if (L_init is None or L_init is object.__init__) and getattr(cls, '__new__', object.__new__) is object.__new__:
+            # no custom __init__/__new__ to run, so defaults can be applied without the generated __init__
+            setattr(cls, '__deev_defaults__', __default_factories(entity_spec))
         setattr(cls, '__init__', init)
         return cls
 

@@ -10,6 +10,8 @@ import re
 from typing import (
     Any,
     AsyncGenerator,
+    Callable,
+    Mapping,
     Sequence,
     TypeVar,
     cast,
@@ -25,8 +27,8 @@ from ..common.db_context import AsyncDbContext
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
 from ..common.db_type_mapper import DbTypeMapper
-from ..entities import EntitySpec, get_entity_spec
-from ..translation import hydrate_chsql, splat_chsql, to_pyobject
+from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec
+from ..translation import compile_hydrate_plan, splat_chsql, to_pyobject
 
 
 from .async_clickhouse_transaction_context import AsyncClickHouseTransactionContext
@@ -40,10 +42,12 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
     __column_names: str
     __context: AsyncDbConnection
     __create_table: bool
+    __default_only_names: tuple[str, ...]
     __entity_spec: EntitySpec
     __initialized: bool
     __logger: logging.Logger
     __dbtype_mapper: DbTypeMapper
+    __hydrate_plan: tuple[tuple[str, Callable[[Any], Any] | None], ...]
     __table_name: str | None
 
     def __init__(
@@ -66,8 +70,10 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
             entity_type = self.__get_typearg(self)
             self.__entity_spec = get_entity_spec(entity_type)
             self.__column_names = ', '.join([f'`{k}`' for k in self.__entity_spec.fields.keys()])
+            self.__hydrate_plan = compile_hydrate_plan(self.__entity_spec, from_chsql=True)
+            self.__default_only_names = tuple(name for name, convert in self.__hydrate_plan if convert is None)
             self.__dbtype_mapper = ClickHouseTypeMapper(self.__entity_spec)
-            if self.__create_table is True:                
+            if self.__create_table is True:
                 await self.create_table()
 
     async def sync_replicas(self) -> None:
@@ -111,6 +117,28 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
             f'Could not determine the entity type for {obj.__class__.__qualname__}. '
             'Instantiate via the generic alias, e.g. AsyncClickHouseTableAdapter[MyEntity]().'
         )
+
+    def __hydrate_row(self, row: Mapping[str, Any]) -> TEntity:
+        entity = construct_entity(self.__entity_spec.entity_type, ())
+        missing: list[str] | None = None
+        for name, convert in self.__hydrate_plan:
+            if convert is None:
+                continue
+            value = convert(row.get(name))
+            if value is not None:
+                setattr(entity, name, value)
+            elif missing is None:
+                missing = [name]
+            else:
+                missing.append(name)
+        if missing is not None:
+            if self.__default_only_names:
+                apply_defaults_for(entity, [*missing, *self.__default_only_names])
+            else:
+                apply_defaults_for(entity, missing)
+        elif self.__default_only_names:
+            apply_defaults_for(entity, self.__default_only_names)
+        return entity
 
     def __build_where_clause(self, kwargs: dict[str, Any]) -> tuple[str, tuple[Any, ...]]:
         pk_values: dict[str, Any] = {}
@@ -258,11 +286,7 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
             result = await client.query(pyformat_sql, parameters=pyformat_parameters)  # type: ignore[attr-defined]
             rows = list(result.named_results())  # type: ignore[attr-defined]
             if rows:
-                raw: dict[str, Any] = {}
-                for key, value in rows[0].items():
-                    if value is not None:
-                        raw[key] = self.__get_pyobject(key, value)
-                return hydrate_chsql(self.__entity_spec.entity_type(), raw)
+                return self.__hydrate_row(rows[0])
             return None
         except Exception as e:
             raise DbError(f'ClickHouse read failed: {e}') from e
@@ -419,11 +443,7 @@ class AsyncClickHouseTableAdapter(AsyncDbTableAdapter[TEntity]):
         try:
             result = await client.query(pyformat_sql, parameters=pyformat_parameters or None)  # type: ignore[attr-defined]
             for row in result.named_results():
-                raw: dict[str, Any] = {}
-                for key, value in row.items():
-                    if value is not None:
-                        raw[key] = self.__get_pyobject(key, value)
-                yield hydrate_chsql(self.__entity_spec.entity_type(), raw)
+                yield self.__hydrate_row(row)
         except Exception as e:
             raise DbError(f'ClickHouse query failed: {e}') from e
 

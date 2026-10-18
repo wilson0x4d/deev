@@ -5,15 +5,15 @@ from __future__ import annotations
 
 import mysql.connector
 import mysql.connector.types
-from typing import Any, AsyncGenerator, TypeVar, cast, get_args, get_origin
+from typing import Any, AsyncGenerator, Callable, TypeVar, cast, get_args, get_origin
 from uuid import UUID
 
 from ..common.async_db_table_adapter import AsyncDbTableAdapter
 from ..common.db_context import AsyncDbContext
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
-from ..entities import EntitySpec, get_entity_spec
-from ..translation import hydrate_mysql, to_pyobject, splat_mysql
+from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec
+from ..translation import compile_hydrate_plan, splat_mysql, to_pyobject
 from .async_mysql_proxy_connection import AsyncMySQLProxyConnection
 from .async_mysql_transaction_context import AsyncMySQLTransactionContext
 from .mysql_type_mapper import MySQLTypeMapper
@@ -35,8 +35,11 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
     __column_names: str
     __context: AsyncDbContext
     __create_table: bool
+    __default_only_names: tuple[str, ...]
     __entity_spec: EntitySpec
     __initialized: bool
+    __dbtype_mapper: MySQLTypeMapper
+    __hydrate_plan: tuple[tuple[str, Callable[[Any], Any] | None], ...]
     __table_name: str | None
 
     def __init__(
@@ -52,11 +55,16 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
         self.__initialized = False
         self.__table_name = table_name
 
+    def __resolve_specs(self) -> None:
+        self.__entity_spec = get_entity_spec(self.__get_typearg(self))
+        self.__column_names = ', '.join([f'`{k}`' for k in self.__entity_spec.fields.keys()])
+        self.__hydrate_plan = compile_hydrate_plan(self.__entity_spec, from_mysql=True)
+        self.__default_only_names = tuple(name for name, convert in self.__hydrate_plan if convert is None)
+        self.__dbtype_mapper = MySQLTypeMapper(self.__entity_spec)
+
     async def __deferred_init(self) -> None:
         if not self.__initialized:
-            self.__entity_spec = get_entity_spec(self.__get_typearg(self))
-            self.__column_names = ', '.join([f'`{k}`' for k in self.__entity_spec.fields.keys()])
-            self.__dbtype_mapper = MySQLTypeMapper(self.__entity_spec)
+            self.__resolve_specs()
             self.__initialized = True
             if self.__create_table is True:
                 await self.create_table()
@@ -64,9 +72,7 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
     @property
     def primary_key(self) -> tuple[str, ...]:
         if not self.__initialized:
-            self.__entity_spec = get_entity_spec(self.__get_typearg(self))
-            self.__column_names = ', '.join([f'`{k}`' for k in self.__entity_spec.fields.keys()])
-            self.__dbtype_mapper = MySQLTypeMapper(self.__entity_spec)
+            self.__resolve_specs()
             self.__initialized = True
         return self.__entity_spec.primary_key
 
@@ -96,6 +102,28 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
             f'Could not determine the entity type for {obj.__class__.__qualname__}. '
             'Instantiate via the generic alias, e.g. AsyncMySQLTableAdapter[MyEntity]().'
         )
+
+    def __hydrate_row(self, row: tuple[Any, ...]) -> TEntity:
+        entity = construct_entity(self.__entity_spec.entity_type, ())
+        missing: list[str] | None = None
+        for i, (name, convert) in enumerate(self.__hydrate_plan):
+            if convert is None:
+                continue
+            value = convert(row[i])
+            if value is not None:
+                setattr(entity, name, value)
+            elif missing is None:
+                missing = [name]
+            else:
+                missing.append(name)
+        if missing is not None:
+            if self.__default_only_names:
+                apply_defaults_for(entity, [*missing, *self.__default_only_names])
+            else:
+                apply_defaults_for(entity, missing)
+        elif self.__default_only_names:
+            apply_defaults_for(entity, self.__default_only_names)
+        return entity
 
     async def create_table(self) -> None:
         """Utility method for creating the target table."""
@@ -173,14 +201,7 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
         await cursor.execute(sql, tuple(keys))
         data = await cursor.fetchone()
         if data:
-            if cursor.description is None:
-                raise DbError('Provider did not provide a description.')
-            result = {}
-            for kvp in zip(cursor.description, data):
-                value = self.__get_pyobject(kvp[0][0], kvp[1])
-                if value is not None:
-                    result[kvp[0][0]] = value
-            return hydrate_mysql(self.__entity_spec.entity_type(), result)
+            return self.__hydrate_row(data)
         else:
             return None
 
@@ -287,18 +308,9 @@ class AsyncMySQLTableAdapter(AsyncDbTableAdapter[TEntity]):
         sql = f'SELECT {self.__column_names} FROM `{table_name}`{where}{orderby}{limit_str}'
         cursor = await self.__context.cursor()
         await cursor.execute(sql, tuple(parameters))
-        if cursor.description is None:
-            raise Exception('cursor missing required descriptor')
         row = await cursor.fetchone()
         while row is not None:
-            if cursor.description is None:
-                raise DbError('Provider did not provide a description.')
-            result = {}
-            for kvp in zip(cursor.description, row):
-                value = self.__get_pyobject(kvp[0][0], kvp[1])
-                if value is not None:
-                    result[kvp[0][0]] = value
-            yield hydrate_mysql(self.__entity_spec.entity_type(), result)
+            yield self.__hydrate_row(row)
             row = await cursor.fetchone()
 
 

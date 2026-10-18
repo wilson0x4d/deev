@@ -6,6 +6,8 @@ from .entity_spec import EntitySpec
 from .index_options import IndexOptions
 from .index_order import IndexOrder
 from .utils import (
+    apply_defaults_for,
+    construct_entity,
     define_entity_spec,
     entity,
     field,
@@ -19,6 +21,8 @@ __all__ = [
     'EntitySpec',
     'IndexOptions',
     'IndexOrder',
+    'apply_defaults_for',
+    'construct_entity',
     'define_entity_spec',
     'entity',
     'field',

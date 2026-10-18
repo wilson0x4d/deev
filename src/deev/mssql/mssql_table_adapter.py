@@ -1,15 +1,15 @@
 # SPDX-FileCopyrightText: © 2026 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
-from typing import Any, Generator, Generic, Sequence, TypeVar, cast, get_args, get_origin
+from typing import Any, Callable, Generator, Generic, Sequence, TypeVar, cast, get_args, get_origin
 from uuid import UUID
 
 from ..common.db_context import DbContext
 from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
-from ..entities import EntitySpec, get_entity_spec
-from ..translation import hydrate_mssql, to_pyobject, splat_mssql
+from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec
+from ..translation import compile_hydrate_plan, splat_mssql, to_pyobject
 from .mssql_input_sizes import input_sizes, resolve_where_fields
 from .mssql_proxy_connection import MSSQLProxyConnection
 from .mssql_transaction_context import MSSQLTransactionContext
@@ -26,9 +26,11 @@ class MSSQLTableAdapter(Generic[TEntity]):
     __column_names: str
     __context: DbContext
     __create_table: bool
+    __default_only_names: tuple[str, ...]
     __entity_spec: EntitySpec
     __initialized: bool
     __dbtype_mapper: MSSQLTypeMapper
+    __hydrate_plan: tuple[tuple[str, Callable[[Any], Any] | None], ...]
     __table_name: str | None
     __use_setinputsizes: bool
 
@@ -63,6 +65,8 @@ class MSSQLTableAdapter(Generic[TEntity]):
             entity_type = self.__get_typearg(self)
             self.__entity_spec = get_entity_spec(entity_type)
             self.__column_names = ', '.join([f'[{k}]' for k in self.__entity_spec.fields.keys()])
+            self.__hydrate_plan = compile_hydrate_plan(self.__entity_spec, from_mssql=True)
+            self.__default_only_names = tuple(name for name, convert in self.__hydrate_plan if convert is None)
             self.__dbtype_mapper = MSSQLTypeMapper(self.__entity_spec)
             self.__initialized = True
             if self.__create_table is True:
@@ -171,6 +175,28 @@ class MSSQLTableAdapter(Generic[TEntity]):
             f'Could not determine the entity type for {obj.__class__.__qualname__}. '
             'Instantiate via the generic alias, e.g. MSSQLTableAdapter[MyEntity]().'
         )
+
+    def __hydrate_row(self, row: tuple[Any, ...]) -> TEntity:
+        entity = construct_entity(self.__entity_spec.entity_type, ())
+        missing: list[str] | None = None
+        for i, (name, convert) in enumerate(self.__hydrate_plan):
+            if convert is None:
+                continue
+            value = convert(row[i])
+            if value is not None:
+                setattr(entity, name, value)
+            elif missing is None:
+                missing = [name]
+            else:
+                missing.append(name)
+        if missing is not None:
+            if self.__default_only_names:
+                apply_defaults_for(entity, [*missing, *self.__default_only_names])
+            else:
+                apply_defaults_for(entity, missing)
+        elif self.__default_only_names:
+            apply_defaults_for(entity, self.__default_only_names)
+        return entity
 
     def create_table(self) -> None:
         """
@@ -285,14 +311,7 @@ class MSSQLTableAdapter(Generic[TEntity]):
             cursor.execute(sql, tuple(keys))
             data = cursor.fetchone()
             if data:
-                if cursor.description is None:
-                    raise DbError('Provider did not provide a description.')
-                result = {}
-                for kvp in zip(cursor.description, data):
-                    value = self.__get_pyobject(kvp[0][0], kvp[1])
-                    if value is not None:
-                        result[kvp[0][0]] = value
-                return hydrate_mssql(self.__entity_spec.entity_type(), result)
+                return self.__hydrate_row(data)
             else:
                 return None
         finally:
@@ -475,18 +494,9 @@ class MSSQLTableAdapter(Generic[TEntity]):
                 if len(resolved) == len(parameters) and all(f is not None for f in resolved):
                     self.__apply_input_sizes(cursor, [f for f in resolved if f is not None], tuple(parameters))
             cursor.execute(sql, tuple(parameters))
-            if cursor.description is None:
-                raise DbError('cursor missing required descriptor')
             row = cursor.fetchone()
             while row is not None:
-                if cursor.description is None:
-                    raise DbError('Provider did not provide a description.')
-                result = {}
-                for kvp in zip(cursor.description, row):
-                    value = self.__get_pyobject(kvp[0][0], kvp[1])
-                    if value is not None:
-                        result[kvp[0][0]] = value
-                yield hydrate_mssql(self.__entity_spec.entity_type(), result)
+                yield self.__hydrate_row(row)
                 row = cursor.fetchone()
         finally:
             cursor.close()
