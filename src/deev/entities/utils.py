@@ -268,16 +268,21 @@ def entity(
         L_init = None if not hasattr(cls, '__init__') else cast(Callable[..., Any], cls.__init__)
         entity_spec = define_entity_spec(cls, table_name=table_name, no_pluralization=no_pluralization, snake_case=snake_case, **kwargs)
 
+        # NOTE: precomputed once per class so the per-read path below avoids a dict
+        #       scan; string hashes are already cached on the spec's field names.
+        field_names = frozenset(entity_spec.fields)
+
         def hide_fieldspec(self: Any, name: str) -> Any:
             v = object.__getattribute__(self, name)
             if self is not None:
-                if isinstance(v, EntityFieldSpec):
-                    raise AttributeError(name)
-                elif v in (NoneType, None):
-                    field_spec = entity_spec.fields.get(name)
-                    if field_spec.nullable is not True:  # type: ignore[union-attr]  # because we know it's present
-                        # NOTE: unless explicitly spec'd nullable, hide None/NoneType assignments
+                # NOTE: value-first ordering keeps the common case (a plain value)
+                #       to two identity checks plus one isinstance.
+                if v is None or v is NoneType:
+                    # NOTE: unless explicitly spec'd nullable, hide None/NoneType assignments
+                    if name not in field_names or entity_spec.fields[name].nullable is not True:
                         raise AttributeError(name)
+                elif isinstance(v, EntityFieldSpec):
+                    raise AttributeError(name)
             return v
         setattr(cls, '__getattribute__', hide_fieldspec)
 
