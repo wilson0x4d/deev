@@ -198,3 +198,83 @@ def no_secondary_indexes_only_pk() -> None:
     pk_keys = pk_call[0][0] if pk_call[0] else pk_call[1].get('keys')
     assert pk_keys == {'id': 1}
     assert pk_call[1]['unique'] is True
+
+
+def _secondary_index_calls(mock_collection) -> dict:
+    """Map secondary index comment name to its create_index kwargs."""
+    return {c[1]['comment']: c[1] for c in mock_collection.create_index.call_args_list if 'comment' in c[1]}
+
+
+@fact
+@trait('unit', 'mongodb')
+def single_field_in_multiple_indexes() -> None:
+    @entity
+    class MultiIndexEntity:
+        id: str = field(primary_key=True)
+        status: str = field(index=[IndexOptions(name='ix_status', rank=0), IndexOptions(name='ix_status_priority', rank=1)])
+        priority: int = field(index=IndexOptions(name='ix_status_priority', rank=2))
+
+    mock_connection, _, _, _, mock_collection = _make_mock_connection()
+    adapter = MongoTableAdapter[MultiIndexEntity](mock_connection, create_table=True)
+    adapter.read(id='x')  # noqa: E501
+
+    assert mock_collection.create_index.call_count == 3, f'(expected=3, actual={mock_collection.create_index.call_count})'
+
+    calls = _secondary_index_calls(mock_collection)
+    assert calls['ix_status']['keys'] == [('status', 1)], f'unexpected keys: {calls["ix_status"]["keys"]}'
+    assert calls['ix_status_priority']['keys'] == [('status', 1), ('priority', 1)], f'unexpected keys: {calls["ix_status_priority"]["keys"]}'
+    assert calls['ix_status']['unique'] is False
+    assert calls['ix_status_priority']['unique'] is False
+
+
+@fact
+@trait('unit', 'mongodb')
+def index_options_unique_overrides_field_flag() -> None:
+    @entity
+    class UniqueOverrideEntity:
+        id: str = field(primary_key=True)
+        code: str = field(unique=True, index=[
+            IndexOptions(name='ix_code_unique', unique=True),
+            IndexOptions(name='ix_code_nonunique', unique=False),
+        ])
+
+    mock_connection, _, _, _, mock_collection = _make_mock_connection()
+    adapter = MongoTableAdapter[UniqueOverrideEntity](mock_connection, create_table=True)
+    adapter.read(id='x')  # noqa: E501
+
+    calls = _secondary_index_calls(mock_collection)
+    assert calls['ix_code_unique']['unique'] is True, f'(expected=True, actual={calls["ix_code_unique"]["unique"]})'
+    assert calls['ix_code_nonunique']['unique'] is False, f'(expected=False, actual={calls["ix_code_nonunique"]["unique"]})'
+
+
+@fact
+@trait('unit', 'mongodb')
+def field_unique_flag_applies_to_indexes() -> None:
+    @entity
+    class FieldUniqueEntity:
+        id: str = field(primary_key=True)
+        code: str = field(unique=True, index='ix_code')
+
+    mock_connection, _, _, _, mock_collection = _make_mock_connection()
+    adapter = MongoTableAdapter[FieldUniqueEntity](mock_connection, create_table=True)
+    adapter.read(id='x')  # noqa: E501
+
+    calls = _secondary_index_calls(mock_collection)
+    assert calls['ix_code']['unique'] is True, f'(expected=True, actual={calls["ix_code"]["unique"]})'
+
+
+@fact
+@trait('unit', 'mongodb')
+def compound_index_unique_when_any_field_unique() -> None:
+    @entity
+    class CompoundUniqueEntity:
+        id: str = field(primary_key=True)
+        code: str = field(unique=True, index='ix_compound_unique')
+        other: str = field(index='ix_compound_unique')
+
+    mock_connection, _, _, _, mock_collection = _make_mock_connection()
+    adapter = MongoTableAdapter[CompoundUniqueEntity](mock_connection, create_table=True)
+    adapter.read(id='x')  # noqa: E501
+
+    calls = _secondary_index_calls(mock_collection)
+    assert calls['ix_compound_unique']['unique'] is True, f'(expected=True, actual={calls["ix_compound_unique"]["unique"]})'

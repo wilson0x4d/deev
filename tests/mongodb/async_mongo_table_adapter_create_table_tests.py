@@ -57,3 +57,23 @@ async def async_compound_index_rank_ordered() -> None:
     sec_keys = secondary[0][0] if secondary[0] else secondary[1].get('keys')
     assert sec_keys == [('zeta', 1), ('alpha', 1)], f'(expected=[("zeta", 1), ("alpha", 1)], actual={sec_keys})'
     assert secondary[1]['comment'] == 'ix_asyrrank', f"(expected='ix_asyrrank', actual={secondary[1].get('comment')})"
+
+
+@fact
+@trait('unit', 'mongodb')
+async def async_single_field_in_multiple_indexes() -> None:
+    @entity
+    class AsyncMultiIndexEntity:
+        id: str = field(primary_key=True)
+        status: str = field(index=[IndexOptions(name='ix_asyrstatus', rank=0), IndexOptions(name='ix_asyrstatus_priority', rank=1)])
+        priority: int = field(index=IndexOptions(name='ix_asyrstatus_priority', rank=2))
+
+    mock_connection, _, _, _, mock_collection = _make_mock_connection()
+    adapter = AsyncMongoTableAdapter[AsyncMultiIndexEntity](mock_connection, create_table=False)
+    await adapter.create_table()
+
+    assert mock_collection.create_index.call_count == 3, f'(expected=3, actual={mock_collection.create_index.call_count})'
+
+    calls = {c[1]['comment']: c[1] for c in mock_collection.create_index.call_args_list if 'comment' in c[1]}
+    assert calls['ix_asyrstatus']['keys'] == [('status', 1)], f'unexpected keys: {calls["ix_asyrstatus"]["keys"]}'
+    assert calls['ix_asyrstatus_priority']['keys'] == [('status', 1), ('priority', 1)], f'unexpected keys: {calls["ix_asyrstatus_priority"]["keys"]}'

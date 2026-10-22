@@ -42,7 +42,7 @@ All parameters are keyword-only with `None` defaults (except `init`).
 | `cascade_delete` | `bool \| None` | With `foreign_key`, emit `ON DELETE CASCADE` so deleting a referenced row deletes this row (DDL only). Default `None` (no cascade — must be explicit). |
 | `default` | `Any \| Callable \| None` | Static value or zero-arg callable. Uses sentinel `__NOTSET__` internally to distinguish "not set" from `None`. |
 | `foreign_key` | `tuple[type, str] \| None` | Foreign-key target as `(target_entity_type, target_field_name)`, e.g. `foreign_key=(Parent, 'id')`. Consumed by DDL generators for DBMSes that support FKs. Default `None`. |
-| `index` | `str \| IndexOptions \| None` | Index name or `IndexOptions(name=..., direction=..., rank=..., type=...)`. |
+| `index` | `str \| IndexOptions \| Sequence[str \| IndexOptions] \| None` | Index name, `IndexOptions(name=..., direction=..., rank=..., type=..., unique=...)`, or a (mixed) sequence of either. A field may participate in multiple indexes (one `CREATE INDEX` per index name); duplicate names within a field raise `ValueError`. |
 | `init` | `bool` | Whether field participates in `__init__`. Default `True`. |
 | `mapped` | `bool \| None` | If `False`, excluded from SQL translation. Default `None`. |
 | `max` | `int \| float \| Decimal \| None` | Maximum value or string length. Default `None`. |
@@ -62,8 +62,22 @@ IndexOptions(
     name="idx_users_email",
     direction=IndexOrder.ASCENDING,   # or IndexOrder.DESCENDING
     rank=0,
-    type=None                          # ClickHouse skip-index type: minmax, set, bloom_filter, tokenbf_v1, ngrambf_v1, text
+    type=None,                         # ClickHouse skip-index type: minmax, set, bloom_filter, tokenbf_v1, ngrambf_v1, text
+    unique=None                        # per-index uniqueness (MongoDB); None defers to the field's unique flag
 )
+```
+
+A field participates in one index per `IndexOptions`; to join several, pass a sequence (names may mix with `IndexOptions`):
+
+```python
+@entity
+class Event:
+    id: int = field(primary_key=True, autoincrement=True)
+    status: str = field(index=[
+        IndexOptions(name='ix_status_created', rank=0),
+        'ix_status_only',
+    ])
+    created: str = field(index=IndexOptions(name='ix_status_created', rank=1))
 ```
 
 ### `@entity` decorator parameters

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 from deev import DbError, entity, field
-from deev.entities import EntityFieldSpec, EntitySpec, define_entity_spec, get_entity_spec
+from deev.entities import EntityFieldSpec, EntitySpec, IndexOptions, IndexOrder, define_entity_spec, get_entity_spec
 from deev.validation import ValidationError, validate
 from punit import fact
 from typing import Any
@@ -337,3 +337,47 @@ def field_foreign_key_non_type_target_raises() -> None:
 def field_foreign_key_non_string_field_raises() -> None:
     from punit import raises
     assert raises[ValueError](lambda: field(foreign_key=(FKRefTarget, 123))), 'expected ValueError for a non-string foreign_key field.'  # type: ignore[arg-type]
+
+
+@fact
+def field_index_string_normalized_to_index_options() -> None:
+    spec = field(index='ix_str')
+    assert spec.index is not None, 'index was not stored.'
+    assert isinstance(spec.index, IndexOptions), 'a string index should be normalized to IndexOptions.'
+    assert spec.index == IndexOptions(name='ix_str', direction=IndexOrder.ASCENDING, rank=0), f'unexpected normalization: {spec.index}'
+
+
+@fact
+def field_index_options_stored_verbatim() -> None:
+    opts = IndexOptions(name='ix_verbatim', rank=2)
+    spec = field(index=opts)
+    assert spec.index is opts, 'a single IndexOptions should be stored verbatim.'
+
+
+@fact
+def field_index_mixed_sequence_stored_as_tuple() -> None:
+    spec = field(index=['ix_a', IndexOptions(name='ix_b', rank=1)])
+    assert isinstance(spec.index, tuple), 'a sequence of indexes should be stored as a tuple.'
+    assert spec.index == (IndexOptions(name='ix_a'), IndexOptions(name='ix_b', rank=1)), f'unexpected storage: {spec.index}'
+
+
+@fact
+def field_index_indexes_property_normalizes() -> None:
+    assert field(index=None).indexes == (), 'no index should yield an empty tuple.'
+    opts = IndexOptions(name='ix_one')
+    assert field(index=opts).indexes == (opts,), 'a single IndexOptions should yield a singleton tuple.'
+    assert field(index='ix_two').indexes == (IndexOptions(name='ix_two'),), 'a string index should yield a singleton tuple.'
+    assert field(index=['ix_a', 'ix_b']).indexes == (IndexOptions(name='ix_a'), IndexOptions(name='ix_b')), 'a sequence should yield its options in order.'
+
+
+@fact
+def field_index_duplicate_names_raise() -> None:
+    from punit import raises
+    assert raises[ValueError](lambda: field(index=['ix_dup', 'ix_dup'])), 'expected ValueError for duplicate index names.'
+    assert raises[ValueError](lambda: field(index=[IndexOptions(name='ix_dup'), IndexOptions(name='ix_dup')])), 'expected ValueError for duplicate index names.'
+
+
+@fact
+def field_index_invalid_element_raises() -> None:
+    from punit import raises
+    assert raises[ValueError](lambda: field(index=[123])), 'expected ValueError for an invalid index element.'  # type: ignore[list-item]

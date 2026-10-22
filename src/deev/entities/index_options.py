@@ -27,12 +27,14 @@ class IndexOptions:
     :param direction: Sort direction (``ASCENDING`` or ``DESCENDING``).
     :param rank: Ordering rank when multiple fields share the same index name.
     :param type: Index type for skip indexes (ClickHouse).
+    :param unique: Whether the index must be unique (MongoDB only). ``None`` defers to the field's ``unique`` flag.
     """
 
     name: str
     direction: IndexOrder = dc_field(default=IndexOrder.ASCENDING)
     rank: int = dc_field(default=0)
     type: str | None = dc_field(default=None)
+    unique: bool | None = dc_field(default=None)
 
 
 __all__ = ['IndexOptions']

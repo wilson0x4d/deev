@@ -42,11 +42,9 @@ class SQLiteDDLGenerator():
         # Collect fields grouped by their index name.
         groups: dict[str, list[tuple[str, IndexOrder, int]]] = {}
         for field_name, spec in entity_spec.fields.items():
-            if spec.index is None:
-                continue
-            idx_name = spec.index.name
-            direction = spec.index.direction or IndexOrder.ASCENDING
-            groups.setdefault(idx_name, []).append((field_name, direction, spec.index.rank))
+            for idx_opts in spec.indexes:
+                direction = idx_opts.direction or IndexOrder.ASCENDING
+                groups.setdefault(idx_opts.name, []).append((field_name, direction, idx_opts.rank))
 
         # Map IndexOrder enum to SQL-style ASC/DESC
         direction_map = {IndexOrder.ASCENDING: 'ASC', IndexOrder.DESCENDING: 'DESC'}

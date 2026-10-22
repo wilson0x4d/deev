@@ -87,3 +87,17 @@ def mysql_ddl_composite_index_equal_ranks_sorted_alphabetically() -> None:
     ddl = _create_index_ddl(MyEqualRankEntity, 'ix_myequal')
     expected = 'CREATE INDEX `ix_myequal` ON `MyEqualRankEntities` (`first_name` ASC, `last_name` ASC)'
     assert ddl == expected, f'(expected={expected}, actual={ddl})'
+
+
+@fact
+@trait('unit', 'mysql')
+def mysql_ddl_field_in_multiple_indexes() -> None:
+    @entity
+    class MyMultiIndexEntity:
+        id: UUID = field(primary_key=True)
+        status: str = field(index=[IndexOptions(name='ix_mystatus_created', rank=0), 'ix_mystatus_only'])
+        created: str = field(index=IndexOptions(name='ix_mystatus_created', rank=1))
+    expected_a = 'CREATE INDEX `ix_mystatus_created` ON `MyMultiIndexEntities` (`status` ASC, `created` ASC)'
+    assert _create_index_ddl(MyMultiIndexEntity, 'ix_mystatus_created') == expected_a, f'missing or malformed {expected_a}'
+    expected_b = 'CREATE INDEX `ix_mystatus_only` ON `MyMultiIndexEntities` (`status` ASC)'
+    assert _create_index_ddl(MyMultiIndexEntity, 'ix_mystatus_only') == expected_b, f'missing or malformed {expected_b}'

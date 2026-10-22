@@ -243,7 +243,7 @@ def field(
     cascade_delete: bool | None = None,
     default: Callable[..., Any] | Any | None = __NOTSET__,
     foreign_key: tuple[type, str] | None = None,
-    index: str | IndexOptions | None = None,
+    index: Sequence[str | IndexOptions] | str | IndexOptions | None = None,
     mapped: bool | None = None,
     max: int | float | Decimal | None = None,
     min: int | float | Decimal | None = None,
@@ -268,7 +268,7 @@ def field(
     :param foreign_key: Foreign-key target as a ``(target_entity_type, target_field_name)``
         tuple, e.g. ``foreign_key=(Parent, 'id')``. Consumed by DDL generators for DBMSes
         that support foreign keys. Default ``None``.
-    :param index: Index name or :class:`IndexOptions` defining the index field.
+    :param index: Index name, :class:`IndexOptions`, or a (mixed) sequence of either, defining one or more indexes the field participates in.
     :param mapped: If ``False``, the field is excluded from SQL translation.
     :param max: Maximum value or maximum string length (for validation).
     :param min: Minimum value or minimum string length (for validation).
@@ -291,6 +291,24 @@ def field(
             raise ValueError(f'foreign_key target field must be a string, not {target_field!r}.')
     if isinstance(index, str):
         index = IndexOptions(name=index, direction=IndexOrder.ASCENDING, rank=0)
+    elif index is not None and not isinstance(index, IndexOptions):
+        options = list[IndexOptions]()
+        for element in index:
+            if isinstance(element, str):
+                options.append(IndexOptions(name=element, direction=IndexOrder.ASCENDING, rank=0))
+            elif isinstance(element, IndexOptions):
+                options.append(element)
+            else:
+                raise ValueError(f'index elements must be a str or IndexOptions, not {element!r}.')
+        seen_names = set[str]()
+        duplicate_names = set[str]()
+        for name in (option.name for option in options):
+            if name in seen_names:
+                duplicate_names.add(name)
+            seen_names.add(name)
+        if duplicate_names:
+            raise ValueError(f'index names must be unique within a single field, duplicates: {", ".join(sorted(duplicate_names))}.')
+        index = tuple(options)
     field_spec = EntityFieldSpec(
         autoincrement=autoincrement,
         cascade_delete=cascade_delete,

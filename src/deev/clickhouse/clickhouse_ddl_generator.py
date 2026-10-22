@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import hanaro
 
-from ..entities import EntitySpec, IndexOptions
+from ..entities import EntitySpec
 from .clickhouse_type_mapper import ClickHouseTypeMapper
 from .utils import CLICKHOUSE_SKIP_INDEX_TYPES
 
@@ -61,21 +61,19 @@ class ClickHouseDDLGenerator():
         skip_indexes: list[str] = []
         seen_index_names: set[str] = set()
         for field_name, field_spec in entity_spec.fields.items():
-            idx_opts: IndexOptions | None = field_spec.index
-            if idx_opts is None:
-                continue
-            if idx_opts.type is None or idx_opts.type not in CLICKHOUSE_SKIP_INDEX_TYPES:
-                self.__logger.warning(
-                    f'Field `{field_name}` has index `{idx_opts.name}` but type is {"not set" if idx_opts.type is None else f"unrecognized: `{idx_opts.type}`"}' +
-                    f'. Allowed skip index types: {", ".join(sorted(CLICKHOUSE_SKIP_INDEX_TYPES))}'
+            for idx_opts in field_spec.indexes:
+                if idx_opts.type is None or idx_opts.type not in CLICKHOUSE_SKIP_INDEX_TYPES:
+                    self.__logger.warning(
+                        f'Field `{field_name}` has index `{idx_opts.name}` but type is {"not set" if idx_opts.type is None else f"unrecognized: `{idx_opts.type}`"}' +
+                        f'. Allowed skip index types: {", ".join(sorted(CLICKHOUSE_SKIP_INDEX_TYPES))}'
+                    )
+                    continue
+                if idx_opts.name in seen_index_names:
+                    continue
+                seen_index_names.add(idx_opts.name)
+                skip_indexes.append(
+                    f'INDEX `{idx_opts.name}` {field_name} TYPE {idx_opts.type}'
                 )
-                continue
-            if idx_opts.name in seen_index_names:
-                continue
-            seen_index_names.add(idx_opts.name)
-            skip_indexes.append(
-                f'INDEX `{idx_opts.name}` {field_name} TYPE {idx_opts.type}'
-            )
 
         all_definitions = columns
         if skip_indexes:

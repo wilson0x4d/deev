@@ -188,16 +188,16 @@ class MongoTableAdapter(DbTableAdapter[TEntity]):
             index_groups = defaultdict[str, list[tuple[str, IndexOptions]]](list)
             index_attrs = defaultdict[str, dict[str, Any]](dict)
             for field_name, field_spec in self.__entity_spec.fields.items():
-                if field_spec.index is not None:
-                    assert isinstance(field_spec.index, IndexOptions)
-                    index_groups[field_spec.index.name].append((field_name, field_spec.index))
+                for idx_opts in field_spec.indexes:
+                    index_groups[idx_opts.name].append((field_name, idx_opts))
                     # fields are ordered by rank, ties broken alphabetically by field name.
-                    index_groups[field_spec.index.name] = sorted(
-                        index_groups[field_spec.index.name],
+                    index_groups[idx_opts.name] = sorted(
+                        index_groups[idx_opts.name],
                         key=lambda e: (e[1].rank, e[0])
                     )
-                    index_attrs[field_spec.index.name]['unique'] = field_spec.unique is True
-                    index_attrs[field_spec.index.name]['name'] = field_spec.index.name
+                    resolved_unique = field_spec.unique is True if idx_opts.unique is None else idx_opts.unique
+                    index_attrs[idx_opts.name]['unique'] = index_attrs[idx_opts.name].get('unique', False) or resolved_unique
+                    index_attrs[idx_opts.name]['name'] = idx_opts.name
             for index_name, index_group in index_groups.items():
                 keys = [
                     (e[0], e[1].type if e[1].type is not None else pymongo.ASCENDING if e[1].direction is IndexOrder.ASCENDING else pymongo.DESCENDING)

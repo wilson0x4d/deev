@@ -87,3 +87,17 @@ def mssql_ddl_composite_index_equal_ranks_sorted_alphabetically() -> None:
     ddl = _create_index_ddl(MsEqualRankEntity, 'ix_msequal')
     expected = 'CREATE INDEX [ix_msequal] ON [MsEqualRankEntities] ([first_name] ASC, [last_name] ASC)'
     assert ddl == expected, f'(expected={expected}, actual={ddl})'
+
+
+@fact
+@trait('unit', 'mssql')
+def mssql_ddl_field_in_multiple_indexes() -> None:
+    @entity
+    class MsMultiIndexEntity:
+        id: UUID = field(primary_key=True)
+        status: str = field(index=[IndexOptions(name='ix_msstatus_created', rank=0), 'ix_msstatus_only'])
+        created: str = field(index=IndexOptions(name='ix_msstatus_created', rank=1))
+    expected_a = 'CREATE INDEX [ix_msstatus_created] ON [MsMultiIndexEntities] ([status] ASC, [created] ASC)'
+    assert _create_index_ddl(MsMultiIndexEntity, 'ix_msstatus_created') == expected_a, f'missing or malformed {expected_a}'
+    expected_b = 'CREATE INDEX [ix_msstatus_only] ON [MsMultiIndexEntities] ([status] ASC)'
+    assert _create_index_ddl(MsMultiIndexEntity, 'ix_msstatus_only') == expected_b, f'missing or malformed {expected_b}'

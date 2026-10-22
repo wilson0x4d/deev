@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: © 2023 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from .._immutable_mixin import _ImmutableMixin
 from .index_options import IndexOptions
@@ -28,7 +28,7 @@ class EntityFieldSpec(_ImmutableMixin):
     :param cascade_delete: Whether deleting a referenced row should cascade to this row (DDL only; default off).
     :param default: Default value or callable (zero-arg). Set via ``hasattr`` check.
     :param foreign_key: Foreign-key target as a ``(entity_type, field_name)`` tuple (DDL only).
-    :param index: Index definition: a name string or :class:`IndexOptions`.
+    :param index: Index definition(s): an :class:`IndexOptions` or a sequence of them; a field may participate in multiple indexes.
     :param mapped: Whether the field is mapped to a database column (default ``True``).
     :param max: Maximum value or string length (for validation).
     :param min: Minimum value or string length (for validation).
@@ -43,7 +43,7 @@ class EntityFieldSpec(_ImmutableMixin):
     cascade_delete: bool | None  # when True, DDL generators emit ON DELETE CASCADE for the foreign key
     default: Callable[..., Any] | Any | None  # the field should have a default value applied on creation. may be a value or a function.
     foreign_key: tuple[type, str] | None  # foreign-key target as (target entity type, target field name)
-    index: IndexOptions | None  # the field is part of an index definition, this represents the index options for the field
+    index: Sequence[IndexOptions] | IndexOptions | None  # the field is part of one or more index definitions, this represents the index options for the field
     mapped: bool | None  # whether or not the field is mapped, fields are always mapped by default
     max: int | float | None  # maximum length <= value (validation)
     min: int | float | None  # minimum length >= value (validation)
@@ -80,6 +80,21 @@ class EntityFieldSpec(_ImmutableMixin):
         self.validator = None
         for k, v in kwargs.items():
             setattr(self, k, v)
+
+    @property
+    def indexes(self) -> tuple[IndexOptions, ...]:
+        """
+        All :class:`IndexOptions` this field participates in, normalized to a tuple.
+
+        Returns an empty tuple when no index is defined, a singleton tuple when a
+        single :class:`IndexOptions` is set, and the stored options when the field
+        participates in multiple indexes.
+        """
+        if self.index is None:
+            return ()
+        if isinstance(self.index, IndexOptions):
+            return (self.index,)
+        return tuple(self.index)
 
     @property
     def sqltype(self) -> str | None:  # pragma: nocover

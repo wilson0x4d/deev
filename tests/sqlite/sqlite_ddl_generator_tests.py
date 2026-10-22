@@ -149,3 +149,17 @@ def sqlite_ddl_composite_index_equal_ranks_sorted_alphabetically() -> None:
     ddl = _create_index_ddl(EqualRankEntity, 'ix_equal_rank')
     expected = 'CREATE INDEX [ix_equal_rank] ON [EqualRankEntities] ([first_name] ASC, [last_name] ASC)'
     assert ddl == expected, f'(expected={expected}, actual={ddl})'
+
+
+@fact
+@trait('unit', 'sqlite')
+def sqlite_ddl_field_in_multiple_indexes() -> None:
+    @entity
+    class MultiIndexEntity:
+        id: int = field(primary_key=True, autoincrement=True)
+        status: str = field(index=[IndexOptions(name='ix_status_created', rank=0), 'ix_status_only'])
+        created: str = field(index=IndexOptions(name='ix_status_created', rank=1))
+    expected_a = 'CREATE INDEX [ix_status_created] ON [MultiIndexEntities] ([status] ASC, [created] ASC)'
+    assert _create_index_ddl(MultiIndexEntity, 'ix_status_created') == expected_a, f'missing or malformed {expected_a}'
+    expected_b = 'CREATE INDEX [ix_status_only] ON [MultiIndexEntities] ([status] ASC)'
+    assert _create_index_ddl(MultiIndexEntity, 'ix_status_only') == expected_b, f'missing or malformed {expected_b}'
