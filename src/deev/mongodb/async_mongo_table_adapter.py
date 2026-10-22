@@ -198,7 +198,11 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
                 if field_spec.index is not None:
                     assert isinstance(field_spec.index, IndexOptions)
                     index_groups[field_spec.index.name].append((field_name, field_spec.index))
-                    index_groups[field_spec.index.name] = sorted(index_groups[field_spec.index.name])
+                    # fields are ordered by rank, ties broken alphabetically by field name.
+                    index_groups[field_spec.index.name] = sorted(
+                        index_groups[field_spec.index.name],
+                        key=lambda e: (e[1].rank, e[0])
+                    )
                     index_attrs[field_spec.index.name]['unique'] = field_spec.unique is True
                     index_attrs[field_spec.index.name]['name'] = field_spec.index.name
             for index_name, index_group in index_groups.items():

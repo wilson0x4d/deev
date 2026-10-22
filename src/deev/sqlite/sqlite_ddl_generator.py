@@ -40,20 +40,20 @@ class SQLiteDDLGenerator():
         """Build ``CREATE INDEX`` statements for all secondary indexes."""
         ddl = list[str]()
         # Collect fields grouped by their index name.
-        groups: dict[str, list[tuple[str, IndexOrder]]] = {}
+        groups: dict[str, list[tuple[str, IndexOrder, int]]] = {}
         for field_name, spec in entity_spec.fields.items():
             if spec.index is None:
                 continue
             idx_name = spec.index.name
             direction = spec.index.direction or IndexOrder.ASCENDING
-            groups.setdefault(idx_name, []).append((field_name, direction))
+            groups.setdefault(idx_name, []).append((field_name, direction, spec.index.rank))
 
         # Map IndexOrder enum to SQL-style ASC/DESC
         direction_map = {IndexOrder.ASCENDING: 'ASC', IndexOrder.DESCENDING: 'DESC'}
         for idx_name, col_specs in sorted(groups.items()):
-            # Fields must be alphabetically sorted by field name.
-            col_specs.sort(key=lambda cs: cs[0])  # type: ignore
-            cols = ', '.join(f'[{name}] {direction_map[direction]}' for name, direction in col_specs)
+            # fields are ordered by rank, ties broken alphabetically by field name.
+            col_specs.sort(key=lambda cs: (cs[2], cs[0]))  # type: ignore
+            cols = ', '.join(f'[{name}] {direction_map[direction]}' for name, direction, _ in col_specs)
             ddl.append(f'CREATE INDEX [{idx_name}] ON [{table_name}] ({cols})')
         return ddl
 

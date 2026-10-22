@@ -110,6 +110,27 @@ def compound_index_sorted() -> None:
 
 @fact
 @trait('unit', 'mongodb')
+def compound_index_rank_ordered() -> None:
+    @entity
+    class RankOrderedEntity:
+        id: str = field(primary_key=True)
+        zeta: str = field(index=IndexOptions(name='ix_rank_ordered', rank=0))
+        alpha: str = field(index=IndexOptions(name='ix_rank_ordered', rank=1))
+
+    mock_connection, _, _, _, mock_collection = _make_mock_connection()
+    adapter = MongoTableAdapter[RankOrderedEntity](mock_connection, create_table=True)
+    adapter.read(id='x')  # noqa: E501
+
+    assert mock_collection.create_index.call_count == 2
+
+    secondary = mock_collection.create_index.call_args_list[1]
+    sec_keys = secondary[0][0] if secondary[0] else secondary[1].get('keys')
+    assert sec_keys == [('zeta', 1), ('alpha', 1)], f'(expected=[("zeta", 1), ("alpha", 1)], actual={sec_keys})'
+    assert secondary[1]['comment'] == 'ix_rank_ordered', f"(expected='ix_rank_ordered', actual={secondary[1].get('comment')})"
+
+
+@fact
+@trait('unit', 'mongodb')
 def descending_secondary_index() -> None:
     @entity
     class DescIndexEntity:

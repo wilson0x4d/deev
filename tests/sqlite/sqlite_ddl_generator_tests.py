@@ -3,7 +3,7 @@
 
 import sqlite3
 from deev import entity, field
-from deev.entities import get_entity_spec
+from deev.entities import get_entity_spec, IndexOptions
 from deev.sqlite import SQLiteDDLGenerator
 from punit import fact, trait
 from uuid import UUID, uuid4
@@ -35,6 +35,11 @@ class FKNoConstraint:
 def _create_table_ddl(entity_type: type) -> str:
     ddl = SQLiteDDLGenerator().generate_table_ddl(entity_spec=get_entity_spec(entity_type))
     return next(s for s in ddl if s.startswith('CREATE TABLE'))
+
+
+def _create_index_ddl(entity_type: type, index_name: str) -> str:
+    ddl = SQLiteDDLGenerator().generate_table_ddl(entity_spec=get_entity_spec(entity_type))
+    return next(s for s in ddl if s.startswith(f'CREATE INDEX [{index_name}]'))
 
 
 @fact
@@ -118,3 +123,29 @@ def sqlite_fk_without_cascade_preserves_child() -> None:
             raise AssertionError('expected FK constraint to block parent delete.')
     finally:
         conn.close()
+
+
+@fact
+@trait('unit', 'sqlite')
+def sqlite_ddl_composite_index_fields_ordered_by_rank() -> None:
+    @entity
+    class RankOrderedEntity:
+        id: int = field(primary_key=True, autoincrement=True)
+        zebra: str = field(index=IndexOptions(name='ix_rank_ordered', rank=0))
+        apple: str = field(index=IndexOptions(name='ix_rank_ordered', rank=1))
+    ddl = _create_index_ddl(RankOrderedEntity, 'ix_rank_ordered')
+    expected = 'CREATE INDEX [ix_rank_ordered] ON [RankOrderedEntities] ([zebra] ASC, [apple] ASC)'
+    assert ddl == expected, f'(expected={expected}, actual={ddl})'
+
+
+@fact
+@trait('unit', 'sqlite')
+def sqlite_ddl_composite_index_equal_ranks_sorted_alphabetically() -> None:
+    @entity
+    class EqualRankEntity:
+        id: int = field(primary_key=True, autoincrement=True)
+        last_name: str = field(index=IndexOptions(name='ix_equal_rank', rank=1))
+        first_name: str = field(index=IndexOptions(name='ix_equal_rank', rank=1))
+    ddl = _create_index_ddl(EqualRankEntity, 'ix_equal_rank')
+    expected = 'CREATE INDEX [ix_equal_rank] ON [EqualRankEntities] ([first_name] ASC, [last_name] ASC)'
+    assert ddl == expected, f'(expected={expected}, actual={ddl})'

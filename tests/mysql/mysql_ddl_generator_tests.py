@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from deev import entity, field
-from deev.entities import get_entity_spec
+from deev.entities import get_entity_spec, IndexOptions
 from deev.mysql import MySQLDDLGenerator
 from punit import fact, trait
 from uuid import UUID
@@ -36,6 +36,11 @@ def _create_table_ddl(entity_type: type) -> str:
     return next(s for s in ddl if s.startswith('CREATE TABLE'))
 
 
+def _create_index_ddl(entity_type: type, index_name: str) -> str:
+    ddl = MySQLDDLGenerator().generate_table_ddl(entity_spec=get_entity_spec(entity_type))
+    return next(s for s in ddl if s.startswith(f'CREATE INDEX `{index_name}`'))
+
+
 @fact
 @trait('unit', 'mysql')
 def mysql_ddl_emits_foreign_key_constraint() -> None:
@@ -56,3 +61,29 @@ def mysql_ddl_omits_foreign_key_when_not_configured() -> None:
     ddl = _create_table_ddl(MyFKNoConstraint)
     assert 'FOREIGN KEY' not in ddl, f'unexpected FK clause: {ddl}'
     assert 'ON DELETE CASCADE' not in ddl, f'unexpected cascade clause: {ddl}'
+
+
+@fact
+@trait('unit', 'mysql')
+def mysql_ddl_composite_index_fields_ordered_by_rank() -> None:
+    @entity
+    class MyRankOrderedEntity:
+        id: UUID = field(primary_key=True)
+        zebra: str = field(index=IndexOptions(name='ix_myrank', rank=0))
+        apple: str = field(index=IndexOptions(name='ix_myrank', rank=1))
+    ddl = _create_index_ddl(MyRankOrderedEntity, 'ix_myrank')
+    expected = 'CREATE INDEX `ix_myrank` ON `MyRankOrderedEntities` (`zebra` ASC, `apple` ASC)'
+    assert ddl == expected, f'(expected={expected}, actual={ddl})'
+
+
+@fact
+@trait('unit', 'mysql')
+def mysql_ddl_composite_index_equal_ranks_sorted_alphabetically() -> None:
+    @entity
+    class MyEqualRankEntity:
+        id: UUID = field(primary_key=True)
+        last_name: str = field(index=IndexOptions(name='ix_myequal', rank=1))
+        first_name: str = field(index=IndexOptions(name='ix_myequal', rank=1))
+    ddl = _create_index_ddl(MyEqualRankEntity, 'ix_myequal')
+    expected = 'CREATE INDEX `ix_myequal` ON `MyEqualRankEntities` (`first_name` ASC, `last_name` ASC)'
+    assert ddl == expected, f'(expected={expected}, actual={ddl})'
