@@ -27,7 +27,7 @@ class IndexOptions:
     :param direction: Sort direction (``ASCENDING`` or ``DESCENDING``).
     :param rank: Ordering rank when multiple fields share the same index name.
     :param type: Index type for skip indexes (ClickHouse).
-    :param unique: Whether the index must be unique (MongoDB only). ``None`` defers to the field's ``unique`` flag.
+    :param unique: Whether the index must be unique. ``None`` defers to the field's ``unique`` flag.
     """
 
     name: str

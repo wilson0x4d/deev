@@ -101,3 +101,27 @@ def mysql_ddl_field_in_multiple_indexes() -> None:
     assert _create_index_ddl(MyMultiIndexEntity, 'ix_mystatus_created') == expected_a, f'missing or malformed {expected_a}'
     expected_b = 'CREATE INDEX `ix_mystatus_only` ON `MyMultiIndexEntities` (`status` ASC)'
     assert _create_index_ddl(MyMultiIndexEntity, 'ix_mystatus_only') == expected_b, f'missing or malformed {expected_b}'
+
+
+@fact
+@trait('unit', 'mysql')
+def mysql_ddl_unique_index_resolution() -> None:
+    @entity
+    class MyUniqueResolutionEntity:
+        id: UUID = field(primary_key=True)
+        email: str = field(index=IndexOptions(name='ix_uniq_opts', unique=True))
+        code: str = field(unique=True, index='ix_uniq_field')
+        overridden: str = field(unique=True, index=IndexOptions(name='ix_uniq_override', unique=False, rank=0))
+        plain: str = field(index=IndexOptions(name='ix_uniq_override', rank=1))
+        any_unique_a: str = field(index='ix_uniq_any')
+        any_unique_b: str = field(unique=True, index='ix_uniq_any')
+    ddl = MySQLDDLGenerator().generate_table_ddl(entity_spec=get_entity_spec(MyUniqueResolutionEntity))
+    expected_opts = 'CREATE UNIQUE INDEX `ix_uniq_opts` ON `MyUniqueResolutionEntities` (`email` ASC)'
+    assert expected_opts in ddl, f'missing: {expected_opts}, got: {ddl}'
+    expected_field = 'CREATE UNIQUE INDEX `ix_uniq_field` ON `MyUniqueResolutionEntities` (`code` ASC)'
+    assert expected_field in ddl, f'missing: {expected_field}, got: {ddl}'
+    expected_override = 'CREATE INDEX `ix_uniq_override` ON `MyUniqueResolutionEntities` (`overridden` ASC, `plain` ASC)'
+    assert expected_override in ddl, f'missing: {expected_override}, got: {ddl}'
+    assert 'CREATE UNIQUE INDEX `ix_uniq_override`' not in ddl, f'override to non-unique not honored: {ddl}'
+    expected_any = 'CREATE UNIQUE INDEX `ix_uniq_any` ON `MyUniqueResolutionEntities` (`any_unique_a` ASC, `any_unique_b` ASC)'
+    assert expected_any in ddl, f'missing: {expected_any}, got: {ddl}'

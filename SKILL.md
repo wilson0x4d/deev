@@ -63,7 +63,7 @@ IndexOptions(
     direction=IndexOrder.ASCENDING,   # or IndexOrder.DESCENDING
     rank=0,
     type=None,                         # ClickHouse skip-index type: minmax, set, bloom_filter, tokenbf_v1, ngrambf_v1, text
-    unique=None                        # per-index uniqueness (MongoDB); None defers to the field's unique flag
+    unique=None                        # per-index uniqueness (None defers to the field's unique flag).
 )
 ```
 

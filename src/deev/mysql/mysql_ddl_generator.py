@@ -38,20 +38,30 @@ class MySQLDDLGenerator():
         return fks
 
     def __generate_table_indexes_ddl(self, entity_spec: EntitySpec, table_name: str) -> list[str]:
-        """Build ``CREATE INDEX`` statements for all secondary indexes."""
+        """
+        Build ``CREATE INDEX`` statements for all secondary indexes.
+
+        An index is emitted as ``CREATE UNIQUE INDEX`` when any field participating
+        in it resolves to unique (``IndexOptions.unique`` overrides the field's
+        ``unique`` flag).
+        """
         ddl = list[str]()
         direction_map = {IndexOrder.ASCENDING: 'ASC', IndexOrder.DESCENDING: 'DESC'}
         groups: dict[str, list[tuple[str, IndexOrder, int]]] = {}
+        unique_flags: dict[str, bool] = {}
         for field_name, spec in entity_spec.fields.items():
             for idx_opts in spec.indexes:
                 direction = idx_opts.direction or IndexOrder.ASCENDING
                 groups.setdefault(idx_opts.name, []).append((field_name, direction, idx_opts.rank))
+                resolved_unique = spec.unique is True if idx_opts.unique is None else idx_opts.unique
+                unique_flags[idx_opts.name] = unique_flags.get(idx_opts.name, False) or resolved_unique
 
         for idx_name, col_specs in sorted(groups.items()):
             # fields are ordered by rank, ties broken alphabetically by field name.
             col_specs.sort(key=lambda cs: (cs[2], cs[0]))  # type: ignore
             cols = ', '.join(f'`{name}` {direction_map[direction]}' for name, direction, _ in col_specs)
-            ddl.append(f'CREATE INDEX `{idx_name}` ON `{table_name}` ({cols})')
+            unique = 'UNIQUE ' if unique_flags.get(idx_name) else ''
+            ddl.append(f'CREATE {unique}INDEX `{idx_name}` ON `{table_name}` ({cols})')
         return ddl
 
     def generate_table_ddl(
