@@ -21,7 +21,13 @@ TEntity = TypeVar('TEntity')
 class DbTableAdapter(Protocol[TEntity]):
 
     def create_table(self) -> None:
-        """Utility method for creating the target table."""
+        """
+        Utility method for creating the target table.
+
+        If the table already exists, no DDL is executed. When the table is
+        created, the entity's ``on_create_table`` hook (if defined as a static method)
+        is invoked with this adapter.
+        """
         ...
 
     def commit(self) -> None:

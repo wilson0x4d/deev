@@ -14,6 +14,7 @@ from .async_db_connection import AsyncDbConnection
 from .async_db_cursor import AsyncDbCursor
 from .async_db_table_adapter import AsyncDbTableAdapter
 from .async_db_transaction_context import AsyncDbTransactionContext
+from .async_run import async_run
 from .connection_string import ConnectionString
 from .db_adapter import DbAdapter
 from .db_connection import DbConnection
@@ -28,6 +29,7 @@ from .db_type_mapper import DbTypeMapper
 
 
 __all__ = [
+    'async_run',
     'AsyncDbAdapter',
     'AsyncDbConnection',
     'AsyncDbContext',

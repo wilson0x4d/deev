@@ -24,6 +24,7 @@ from typing import (
 
 from .entity_field_spec import EntityFieldSpec
 from .entity_spec import EntitySpec
+from .hooks import ON_CREATE_TABLE
 from .index_options import IndexOptions
 from .index_order import IndexOrder
 
@@ -89,6 +90,9 @@ def define_entity_spec(
     if entity_spec is None:
         has_autoincrement = False
         attrs = get_type_hints(entity_type)
+        if ON_CREATE_TABLE in attrs:
+            # NOTE: the on_create_table hook is a class-level convention, never a mapped field
+            attrs = {k: v for k, v in attrs.items() if k != ON_CREATE_TABLE}
         fields = dict[str, EntityFieldSpec]()
         primary_key = list[str]()
         for attr_name, attr_type in attrs.items():
@@ -358,6 +362,15 @@ def entity(
     :param defer_init: If ``True``, call original ``__init__`` before applying field defaults (useful for mixin base classes).
     :param snake_case: If ``True``, convert class name to snake_case before pluralizing for table name.
     :param kwargs: Additional options stored in :attr:`EntitySpec.extra_args`.
+
+    **Entity hooks**
+
+    An entity class may define an ``on_create_table`` static method, invoked by a table
+    adapter's ``create_table()`` when the backing table is created (never when the
+    table already exists). The hook receives the table adapter as its sole argument
+    and may itself be an ``async def`` function (awaited from async call sites, or
+    scheduled/run via :func:`deev.common.async_run` from sync call sites). The hook
+    name is excluded from field introspection — it never becomes a mapped column.
 
     **Provider-specific options**
 

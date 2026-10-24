@@ -6,7 +6,7 @@ from typing import Any, AsyncGenerator, TypeVar, cast, get_args, get_origin
 from ..common.async_db_table_adapter import AsyncDbTableAdapter
 from ..common.db_context import AsyncDbContext
 from ..common.db_parameters import DbParameters
-from ..entities import get_entity_spec
+from ..entities import get_entity_spec, invoke_on_create_table_async
 from .async_mssql_proxy_connection import AsyncMSSQLProxyConnection
 from .async_mssql_transaction_context import AsyncMSSQLTransactionContext
 from .mssql_proxy_connection import MSSQLProxyConnection
@@ -58,9 +58,12 @@ class AsyncMSSQLTableAdapter(AsyncDbTableAdapter[TEntity]):
         self.__column_names = ', '.join([f'[{k}]' for k in self.__entity_spec.fields.keys()])
         self.__dbtype_mapper = MSSQLTypeMapper(self.__entity_spec)
 
+        # NOTE: table creation is owned by this async adapter (which invokes the
+        #       on_create_table hook via the async path), so the sync delegate never
+        #       auto-creates on its own.
         self.__sync_adapter = MSSQLTableAdapter[entity_type](  # type: ignore[valid-type]
             self.mssql_connection,
-            create_table=self.__create_table,
+            create_table=False,
             table_name=self.__table_name,
             use_setinputsizes=self.__use_setinputsizes,
         )
@@ -97,8 +100,17 @@ class AsyncMSSQLTableAdapter(AsyncDbTableAdapter[TEntity]):
         raise RuntimeError(f'unsupported context type: {self.__context}')
 
     async def create_table(self) -> None:
+        """
+        Utility method for creating the target table.
+
+        If the table already exists, no DDL is executed. When the table is created,
+        the entity's ``on_create_table`` hook (if defined) is invoked with this adapter;
+        async hooks are awaited.
+        """
         await self.__deferred_init()
-        self.__sync_adapter.create_table()
+        created = self.__sync_adapter._do_create_table()
+        if created:
+            await invoke_on_create_table_async(self.__entity_spec.entity_type, self)
         self.__create_table = False
 
     async def create(self, entity: TEntity | None = None, **kwargs: Any) -> dict[str, Any]:

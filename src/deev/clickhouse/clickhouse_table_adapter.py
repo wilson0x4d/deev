@@ -24,7 +24,7 @@ from ..common.db_connection import DbConnection
 from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
-from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec
+from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec, invoke_on_create_table
 from ..translation import compile_hydrate_plan, splat_chsql, to_pyobject
 from .clickhouse_proxy_connection import ClickHouseProxyConnection
 from .clickhouse_transaction_context import ClickHouseTransactionContext
@@ -187,18 +187,31 @@ class ClickHouseTableAdapter(Generic[TEntity]):
                 options[key.strip()] = value.strip()
         return options
 
-    def create_table(
+    def _do_create_table(
         self,
         *,
         engine: str | None = None,
         order_by: str | None = None,
         partition_by: str | None = None,
-    ) -> None:
-        """Create the target table if it does not exist."""
+    ) -> bool:
+        """
+        Create the target table if it does not exist.
+
+        :return: ``True`` if the table was created by this call, ``False`` if it already existed.
+        """
         self.__deferred_init()
 
         from .clickhouse_ddl_generator import ClickHouseDDLGenerator
         from .utils import resolve_clickhouse_table_engine
+
+        table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
+        cursor = self.__context.cursor()
+        cursor.execute(
+            'SELECT 1 FROM system.tables WHERE database = currentDatabase() AND name = %? LIMIT 1',
+            (table_name,)
+        )
+        if cursor.fetchone() is not None:
+            return False
 
         resolved_engine = engine
         if resolved_engine is None:
@@ -220,6 +233,25 @@ class ClickHouseTableAdapter(Generic[TEntity]):
         for stmt in ddl:
             self.__execute(stmt)
         self.sync_replicas()
+        return True
+
+    def create_table(
+        self,
+        *,
+        engine: str | None = None,
+        order_by: str | None = None,
+        partition_by: str | None = None,
+    ) -> None:
+        """
+        Create the target table if it does not exist.
+
+        If the table already exists, no DDL is executed. When the table is created,
+        the entity's ``on_create_table`` hook (if defined) is invoked with this adapter,
+        after ``sync_replicas()`` has run (when enabled).
+        """
+        created = self._do_create_table(engine=engine, order_by=order_by, partition_by=partition_by)
+        if created:
+            invoke_on_create_table(self.__entity_spec.entity_type, self)
         self.__create_table = False
 
     def commit(self) -> None:

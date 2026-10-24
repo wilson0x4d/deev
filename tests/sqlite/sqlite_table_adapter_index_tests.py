@@ -23,6 +23,9 @@ def _make_mock_connection():
     mock_cursor.execute.side_effect = lambda sql, parameters=None: captured.append(sql)
     # description must be truthy for read()/query paths to work
     mock_cursor.description = [('id',), ('name',)]
+    # create_table() runs an existence check first; return None so the table
+    # is treated as missing and DDL is emitted
+    mock_cursor.fetchone.return_value = None
 
     mock_connection = MagicMock(spec=SQLiteProxyConnection)
     mock_connection.cursor.return_value = mock_cursor
@@ -46,9 +49,10 @@ def single_column_pk_no_duplicate_index() -> None:
     # Trigger deferred init via a public method call
     adapter.read(id=1)
 
-    # First statement is CREATE TABLE (the second is SELECT from read())
-    assert len(captured) >= 1
-    assert 'CREATE TABLE' in captured[0]
+    # First statement is the existence check, second is CREATE TABLE, third is SELECT from read()
+    assert len(captured) >= 2
+    assert 'sqlite_master' in captured[0]
+    assert 'CREATE TABLE' in captured[1]
     # No CREATE INDEX should appear anywhere
     assert not any('CREATE INDEX' in s for s in captured)
 
@@ -65,12 +69,12 @@ def single_secondary_index_string_shorthand() -> None:
     adapter = SQLiteTableAdapter[SingleIndexEntity](mock_connection, create_table=True)
     adapter.read(id=1)  # noqa: E501
 
-    # First is CREATE TABLE, second is CREATE INDEX (third is SELECT from read())
-    assert len(captured) >= 2
-    assert 'CREATE TABLE' in captured[0]
+    # First is the existence check, second is CREATE TABLE, third is CREATE INDEX (fourth is SELECT from read())
+    assert len(captured) >= 3
+    assert 'CREATE TABLE' in captured[1]
 
     # Verify secondary index uses bracket quoting
-    index_sql = captured[1]
+    index_sql = captured[2]
     assert 'CREATE INDEX' in index_sql
     assert '[ix_single]' in index_sql
     assert '[name] ASC' in index_sql
@@ -89,10 +93,10 @@ def compound_secondary_index() -> None:
     adapter = SQLiteTableAdapter[CompoundIndexEntity](mock_connection, create_table=True)
     adapter.read(id=1)  # noqa: E501
 
-    # First is CREATE TABLE, second is CREATE INDEX (third is SELECT from read())
-    assert len(captured) >= 2
+    # First is the existence check, second is CREATE TABLE, third is CREATE INDEX (fourth is SELECT from read())
+    assert len(captured) >= 3
 
-    index_sql = captured[1]
+    index_sql = captured[2]
     assert 'CREATE INDEX' in index_sql
     assert '[ix_user_composite]' in index_sql
     # Fields should be sorted alphabetically: first_name before last_name
@@ -117,7 +121,7 @@ def descending_secondary_index() -> None:
     adapter = SQLiteTableAdapter[DescIndexEntity](mock_connection, create_table=True)
     adapter.read(id=1)  # noqa: E501
 
-    index_sql = captured[1]
+    index_sql = captured[2]
     assert 'CREATE INDEX' in index_sql
     assert '[ix_desc]' in index_sql
     assert '[updated_at] DESC' in index_sql
@@ -140,7 +144,7 @@ def mixed_direction_compound_index() -> None:
     adapter = SQLiteTableAdapter[MixedCompoundEntity](mock_connection, create_table=True)
     adapter.read(id=1)  # noqa: E501
 
-    index_sql = captured[1]
+    index_sql = captured[2]
     assert 'CREATE INDEX' in index_sql
     assert '[ix_mixed]' in index_sql
     assert '[first_name] ASC' in index_sql
@@ -164,7 +168,8 @@ def no_secondary_indexes_only_create_table() -> None:
     adapter = SQLiteTableAdapter[NoSecondaryEntity](mock_connection, create_table=True)
     adapter.read(id=1)  # noqa: E501
 
-    assert len(captured) >= 1
-    assert 'CREATE TABLE' in captured[0]
+    assert len(captured) >= 2
+    assert 'sqlite_master' in captured[0]
+    assert 'CREATE TABLE' in captured[1]
     # No CREATE INDEX should appear anywhere
     assert not any('CREATE INDEX' in s for s in captured)

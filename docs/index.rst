@@ -26,6 +26,7 @@ Features
 - **Parameterized queries** — unified ``%?`` syntax across all providers.
 - **Connection strings** — Supports both DSN URIs (``sqlite://``, ``mysql://``) and OLEDB-style strings.
 - **Declarative indexes** — define composite, unique, and directional indexes on entity fields.
+- **Entity hooks** — ``on_create_table`` static method invoked when a table adapter creates the backing table.
 - **Native Interface Access** — drop down to provider-specific methods when the ORM layer isn't enough.
 
 
@@ -40,6 +41,7 @@ Contents
    Database Migration <migration>
    Transactions <transactions>
    Validation <validation>
+   Entity Hooks <hooks>
    Async API <async>
     Database Adapters <dbadapter>
     Python `datetime` Handling <datetime>

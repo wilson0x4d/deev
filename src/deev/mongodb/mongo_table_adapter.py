@@ -12,7 +12,7 @@ from ..common.db_parameters import DbParameters
 from ..common.db_table_adapter import DbTableAdapter
 from ..common.db_transaction_context import DbTransactionContext
 from ..common.db_type_mapper import DbTypeMapper
-from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec
+from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec, invoke_on_create_table
 from ..translation import compile_hydrate_plan, splat_mongodb, to_pyobject
 from ..translation.utils import to_bsonobject
 from .utils import parse_sql_where
@@ -151,7 +151,14 @@ class MongoTableAdapter(DbTableAdapter[TEntity]):
         return db[self.__get_collection_name()]
 
     def create_table(self) -> None:
-        """Utility method for creating the target table."""
+        """
+        Utility method for creating the target table.
+
+        If the collection already exists, nothing is done. When the collection is
+        created, the entity's ``on_create_table`` hook (if defined) is invoked with this
+        adapter. Note: collections are also created implicitly on first insert;
+        the hook is only invoked by this method.
+        """
         self.__deferred_init()
         collection_name = self.__get_collection_name()
         connection = cast(pymongo.MongoClient[Any], getattr(self.__context, 'mongo_client', None))
@@ -159,7 +166,8 @@ class MongoTableAdapter(DbTableAdapter[TEntity]):
         cursor = self.__context.cursor()
         mongo_session = cast(pymongo.client_session.ClientSession, getattr(cursor, 'mongo_session', None))
         collection_names = db.list_collection_names()
-        if collection_name not in collection_names:
+        created = collection_name not in collection_names
+        if created:
             collection: pymongo.collection.Collection[Any]
             if len(self.primary_key) > 0:
                 collection = db[collection_name]
@@ -209,6 +217,8 @@ class MongoTableAdapter(DbTableAdapter[TEntity]):
                     comment=index_name,
                     **(index_attrs[index_name])
                 )
+        if created:
+            invoke_on_create_table(self.__entity_spec.entity_type, self)
         self.__create_table = False
 
     def commit(self) -> None:

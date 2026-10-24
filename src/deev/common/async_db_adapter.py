@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import sys
 from abc import ABC
@@ -25,6 +24,7 @@ from .async_db_connection import AsyncDbConnection
 from .async_db_cursor import AsyncDbCursor
 from .async_db_table_adapter import AsyncDbTableAdapter
 from .async_db_transaction_context import AsyncDbTransactionContext
+from .async_run import async_run
 from .connection_string import ConnectionString
 
 TEntity = TypeVar('TEntity')
@@ -74,14 +74,7 @@ class AsyncDbAdapter(AsyncDbConnection, ABC):
     def __del__(self) -> None:
         try:
             if self.__connection is not None:
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-                if loop and loop.is_running():
-                    loop.create_task(self.__connection.close())
-                else:
-                    asyncio.run(self.__connection.close())
+                async_run(self.__connection.close())
         except Exception:
             pass
 

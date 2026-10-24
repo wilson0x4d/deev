@@ -12,7 +12,7 @@ from ..common.db_context import DbContext
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
 from ..common.db_type_mapper import DbTypeMapper
-from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec
+from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec, invoke_on_create_table
 from ..translation import compile_hydrate_plan, splat_mysql, to_pyobject
 from .mysql_proxy_connection import MySQLProxyConnection
 from .mysql_transaction_context import MySQLTransactionContext
@@ -121,14 +121,38 @@ class MySQLTableAdapter(Generic[TEntity]):
             apply_defaults_for(entity, self.__default_only_names)
         return entity
 
-    def create_table(self) -> None:
-        """Utility method for creating the target table."""
+    def _do_create_table(self) -> bool:
+        """
+        Create the target table and its indexes if the table does not already exist.
+
+        :return: ``True`` if the table was created by this call, ``False`` if it already existed.
+        """
         self.__deferred_init()
         from .mysql_ddl_generator import MySQLDDLGenerator
+        table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
+        cursor = self.__context.cursor()
+        cursor.execute(
+            'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = %? LIMIT 1',
+            (table_name,)
+        )
+        if cursor.fetchone() is not None:
+            return False
         ddl_generator = MySQLDDLGenerator()
         ddl = ddl_generator.generate_table_ddl(entity_spec=self.__entity_spec, table_name=self.__table_name)
         for stmt in ddl:
             self.__execute(stmt)
+        return True
+
+    def create_table(self) -> None:
+        """
+        Utility method for creating the target table.
+
+        If the table already exists, no DDL is executed. When the table is created,
+        the entity's ``on_create_table`` hook (if defined) is invoked with this adapter.
+        """
+        created = self._do_create_table()
+        if created:
+            invoke_on_create_table(self.__entity_spec.entity_type, self)
         self.__create_table = False
 
     def commit(self) -> None:

@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: © 2026 Shaun Wilson
 # SPDX-License-Identifier: MIT
 
-import asyncio
 from collections import defaultdict
 from deev.entities import IndexOptions, IndexOrder
 import pymongo
@@ -13,10 +12,11 @@ from typing import Any, AsyncGenerator, Callable, Mapping, TypeVar, cast, get_ar
 from ..common.async_db_connection import AsyncDbConnection
 from ..common.async_db_table_adapter import AsyncDbTableAdapter
 from ..common.async_db_transaction_context import AsyncDbTransactionContext
+from ..common.async_run import async_run
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
 from ..common.db_type_mapper import DbTypeMapper
-from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec
+from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec, invoke_on_create_table_async
 from ..translation import compile_hydrate_plan, splat_mongodb, to_pyobject
 from ..translation.utils import to_bsonobject
 from .utils import parse_sql_where
@@ -75,14 +75,7 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
             self.__dbtype_mapper = MongoTypeMapper(self.__entity_spec)
             self.__initialized = True
             if self.__create_table is True:
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-                if loop and loop.is_running():
-                    loop.create_task(self.create_table())
-                else:
-                    asyncio.run(self.create_table())
+                async_run(self.create_table())
 
     @property
     def primary_key(self) -> tuple[str, ...]:
@@ -162,7 +155,14 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         return db[self.__get_collection_name()]
 
     async def create_table(self) -> None:
-        """Utility method for creating the target table."""
+        """
+        Utility method for creating the target table.
+
+        If the collection already exists, nothing is done. When the collection is
+        created, the entity's ``on_create_table`` hook (if defined) is invoked with this
+        adapter; async hooks are awaited. Note: collections are also created
+        implicitly on first insert; the hook is only invoked by this method.
+        """
         self.__deferred_init()
         collection_name = self.__get_collection_name()
         connection = cast(pymongo.AsyncMongoClient[Any], getattr(self.__context, 'mongo_client', None))
@@ -170,7 +170,8 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
         cursor = await self.__context.cursor()
         mongo_session = cast(pymongo.asynchronous.client_session.AsyncClientSession, getattr(cursor, 'mongo_session', None))
         collection_names = await db.list_collection_names()
-        if collection_name not in collection_names:
+        created = collection_name not in collection_names
+        if created:
             collection: pymongo.asynchronous.collection.AsyncCollection[Any]
             if len(self.primary_key) > 0:
                 collection = db[collection_name]  # type: ignore
@@ -216,6 +217,8 @@ class AsyncMongoTableAdapter(AsyncDbTableAdapter[TEntity]):
                     comment=index_name,
                     **(index_attrs[index_name])
                 )
+        if created:
+            await invoke_on_create_table_async(self.__entity_spec.entity_type, self)
         self.__create_table = False
 
     async def commit(self) -> None:

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from contextvars import ContextVar
 import mysql.connector
 from types import TracebackType
@@ -14,6 +13,7 @@ from ..common.async_db_connection import AsyncDbConnection
 from ..common.db_context import AsyncDbContext
 from ..common.async_db_cursor import AsyncDbCursor
 from ..common.async_db_transaction_context import AsyncDbTransactionContext
+from ..common.async_run import async_run
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
 from ..common.tlc_parser import extract_begin_name, extract_rollback_name, extract_savepoint_name
@@ -43,14 +43,7 @@ class AsyncMySQLTransactionContext(AsyncDbTransactionContext):
 
     def __del__(self) -> None:
         try:
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-            if loop and loop.is_running():
-                loop.create_task(self.close())
-            else:
-                asyncio.run(self.close())
+            async_run(self.close())
         except Exception:
             pass
 

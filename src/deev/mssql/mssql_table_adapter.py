@@ -8,7 +8,7 @@ from ..common.db_context import DbContext
 from ..common.db_cursor import DbCursor
 from ..common.db_error import DbError
 from ..common.db_parameters import DbParameters
-from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec
+from ..entities import EntitySpec, apply_defaults_for, construct_entity, get_entity_spec, invoke_on_create_table
 from ..translation import compile_hydrate_plan, splat_mssql, to_pyobject
 from .mssql_input_sizes import input_sizes, resolve_where_fields
 from .mssql_proxy_connection import MSSQLProxyConnection
@@ -198,30 +198,44 @@ class MSSQLTableAdapter(Generic[TEntity]):
             apply_defaults_for(entity, self.__default_only_names)
         return entity
 
-    def create_table(self) -> None:
+    def _do_create_table(self) -> bool:
         """
         Create the target table if it does not already exist.
 
-        Generates the table DDL using :class:`MSSQLDDLGenerator` and executes it.
+        :return: ``True`` if the table was created by this call, ``False`` if it already existed.
         """
         self.__deferred_init()
         from .mssql_ddl_generator import MSSQLDDLGenerator
-        ddl_generator = MSSQLDDLGenerator()
         table_name = self.__entity_spec.table_name if self.__table_name is None else self.__table_name
         # Check if table already exists (SQL Server has no IF NOT EXISTS on CREATE TABLE)
         cursor = self.__context.cursor()
         try:
             cursor.execute(
-                "SELECT COUNT(*) FROM sys.tables WHERE name = %? AND schema_name(schema_id) = 'dbo'",
+                'SELECT COUNT(*) FROM sys.tables WHERE name = %?',
                 (table_name,)
             )
             result = cursor.fetchone()
         finally:
             cursor.close()
-        if result is not None and result[0] == 0:
-            ddl = ddl_generator.generate_table_ddl(entity_spec=self.__entity_spec, table_name=self.__table_name)
-            for stmt in ddl:
-                self.__execute(stmt)
+        if result is None or result[0] != 0:
+            return False
+        ddl_generator = MSSQLDDLGenerator()
+        ddl = ddl_generator.generate_table_ddl(entity_spec=self.__entity_spec, table_name=self.__table_name)
+        for stmt in ddl:
+            self.__execute(stmt)
+        return True
+
+    def create_table(self) -> None:
+        """
+        Create the target table if it does not already exist.
+
+        Generates the table DDL using :class:`MSSQLDDLGenerator` and executes it.
+        When the table is created, the entity's ``on_create_table`` hook (if defined) is
+        invoked with this adapter.
+        """
+        created = self._do_create_table()
+        if created:
+            invoke_on_create_table(self.__entity_spec.entity_type, self)
         self.__create_table = False
 
     def commit(self) -> None:

@@ -119,6 +119,30 @@ one_id: UUID = field(foreign_key=(ExampleEntityOne, 'id'), cascade_delete=True)
 
 `generate_dbadapter_ddl()` orders the emitted tables so that every foreign-key target is created before the table that references it (topological order, alphabetical tie-break). Foreign-key targets that are not themselves direct `DbAdapter` properties are still included, transitively.
 
+### Entity Hooks
+
+Entities can define **entity hooks** as **static methods**. An entity hook is a functional hook that plugs into a specific piece of entity logic:
+
+```python
+@entity
+class User:
+    id: int = field(autoincrement=True, primary_key=True)
+    name: str
+
+    @staticmethod
+    def on_create_table(table_adapter):
+        # invoked only when create_table() actually created the table
+        table_adapter.create(name='admin')
+```
+
+- Invoked by a table adapter's `create_table()` **when the backing table is created**; if the table already exists, no DDL runs and `on_create_table` is not called.
+- The `table_adapter` argument is the adapter that created the table — `DbTableAdapter` (sync call site) or `AsyncDbTableAdapter` (async call site). The hook implementation must determine the object type and call its methods accordingly (async adapter methods return coroutines).
+- `on_create_table` **may be `async def`**. From an async `create_table()` the coroutine is awaited. From a sync `create_table()` it is handled by `deev.common.async_run`: scheduled as a task on the current thread's running event loop when one exists, otherwise run to completion via `asyncio.run`.
+- The hook name is recognized by convention and excluded from field introspection — annotating it does not create a column. Inherited hooks are found via the MRO.
+- Also fires via `create_table=True` (lazy init on first operation), `get_table_adapter(Entity, create_table=True)`, and `db-migrate` scripts that call `create_table()`.
+- A hook that raises after the DDL succeeds leaves the table in place; `create_table()` will not re-invoke the hook (the table now exists). Keep hooks idempotent if concurrent creation races matter.
+- **MongoDB:** collections are created implicitly on first insert; `on_create_table` is invoked only by an explicit `create_table()` call.
+
 ---
 
 ## 2. Connections
@@ -499,6 +523,9 @@ Note: `deev.mssql` is a provider submodule (import via `import deev.mssql`).
 | `IndexOrder` | Direction for index ordering (ASC/DESC) |
 | `define_entity_spec` | Define/retrieve a custom entity spec |
 | `get_entity_spec` | Retrieve spec for a class (creates if missing) |
+| `ON_CREATE_TABLE` | Hook name constant (`'on_create_table'`) |
+| `get_on_create_table_hook` | Retrieve the `on_create_table` hook for an entity type (`None` if absent) |
+| `invoke_on_create_table` / `invoke_on_create_table_async` | Internal hook invocation (sync / async call sites) |
 | `pluralize` | Utility to pluralize table names |
 
 ### From `deev.translation`
