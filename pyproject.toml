@@ -36,12 +36,10 @@ mysql = [
 
 [dependency-groups]
 dev = [
-    "build",
     "coverage",
     "mypy",
     "punit (>=1.14.1)",
-    "py-conventional-semver (>=1.3.5)",
-    "twine"
+    "py-conventional-semver (>=1.3.5)"
 ]
 
 [project.urls]

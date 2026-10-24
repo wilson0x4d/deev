@@ -4,6 +4,13 @@
 ##
 set -eo pipefail
 
+if [ ! -z "$1" ]; then
+    echo "Running tests for Python $1"
+    export PYTHON_VERSION="$1"
+    rm -rf .venv
+    . .scripts/init-venv
+fi
+
 DESTROY_VENV=0
 if [ ! -e ".venv" ]; then
     DESTROY_VENV=1

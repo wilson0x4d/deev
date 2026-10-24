@@ -20,7 +20,7 @@ fi
 
 echo "Running tests before push..." >&2
 cd "$REPO_ROOT"
-"$RUN_TESTS" "$@"
+"$RUN_TESTS" "" "$@"
 RC=$?
 
 if [ $RC -ne 0 ]; then
